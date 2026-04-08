@@ -1,0 +1,51 @@
+{
+  "name": "rotation_target_050_baseline",
+  "baseline_commit": "b415696",
+  "baseline_summary_path": "/Users/jsa/work/epic_invest/models/rotation_target_050_summary.json",
+  "stage_group": "levered_hybrid",
+  "avg_daily_target": 0.005,
+  "required_target_checks": [
+    "validation_pass",
+    "test_pass",
+    "oos_pass"
+  ],
+  "stages": {
+    "validation": {
+      "total_return": 0.2789622793867399,
+      "avg_daily_return": 0.006025357241022825,
+      "daily_win_rate": 0.2826086956521739,
+      "daily_target_hit_rate": 0.2391304347826087,
+      "max_drawdown": -0.10783922196497742
+    },
+    "test": {
+      "total_return": 0.2472667313826329,
+      "avg_daily_return": 0.005125115209793964,
+      "daily_win_rate": 0.35294117647058826,
+      "daily_target_hit_rate": 0.2549019607843137,
+      "max_drawdown": -0.12969501088067636
+    },
+    "oos": {
+      "total_return": 0.5860142477717833,
+      "avg_daily_return": 0.005549490728232561,
+      "daily_win_rate": 0.3125,
+      "daily_target_hit_rate": 0.23958333333333334,
+      "max_drawdown": -0.17598414878705082
+    }
+  },
+  "rules": {
+    "non_regression_metrics": [
+      "total_return",
+      "avg_daily_return",
+      "daily_win_rate",
+      "daily_target_hit_rate",
+      "max_drawdown"
+    ],
+    "strictly_better_required": true,
+    "strict_improvement_stages": [
+      "validation",
+      "test",
+      "oos"
+    ],
+    "epsilon": 1e-12
+  }
+}

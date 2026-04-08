@@ -1,7 +1,7 @@
 {
   "overlay": null,
   "overlay_completed_day": "2026-04-07",
-  "updated_at": "2026-04-08T04:25:47.088886+00:00",
+  "updated_at": "2026-04-08T04:27:57.485394+00:00",
   "shutdown_protection": [],
   "core_day_state": {
     "effective_day": "2026-04-08",
@@ -11,7 +11,7 @@
     "triggered_at": null,
     "trigger_return": null,
     "trigger_equity": null,
-    "last_equity": 4636.32260004,
-    "last_return": 0.006056882968312305
+    "last_equity": 4642.31068433,
+    "last_return": 0.007356264813677571
   }
 }

@@ -1947,6 +1947,35 @@
       }
     }
   ],
+  "promotion_candidates": {
+    "target_060": [],
+    "progressive_improvement": [
+      {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          2,
+          5,
+          7,
+          5
+        ]
+      },
+      {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          2,
+          1,
+          7,
+          5
+        ]
+      }
+    ]
+  },
+  "selection": {
+    "reason": "progressive_pass",
+    "target_060_pass_count": 0,
+    "progressive_pass_count": 2,
+    "realistic_top_count": 5
+  },
   "selected_candidate": {
     "route_breadth_threshold": 0.5,
     "mapping_indices": [
@@ -2267,36 +2296,6 @@
       }
     }
   },
-  "created_at": "2026-04-08T14:36:56.781928+00:00",
-  "promotion_candidates": {
-    "target_060": [],
-    "progressive_improvement": [
-      {
-        "route_breadth_threshold": 0.5,
-        "mapping_indices": [
-          2,
-          5,
-          7,
-          5
-        ]
-      },
-      {
-        "route_breadth_threshold": 0.5,
-        "mapping_indices": [
-          2,
-          1,
-          7,
-          5
-        ]
-      }
-    ]
-  },
-  "selection": {
-    "reason": "progressive_pass",
-    "target_060_pass_count": 0,
-    "progressive_pass_count": 2,
-    "realistic_top_count": 5
-  },
   "fallback_best_candidate": {
     "route_breadth_threshold": 0.5,
     "mapping_indices": [
@@ -2616,5 +2615,6 @@
         }
       }
     }
-  }
+  },
+  "created_at": "2026-04-08T15:47:12.272636+00:00"
 }

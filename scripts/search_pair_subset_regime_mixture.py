@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -70,6 +70,8 @@ def json_safe(value: Any) -> Any:
         return {str(k): json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [json_safe(v) for v in value]
+    if is_dataclass(value):
+        return json_safe(asdict(value))
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, np.generic):

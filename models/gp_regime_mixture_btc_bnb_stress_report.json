@@ -3,7 +3,7 @@
     "BTCUSDT",
     "BNBUSDT"
   ],
-  "summary_path": "models/gp_regime_mixture_btc_bnb_search_summary.json",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_search_summary.json",
   "base_summary_path": "models/gp_regime_mixture_search_summary.json",
   "baseline_candidate": {
     "route_breadth_threshold": 0.5,

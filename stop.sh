@@ -5,3 +5,4 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$ROOT_DIR/scripts/trader_service.sh"
 
 stop_trader
+"$ROOT_DIR/telegram_launchd_unload.sh"

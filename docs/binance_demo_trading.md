@@ -67,6 +67,12 @@ Install exchange-native shutdown protection without starting the loop:
 .venv/bin/python scripts/rotation_target_050_live.py shutdown-protect --execute
 ```
 
+Close all open positions immediately and clear the local strategy state:
+
+```bash
+.venv/bin/python scripts/rotation_target_050_live.py close-all --execute
+```
+
 Run continuously:
 
 ```bash
@@ -95,4 +101,5 @@ Run continuously:
 - While the loop is running on a core day, a portfolio-level emergency kill switch can flatten all core positions and prevent same-day re-entry
 - On stop/restart or caught termination signals, the runner installs fallback `reduceOnly` SL/TP orders at `1:2.5`
 - On the next start/sync, those managed fallback orders are cancelled and positions are re-synced into the strategy state
+- `close-all --execute` uses `reduceOnly` market orders, but if the live loop is still running it may reopen positions on the next cycle
 - The older `scripts/live_trader.py` path still points at the deprecated sandbox-style futures setup and should not be used for this strategy

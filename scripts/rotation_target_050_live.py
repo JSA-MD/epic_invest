@@ -21,6 +21,9 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import ccxt
 import numpy as np
@@ -73,6 +76,42 @@ RUNTIME_CONTEXT: dict[str, Any] = {
     "shutdown_reason": None,
 }
 
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_NOTIFICATIONS_ENABLED = os.getenv("TELEGRAM_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+
+
+def resolve_telegram_chat_ids() -> list[int]:
+    values: list[int] = []
+    raw_values = [
+        os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", ""),
+        os.getenv("TELEGRAM_CHAT_ID", ""),
+    ]
+    for raw in raw_values:
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                values.append(int(item))
+            except ValueError:
+                continue
+    deduped: list[int] = []
+    seen: set[int] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+TELEGRAM_NOTIFY_CHAT_IDS = resolve_telegram_chat_ids()
+
 
 def resolve_strategy_profile() -> str:
     return "mean"
@@ -123,11 +162,173 @@ def parse_args() -> argparse.Namespace:
     shutdown_protect.add_argument("--mode", choices=["demo", "live"], default=os.getenv("BINANCE_MODE", "demo"))
     shutdown_protect.add_argument("--state-path", default=str(STATE_PATH))
 
+    close_all = subparsers.add_parser("close-all", help="Close all open positions and clear local strategy state.")
+    close_all.add_argument("--execute", action="store_true", help="Actually place flatten orders.")
+    close_all.add_argument("--mode", choices=["demo", "live"], default=os.getenv("BINANCE_MODE", "demo"))
+    close_all.add_argument("--state-path", default=str(STATE_PATH))
+
     return parser.parse_args()
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def telegram_ready() -> bool:
+    return TELEGRAM_NOTIFICATIONS_ENABLED and bool(TELEGRAM_BOT_TOKEN) and bool(TELEGRAM_NOTIFY_CHAT_IDS)
+
+
+def send_telegram_notification(text: str) -> bool:
+    if not telegram_ready():
+        return False
+
+    payload_text = text.strip()
+    if not payload_text:
+        return False
+
+    delivered = False
+    for chat_id in TELEGRAM_NOTIFY_CHAT_IDS:
+        params = urlencode(
+            {
+                "chat_id": str(chat_id),
+                "text": payload_text,
+                "disable_web_page_preview": "true",
+            }
+        ).encode()
+        request = Request(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            data=params,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urlopen(request, timeout=15) as response:
+                raw = response.read().decode("utf-8")
+            data = json.loads(raw)
+            if not data.get("ok"):
+                print(f"[WARN] Telegram send failed for chat_id={chat_id}: {data}")
+                continue
+            delivered = True
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            print(f"[WARN] Telegram notification error for chat_id={chat_id}: {exc}")
+    return delivered
+
+
+def side_label_from_qty(qty: float) -> str:
+    if qty > EPSILON:
+        return "롱"
+    if qty < -EPSILON:
+        return "숏"
+    return "플랫"
+
+
+def side_label_from_name(side: str) -> str:
+    return {"LONG": "롱", "SHORT": "숏"}.get(str(side).upper(), str(side))
+
+
+def format_notification_price(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"${float(value):,.4f}"
+
+
+def format_notification_pct(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{float(value) * 100:+.2f}%"
+
+
+def build_core_rebalance_notification(actions: list[dict[str, Any]], title: str = "코어 리밸런싱 체결") -> str | None:
+    lines: list[str] = []
+    for action in actions:
+        if not action.get("placed"):
+            continue
+        current_qty = float(action.get("current_qty", 0.0))
+        target_qty = float(action.get("target_qty", 0.0))
+        if abs(current_qty) <= EPSILON and abs(target_qty) > EPSILON:
+            event = "신규 진입"
+        elif abs(current_qty) > EPSILON and abs(target_qty) <= EPSILON:
+            event = "전량 청산"
+        elif current_qty * target_qty < 0:
+            event = "포지션 전환"
+        elif abs(target_qty) > abs(current_qty):
+            event = "포지션 증액"
+        else:
+            event = "포지션 감축"
+        lines.append(
+            f"- {action['pair']}: {event} | 목표 {side_label_from_qty(target_qty)} {abs(target_qty):.6f} | "
+            f"체결 {action['side']} {float(action.get('amount', 0.0)):.6f} | 기준가 {format_notification_price(action.get('price'))}"
+        )
+    if not lines:
+        return None
+    return "\n".join([title, *lines])
+
+
+def build_overlay_entry_notification(opened: dict[str, Any], effective_day: str, leverage: float) -> str | None:
+    if not opened.get("placed"):
+        return None
+    direction = "롱" if opened.get("side") == "buy" else "숏"
+    return "\n".join(
+        [
+            "오버레이 진입",
+            f"- 적용일: {effective_day}",
+            f"- 방향: {direction}",
+            f"- 수량: {float(opened.get('amount', 0.0)):.6f}",
+            f"- 체결가: {format_notification_price(opened.get('price'))}",
+            f"- 전략 레버리지: {float(leverage):.2f}x",
+        ]
+    )
+
+
+def translate_overlay_exit_reason(reason: str) -> str:
+    mapping = {
+        "target": "익절",
+        "stop": "손절",
+        "trail_stop": "트레일링 손절",
+        "stop_and_target_same_bar": "손절/익절 동시 충돌",
+        "trail_stop_and_target_same_bar": "트레일링 손절/익절 동시 충돌",
+        "forced_eod_close": "일자 변경 강제 청산",
+        "would_force_eod_close": "일자 변경 예정 청산",
+    }
+    return mapping.get(reason, reason)
+
+
+def build_overlay_exit_notification(result: dict[str, Any]) -> str | None:
+    close_action = result.get("close_action") or {}
+    if not close_action.get("placed"):
+        return None
+    reason = translate_overlay_exit_reason(str(result.get("exit_reason") or result.get("status") or "청산"))
+    return "\n".join(
+        [
+            "오버레이 청산",
+            f"- 사유: {reason}",
+            f"- 방향: {side_label_from_name(str(result.get('overlay_side', '')))}",
+            f"- 수량: {abs(float(close_action.get('current_qty', 0.0))):.6f}",
+            f"- 예상 손익률: {format_notification_pct(result.get('exit_return'))}",
+        ]
+    )
+
+
+def build_kill_switch_notification(report: dict[str, Any]) -> str | None:
+    if report.get("status") != "triggered":
+        return None
+    flatten_actions = report.get("flatten_actions") or []
+    closed_pairs = [action.get("pair") for action in flatten_actions if action.get("placed")]
+    return "\n".join(
+        [
+            "코어 킬 스위치 발동",
+            f"- 손실률: {format_notification_pct(report.get('trigger_return'))}",
+            f"- 임계값: {format_notification_pct(report.get('kill_switch_pct'))}",
+            f"- 청산 종목: {', '.join(closed_pairs) if closed_pairs else '없음'}",
+        ]
+    )
+
+
+def dispatch_notifications(messages: list[str]) -> None:
+    for message in messages:
+        message = message.strip()
+        if not message:
+            continue
+        send_telegram_notification(message)
 
 
 def normalize_day(value: Any) -> pd.Timestamp:
@@ -241,6 +442,13 @@ def save_state(path: str | Path, state: dict[str, Any]) -> None:
     state["updated_at"] = utc_now().isoformat()
     with open(state_file, "w") as f:
         json.dump(state, f, indent=2)
+
+
+def clear_strategy_state(state: dict[str, Any]) -> None:
+    state["overlay"] = None
+    state["overlay_completed_day"] = None
+    state["core_day_state"] = None
+    state["shutdown_protection"] = []
 
 
 def latest_closed_day(close: pd.DataFrame) -> pd.Timestamp:
@@ -943,7 +1151,7 @@ def close_pair_position(
     if amount <= 0.0:
         return action
     if execute:
-        order = exchange.create_market_order(symbol, action["side"], amount)
+        order = exchange.create_market_order(symbol, action["side"], amount, params={"reduceOnly": True})
         action["placed"] = True
         action["order_id"] = order.get("id")
     return action
@@ -1073,6 +1281,9 @@ def manage_overlay(
         "status": status,
         "exit_reason": exit_reason,
         "exit_return": exit_return,
+        "overlay_side": overlay["side"],
+        "entry_price": entry_price,
+        "effective_day": overlay.get("effective_day"),
         "close_action": close_action,
     }
 
@@ -1095,7 +1306,13 @@ def maybe_force_overlay_eod_close(
         status = "forced_eod_close"
     else:
         status = "would_force_eod_close"
-    return {"status": status, "close_action": close_action}
+    return {
+        "status": status,
+        "close_action": close_action,
+        "overlay_side": overlay.get("side"),
+        "entry_price": overlay.get("entry_price"),
+        "effective_day": overlay.get("effective_day"),
+    }
 
 
 def sync_state_command(args: argparse.Namespace) -> None:
@@ -1125,12 +1342,65 @@ def shutdown_protect_command(args: argparse.Namespace) -> None:
         clear_runtime_context()
 
 
+def close_all_positions_command(args: argparse.Namespace) -> None:
+    state = load_state(args.state_path)
+    exchange = get_exchange(args.mode)
+    register_runtime_context(args, state, exchange)
+    try:
+        positions_before = fetch_open_position_map(exchange)
+        protection_orders = fetch_strategy_protection_orders(exchange)
+        cancel_actions = cancel_strategy_protection_orders(exchange, protection_orders, args.execute)
+        flatten_actions = flatten_pairs(exchange, PAIRS, args.execute)
+
+        report = {
+            "status": "flattened" if args.execute else "planned",
+            "warning": (
+                "If the live loop is still running, strategy logic may reopen positions on the next cycle."
+            ),
+            "positions_before": [
+                {
+                    "pair": pair,
+                    "symbol": pos["symbol"],
+                    "qty": pos["qty"],
+                    "side": pos["side"],
+                    "entry_price": pos["entry_price"],
+                    "mark_price": pos["mark_price"],
+                    "margin_mode": pos["margin_mode"],
+                }
+                for pair, pos in positions_before.items()
+            ],
+            "managed_protection_orders": [
+                {
+                    "id": order.get("id"),
+                    "client_order_id": extract_client_order_id(order),
+                    "symbol": order.get("symbol"),
+                    "type": order.get("type"),
+                    "side": order.get("side"),
+                }
+                for order in protection_orders
+            ],
+            "cancel_actions": cancel_actions,
+            "flatten_actions": flatten_actions,
+        }
+
+        if args.execute:
+            clear_strategy_state(state)
+            save_state(args.state_path, state)
+
+        print(json.dumps(report, indent=2))
+        if args.execute:
+            print(f"\nState saved: {args.state_path}")
+    finally:
+        clear_runtime_context()
+
+
 def run_once(args: argparse.Namespace) -> None:
     state = load_state(args.state_path)
     exchange = get_exchange(args.mode)
     register_runtime_context(args, state, exchange)
     try:
         plan = build_strategy_plan(args.effective_date, args.leverage)
+        notifications: list[str] = []
 
         equity = args.equity
         api_key, secret = get_demo_credentials()
@@ -1153,11 +1423,19 @@ def run_once(args: argparse.Namespace) -> None:
         if forced_close is not None:
             print("\nForced previous-day overlay close")
             print(json.dumps(forced_close, indent=2))
+            if args.execute:
+                note = build_overlay_exit_notification(forced_close)
+                if note:
+                    notifications.append(note)
 
         core_kill_report = evaluate_core_emergency_kill_switch(exchange, state, plan, equity, args.execute)
         if core_kill_report["status"] != "inactive":
             print("\nCore Kill Switch")
             print(json.dumps(core_kill_report, indent=2))
+            if args.execute:
+                note = build_kill_switch_notification(core_kill_report)
+                if note:
+                    notifications.append(note)
 
         if plan["session_type"] == "core":
             if core_kill_report["status"] == "triggered":
@@ -1167,6 +1445,10 @@ def run_once(args: argparse.Namespace) -> None:
                 print("\nAction: core kill-switch locked, stay flat")
                 flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
                 print(json.dumps(flat_actions, indent=2))
+                if args.execute:
+                    note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
+                    if note:
+                        notifications.append(note)
             else:
                 print("\nAction: rebalance core positions")
                 if state.get("overlay"):
@@ -1175,8 +1457,22 @@ def run_once(args: argparse.Namespace) -> None:
                     state["overlay"] = None
                     print("Closed stale overlay:")
                     print(json.dumps(close_action, indent=2))
+                    if args.execute and close_action.get("placed"):
+                        notifications.append(
+                            "\n".join(
+                                [
+                                    "오버레이 강제 정리",
+                                    f"- 수량: {abs(float(close_action.get('current_qty', 0.0))):.6f}",
+                                    "- 사유: 코어 세션 전환",
+                                ]
+                            )
+                        )
                 actions = reconcile_target_positions(exchange, equity, plan["core_weights"], args.execute)
                 print(json.dumps(actions, indent=2))
+                if args.execute:
+                    note = build_core_rebalance_notification(actions)
+                    if note:
+                        notifications.append(note)
         elif plan["session_type"] == "overlay":
             print("\nAction: flatten core, then run overlay")
 
@@ -1185,15 +1481,31 @@ def run_once(args: argparse.Namespace) -> None:
             if overlay_state and overlay_state.get("effective_day") == plan["effective_day"]:
                 flat_actions = flatten_pairs(exchange, ["ETHUSDT", "SOLUSDT", "XRPUSDT"], args.execute)
                 print(json.dumps(flat_actions, indent=2))
+                if args.execute:
+                    note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
+                    if note:
+                        notifications.append(note)
                 managed = manage_overlay(exchange, state, args.execute)
                 print(json.dumps(managed, indent=2))
+                if args.execute:
+                    note = build_overlay_exit_notification(managed)
+                    if note:
+                        notifications.append(note)
             elif completed_day == plan["effective_day"]:
                 flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
                 print(json.dumps(flat_actions, indent=2))
                 print(json.dumps({"status": "overlay_complete_for_day", "effective_day": plan["effective_day"]}, indent=2))
+                if args.execute:
+                    note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
+                    if note:
+                        notifications.append(note)
             else:
                 flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
                 print(json.dumps(flat_actions, indent=2))
+                if args.execute:
+                    note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
+                    if note:
+                        notifications.append(note)
                 opened = open_overlay_position(exchange, equity, plan["overlay"]["side"], plan["leverage"], args.execute)
                 qty = float(opened["amount"])
                 if args.execute and opened["placed"] and qty > 0.0:
@@ -1210,6 +1522,10 @@ def run_once(args: argparse.Namespace) -> None:
                     }
                     state["overlay_completed_day"] = None
                 print(json.dumps(opened, indent=2))
+                if args.execute:
+                    note = build_overlay_entry_notification(opened, plan["effective_day"], plan["leverage"])
+                    if note:
+                        notifications.append(note)
         else:
             print("\nAction: stay flat")
             flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
@@ -1217,9 +1533,15 @@ def run_once(args: argparse.Namespace) -> None:
             if state.get("overlay") and args.execute:
                 state["overlay_completed_day"] = state["overlay"].get("effective_day")
                 state["overlay"] = None
+            if args.execute:
+                note = build_core_rebalance_notification(flat_actions, title="포지션 정리")
+                if note:
+                    notifications.append(note)
 
         save_state(args.state_path, state)
         print(f"\nState saved: {args.state_path}")
+        if args.execute and notifications:
+            dispatch_notifications(notifications)
     finally:
         clear_runtime_context()
 
@@ -1269,6 +1591,10 @@ def main() -> None:
 
     if args.command == "shutdown-protect":
         shutdown_protect_command(args)
+        return
+
+    if args.command == "close-all":
+        close_all_positions_command(args)
         return
 
     if args.command == "loop":

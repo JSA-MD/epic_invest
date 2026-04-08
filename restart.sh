@@ -4,4 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$ROOT_DIR/scripts/trader_service.sh"
 
-restart_trader
+stop_trader
+"$ROOT_DIR/telegram_launchd_unload.sh"
+start_trader
+"$ROOT_DIR/telegram_launchd_load.sh"

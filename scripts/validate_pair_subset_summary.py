@@ -74,21 +74,17 @@ def check_at_most(name: str, actual: float, target: float, note: str | None = No
     )
 
 
-def get_agg(summary: dict[str, Any], mode: str, window: str) -> dict[str, Any]:
-    if mode == "baseline":
-        return summary["baseline_realistic"][window]["aggregate"]
-    if mode == "selected":
-        return summary["selected_candidate"]["windows"][window]["aggregate"]
-    raise ValueError(mode)
+def get_agg(windows: dict[str, Any], window: str) -> dict[str, Any]:
+    return windows[window]["aggregate"]
 
 
-def build_progressive_profile(summary: dict[str, Any], mode: str) -> dict[str, Any]:
-    agg_2m = get_agg(summary, mode, "recent_2m")
-    agg_6m = get_agg(summary, mode, "recent_6m")
-    agg_4y = get_agg(summary, mode, "full_4y")
-    base_2m = get_agg(summary, "baseline", "recent_2m")
-    base_6m = get_agg(summary, "baseline", "recent_6m")
-    base_4y = get_agg(summary, "baseline", "full_4y")
+def build_progressive_profile_for_windows(candidate_windows: dict[str, Any], baseline_windows: dict[str, Any]) -> dict[str, Any]:
+    agg_2m = get_agg(candidate_windows, "recent_2m")
+    agg_6m = get_agg(candidate_windows, "recent_6m")
+    agg_4y = get_agg(candidate_windows, "full_4y")
+    base_2m = get_agg(baseline_windows, "recent_2m")
+    base_6m = get_agg(baseline_windows, "recent_6m")
+    base_4y = get_agg(baseline_windows, "full_4y")
 
     checks = [
         check_at_least(
@@ -152,10 +148,10 @@ def build_progressive_profile(summary: dict[str, Any], mode: str) -> dict[str, A
     }
 
 
-def build_target_060_profile(summary: dict[str, Any], mode: str) -> dict[str, Any]:
-    agg_2m = get_agg(summary, mode, "recent_2m")
-    agg_6m = get_agg(summary, mode, "recent_6m")
-    agg_4y = get_agg(summary, mode, "full_4y")
+def build_target_060_profile_for_windows(candidate_windows: dict[str, Any]) -> dict[str, Any]:
+    agg_2m = get_agg(candidate_windows, "recent_2m")
+    agg_6m = get_agg(candidate_windows, "recent_6m")
+    agg_4y = get_agg(candidate_windows, "full_4y")
     checks = [
         check_at_least(
             "recent_2m_worst_pair_target_060",
@@ -194,11 +190,11 @@ def build_target_060_profile(summary: dict[str, Any], mode: str) -> dict[str, An
     }
 
 
-def build_comparison(summary: dict[str, Any]) -> dict[str, Any]:
+def build_comparison_for_windows(candidate_windows: dict[str, Any], baseline_windows: dict[str, Any]) -> dict[str, Any]:
     out = {}
     for window in ("recent_2m", "recent_6m", "full_4y"):
-        base = get_agg(summary, "baseline", window)
-        sel = get_agg(summary, "selected", window)
+        base = get_agg(baseline_windows, window)
+        sel = get_agg(candidate_windows, window)
         out[window] = {
             "baseline_mean_avg_daily_return": float(base["mean_avg_daily_return"]),
             "selected_mean_avg_daily_return": float(sel["mean_avg_daily_return"]),
@@ -213,29 +209,41 @@ def build_comparison(summary: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def build_validation_bundle(candidate_windows: dict[str, Any], baseline_windows: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "comparison": build_comparison_for_windows(candidate_windows, baseline_windows),
+        "profiles": {
+            "progressive_improvement": build_progressive_profile_for_windows(candidate_windows, baseline_windows),
+            "target_060": build_target_060_profile_for_windows(candidate_windows),
+        },
+    }
+
+
 def main() -> None:
     args = parse_args()
     summary_path = Path(args.summary)
     report_out = Path(args.report_out)
     summary = json.loads(summary_path.read_text())
+    baseline_windows = summary["baseline_realistic"]
+    selected_windows = summary["selected_candidate"]["windows"] if summary.get("selected_candidate") else None
 
     report = {
         "summary_path": str(summary_path),
         "pairs": summary["pairs"],
         "baseline_candidate": summary["baseline_candidate"],
-        "selected_candidate": {
+        "selected_candidate": None if summary.get("selected_candidate") is None else {
             "route_breadth_threshold": summary["selected_candidate"]["route_breadth_threshold"],
             "mapping_indices": summary["selected_candidate"]["mapping_indices"],
         },
-        "comparison": build_comparison(summary),
+        "comparison": None if selected_windows is None else build_comparison_for_windows(selected_windows, baseline_windows),
         "profiles": {
             "progressive_improvement": {
-                "baseline": build_progressive_profile(summary, "baseline"),
-                "selected": build_progressive_profile(summary, "selected"),
+                "baseline": build_progressive_profile_for_windows(baseline_windows, baseline_windows),
+                "selected": None if selected_windows is None else build_progressive_profile_for_windows(selected_windows, baseline_windows),
             },
             "target_060": {
-                "baseline": build_target_060_profile(summary, "baseline"),
-                "selected": build_target_060_profile(summary, "selected"),
+                "baseline": build_target_060_profile_for_windows(baseline_windows),
+                "selected": None if selected_windows is None else build_target_060_profile_for_windows(selected_windows),
             },
         },
     }

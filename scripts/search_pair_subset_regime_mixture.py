@@ -23,6 +23,7 @@ from replay_regime_mixture_realistic import (
     summarize,
 )
 from search_gp_drawdown_overlay import OverlayParams
+from validate_pair_subset_summary import build_validation_bundle
 
 
 UTC = timezone.utc
@@ -570,10 +571,29 @@ def main() -> None:
                 "mapping_indices": list(mapping),
                 "score": item["score"],
                 "windows": windows,
+                "validation": build_validation_bundle(windows, baseline_realistic),
             }
         )
 
-    selected = max(realistic_top, key=score_realistic_candidate) if realistic_top else None
+    progressive_candidates = [
+        item
+        for item in realistic_top
+        if item["validation"]["profiles"]["progressive_improvement"]["passed"]
+    ]
+    target_060_candidates = [
+        item
+        for item in realistic_top
+        if item["validation"]["profiles"]["target_060"]["passed"]
+    ]
+    fallback_best = max(realistic_top, key=score_realistic_candidate) if realistic_top else None
+    selected = max(target_060_candidates, key=score_realistic_candidate) if target_060_candidates else None
+    selection_reason = "target_060_pass"
+    if selected is None and progressive_candidates:
+        selected = max(progressive_candidates, key=score_realistic_candidate)
+        selection_reason = "progressive_pass"
+    if selected is None:
+        selection_reason = "no_gate_pass"
+
     report = {
         "pairs": list(pairs),
         "baseline_candidate": {
@@ -584,7 +604,30 @@ def main() -> None:
         "baseline_realistic": baseline_realistic,
         "top_fast_candidates": top_fast,
         "realistic_top_candidates": realistic_top,
+        "promotion_candidates": {
+            "target_060": [
+                {
+                    "route_breadth_threshold": item["route_breadth_threshold"],
+                    "mapping_indices": item["mapping_indices"],
+                }
+                for item in target_060_candidates
+            ],
+            "progressive_improvement": [
+                {
+                    "route_breadth_threshold": item["route_breadth_threshold"],
+                    "mapping_indices": item["mapping_indices"],
+                }
+                for item in progressive_candidates
+            ],
+        },
+        "selection": {
+            "reason": selection_reason,
+            "target_060_pass_count": len(target_060_candidates),
+            "progressive_pass_count": len(progressive_candidates),
+            "realistic_top_count": len(realistic_top),
+        },
         "selected_candidate": selected,
+        "fallback_best_candidate": fallback_best,
         "created_at": datetime.now(UTC).isoformat(),
     }
 

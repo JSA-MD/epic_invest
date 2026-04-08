@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git push -u origin main\",\"description\":\"Push main branch to GitHub\"}",
+  "error": "Exit code 128\nfatal: could not read Username for 'https://github.com': Device not configured\n\nfatal: could not read Username for 'https://github.com': Device not configured",
+  "timestamp": "2026-02-27T13:20:15.542Z",
+  "retry_count": 2
+}

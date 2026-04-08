@@ -1,0 +1,61 @@
+{
+  "algorithm": "multi_tree_locked_target_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 48,
+  "n_gen": 6,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 62,
+  "tree_sizes": [
+    6,
+    15,
+    12,
+    8
+  ],
+  "expressions": [
+    "gate_strength(sig_add(ETHUSDT_cci_14, SOLUSDT_atr_14), cross_breadth, 1.435028238294822)",
+    "sig_abs(sig_vol_scale(SOLUSDT_close_rel_btc, sig_from_gate(gate_and(gate_strength(XRPUSDT_bb_p, XRPUSDT_mom_rel_btc, 0.8407313853543292), gate_or(1.0, 0.0)), f_neg(f_abs(1.3436406923103392)))))",
+    "sig_scale(sig_scale(sig_mul(XRPUSDT_rsi_14, BTCUSDT_cci_14), f_mul(15.161813535633428, 0.9839580758263613)), f_abs(f_div(9.678584273622667, 1.3995359006749615)))",
+    "sig_sub(sig_rank2(SOLUSDT_mfi_14, SOLUSDT_dc_trend_05), sig_add(sig_neg(XRPUSDT_mom_rank), SOLUSDT_cci_14))"
+  ],
+  "feature_count": 66,
+  "locked_daily_target_pct": 0.005,
+  "adaptive_stop_range": [
+    0.0025,
+    0.01
+  ],
+  "validation_pick": {
+    "rank": 59,
+    "validation_score": 71.5357651141805,
+    "validation_return": -0.012351636192131976,
+    "validation_max_drawdown": -0.03852239593169726,
+    "validation_daily_target_hit_rate": 0.21739130434782608,
+    "validation_avg_stop_pct": 0.007391304347826088,
+    "validation_avg_reward_multiple": 1.0217391304347827,
+    "validation_avg_entry_threshold": 4.0
+  },
+  "test_return": -0.06716435793528774,
+  "test_max_dd": -0.1048979983399203,
+  "test_win_rate": 0.43137254901960786,
+  "test_daily_target_hit_rate": 0.17647058823529413,
+  "test_avg_daily_return": -0.0013448594559489135,
+  "test_avg_stop_pct": 0.006764705882352942,
+  "test_avg_reward_multiple": 1.1470588235294117,
+  "full_return": -0.20308619686410745,
+  "full_max_dd": -0.22866712494154595,
+  "full_win_rate": 0.4627659574468085,
+  "full_daily_target_hit_rate": 0.21808510638297873,
+  "full_avg_daily_return": -0.0011883461703678833,
+  "full_avg_stop_pct": 0.007426861702127658,
+  "full_avg_reward_multiple": 1.0122340425531915,
+  "created_at": "2026-04-08T03:32:05.388807+00:00"
+}

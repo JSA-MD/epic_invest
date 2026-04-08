@@ -1,0 +1,51 @@
+{
+  "algorithm": "nsga2_walkforward_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 40,
+  "n_gen": 1,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 3,
+  "tree_size": 6,
+  "fitness_vector": [
+    0.005973919738524636,
+    0.9066666666666666,
+    0.01,
+    0.034543650978670494,
+    0.006592605674812706,
+    0.10000000000000002
+  ],
+  "validation_pick": {
+    "rank": 1,
+    "validation_objectives": [
+      0.0060997190926054285,
+      0.85,
+      0.01,
+      0.04255541603448182,
+      0.007566471768384163,
+      0.1
+    ],
+    "validation_score": 15.777689983261332,
+    "validation_return": -0.028350242225300137,
+    "validation_max_drawdown": -0.061776730491340026,
+    "validation_daily_target_hit_rate": 0.13043478260869565
+  },
+  "test_return": -0.054406980932139026,
+  "test_sharpe": -3.4542324994891116,
+  "test_max_dd": -0.07840962504246529,
+  "test_daily_win_rate": 0.37254901960784315,
+  "test_daily_target_hit_rate": 0.09803921568627451,
+  "full_return": -0.13454118344366917,
+  "full_max_dd": -0.1704647597068144,
+  "expression": "subtract(add(dc_event_05, mfi_14), sin(open))",
+  "created_at": "2026-04-07T15:00:18.393065+00:00"
+}

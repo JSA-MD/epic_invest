@@ -1,0 +1,35 @@
+{
+  "algorithm": "multi_tree_domain_gp_after_direction_fix",
+  "train": {
+    "label": "train",
+    "total_return": -0.0653540918600386,
+    "win_rate": 0.3763440860215054,
+    "daily_target_hit_rate": 0.3655913978494624,
+    "avg_daily_return": -0.0007106215643646846,
+    "max_drawdown": -0.09601313101166131
+  },
+  "validation": {
+    "label": "validation",
+    "total_return": -0.036013059061532404,
+    "win_rate": 0.3695652173913043,
+    "daily_target_hit_rate": 0.3695652173913043,
+    "avg_daily_return": -0.0007822366614305854,
+    "max_drawdown": -0.060297980990882794
+  },
+  "test": {
+    "label": "test",
+    "total_return": -0.01973956341668659,
+    "win_rate": 0.35294117647058826,
+    "daily_target_hit_rate": 0.35294117647058826,
+    "avg_daily_return": -0.0003679236906284723,
+    "max_drawdown": -0.036453067752991286
+  },
+  "full": {
+    "label": "full",
+    "total_return": -0.11798141931911177,
+    "win_rate": 0.3670212765957447,
+    "daily_target_hit_rate": 0.3617021276595745,
+    "avg_daily_return": -0.0006500407870871835,
+    "max_drawdown": -0.13675432681056943
+  }
+}

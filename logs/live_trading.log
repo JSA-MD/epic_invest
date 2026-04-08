@@ -1,0 +1,10 @@
+2026-04-06 22:12:56,845 [INFO] Starting GP Crypto Live Trader Bot...
+2026-04-06 22:12:56,848 [INFO] 🔧 Running in TESTNET (Sandbox) Mode
+2026-04-06 22:12:57,538 [ERROR] Failed to setup exchange: binance testnet/sandbox mode is not supported for futures anymore, please check the deprecation announcement https://t.me/ccxt_announcements/92 and consider using the demo trading instead.
+2026-04-06 22:12:57,538 [INFO] === Running Hourly Trading Cycle ===
+2026-04-06 22:12:58,314 [INFO] Signal Evaluated: +2813.33% | Market Price: 69268.30
+2026-04-06 22:12:58,314 [ERROR] Exchange error during rebalance: binance testnet/sandbox mode is not supported for futures anymore, please check the deprecation announcement https://t.me/ccxt_announcements/92 and consider using the demo trading instead.
+2026-04-06 22:12:58,314 [INFO] Scheduler started. Waiting for the next hour...
+2026-04-06 23:00:00,984 [INFO] === Running Hourly Trading Cycle ===
+2026-04-06 23:00:02,599 [INFO] Signal Evaluated: +1980.55% | Market Price: 69624.50
+2026-04-06 23:00:02,600 [ERROR] Exchange error during rebalance: binance testnet/sandbox mode is not supported for futures anymore, please check the deprecation announcement https://t.me/ccxt_announcements/92 and consider using the demo trading instead.

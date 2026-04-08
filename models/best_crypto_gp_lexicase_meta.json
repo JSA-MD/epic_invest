@@ -1,0 +1,38 @@
+{
+  "algorithm": "lexicase_casewise_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 40,
+  "n_gen": 1,
+  "case_windows": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "case_count": 127,
+  "tree_size": 4,
+  "fitness": 6296.009242857232,
+  "validation_pick": {
+    "rank": 10,
+    "validation_score": 2317.7010618987356,
+    "tree_size": 4
+  },
+  "test_return": -0.12041694357215904,
+  "test_sharpe": -13.338866037163628,
+  "test_max_dd": -0.12261041752833823,
+  "test_daily_win_rate": 0.29411764705882354,
+  "test_daily_target_hit_rate": 0.0196078431372549,
+  "full_return": -0.19151980468127983,
+  "full_max_dd": -0.20182979477439933,
+  "expression": "sin(multiply(low, dc_overshoot_05))",
+  "created_at": "2026-04-07T15:09:35.514585+00:00"
+}

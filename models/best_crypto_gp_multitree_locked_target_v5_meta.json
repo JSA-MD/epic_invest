@@ -1,0 +1,61 @@
+{
+  "algorithm": "multi_tree_locked_target_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 24,
+  "n_gen": 3,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 26,
+  "tree_sizes": [
+    4,
+    3,
+    31,
+    9
+  ],
+  "expressions": [
+    "gate_strength(ETHUSDT_bb_p, ETHUSDT_dc_trend_05, 1.211245496649965)",
+    "sig_sub(ETHUSDT_dc_rel_btc, ETHUSDT_atr_rel_btc)",
+    "sig_spread(sig_from_gate(gate_gt(sig_blend(0.0, BTCUSDT_dc_trend_05, XRPUSDT_mom_rank), sig_from_gate(1.0, 11.448940688970854)), f_sub(f_neg(0.21027344564216172), f_sub(0.6939421026014511, 18.838968312031366))), sig_vol_scale(sig_sub(sig_add(BTCUSDT_rsi_14, BTCUSDT_vol_sma), sig_scale(SOLUSDT_mfi_14, 17.443734202193937)), sig_spread(sig_safe_div(XRPUSDT_mom_rank, BTCUSDT_dc_trend_05), sig_mul(BTCUSDT_mom_rank, BTCUSDT_close))))",
+    "sig_scale(ETHUSDT_dc_trend_05, f_mul(f_sub(24.008851051017736, 30.423071294404437), f_add(24.198748589440907, 4.161424029690012)))"
+  ],
+  "feature_count": 66,
+  "locked_daily_target_pct": 0.005,
+  "adaptive_stop_range": [
+    0.0025,
+    0.01
+  ],
+  "validation_pick": {
+    "rank": 6,
+    "validation_score": 62.228233881611224,
+    "validation_return": 0.05828941546259658,
+    "validation_max_drawdown": -0.010989326733396698,
+    "validation_daily_target_hit_rate": 0.17391304347826086,
+    "validation_avg_stop_pct": 0.005509842549156608,
+    "validation_avg_reward_multiple": 0.9074669476290838,
+    "validation_avg_entry_threshold": 13.391304347826088
+  },
+  "test_return": -0.030778314250715755,
+  "test_max_dd": -0.04105746120778042,
+  "test_win_rate": 0.2549019607843137,
+  "test_daily_target_hit_rate": 0.0784313725490196,
+  "test_avg_daily_return": -0.0006056071219899844,
+  "test_avg_stop_pct": 0.005509842549156609,
+  "test_avg_reward_multiple": 0.9074669476290839,
+  "full_return": -0.0015964513595105867,
+  "full_max_dd": -0.04142940803250872,
+  "full_win_rate": 0.2393617021276596,
+  "full_daily_target_hit_rate": 0.09574468085106383,
+  "full_avg_daily_return": -2.0619504180008117e-06,
+  "full_avg_stop_pct": 0.005509842549156612,
+  "full_avg_reward_multiple": 0.9074669476290842,
+  "created_at": "2026-04-08T03:30:12.982151+00:00"
+}

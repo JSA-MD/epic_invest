@@ -1,0 +1,20 @@
+{
+  "rebuilt_at": "2026-04-07T07:12:15.155898+00:00",
+  "timeframe": "5m",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size_runtime": 5000,
+  "n_gen_runtime": 30,
+  "tree_size": 74,
+  "fitness": 26.872371742061375,
+  "oos_test_return": 0.0,
+  "oos_test_sharpe": 0.0,
+  "oos_test_max_dd": 0.0,
+  "oos_test_final_equity": 100000.0,
+  "history_backtest_period": "2025-10-06 ~ 2026-04-06",
+  "history_backtest_return": 0.0,
+  "history_backtest_sharpe": 0.0,
+  "history_backtest_max_dd": 0.0,
+  "history_backtest_final_equity": 100000.0
+}

@@ -1,0 +1,59 @@
+{
+  "algorithm": "multi_tree_locked_target_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 24,
+  "n_gen": 3,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 26,
+  "tree_sizes": [
+    5,
+    3,
+    14
+  ],
+  "expressions": [
+    "gate_gt(sig_rank2(XRPUSDT_rsi_14, ETHUSDT_bb_p), XRPUSDT_atr_rel_btc)",
+    "sig_rank2(ETHUSDT_close_rel_btc, BTCUSDT_dc_run_05)",
+    "sig_abs(sig_mul(sig_add(sig_scale(ETHUSDT_dc_run_05, 0.03717954284728309), BTCUSDT_close), sig_spread(sig_sub(BTCUSDT_mfi_14, ETHUSDT_dc_trend_05), sig_scale(BTCUSDT_mom_rank, 1.1280147353321772))))"
+  ],
+  "feature_count": 66,
+  "locked_daily_target_pct": 0.005,
+  "adaptive_stop_range": [
+    0.0025,
+    0.01
+  ],
+  "validation_pick": {
+    "rank": 3,
+    "validation_score": 72.2661537979156,
+    "validation_return": -0.041278795009483615,
+    "validation_max_drawdown": -0.0922242792556821,
+    "validation_daily_target_hit_rate": 0.30434782608695654,
+    "validation_avg_stop_pct": 0.009990421679001936,
+    "validation_avg_reward_multiple": 0.5004805887088883,
+    "validation_avg_entry_threshold": 4.020433751462541
+  },
+  "test_return": 0.012666716229070785,
+  "test_max_dd": -0.03992745404543252,
+  "test_win_rate": 0.6666666666666666,
+  "test_daily_target_hit_rate": 0.43137254901960786,
+  "test_avg_daily_return": 0.00027239344100135426,
+  "test_avg_stop_pct": 0.009986222199969856,
+  "test_avg_reward_multiple": 0.5006914846167624,
+  "full_return": -0.03056212812048975,
+  "full_max_dd": -0.11415029993847192,
+  "full_win_rate": 0.648936170212766,
+  "full_daily_target_hit_rate": 0.3723404255319149,
+  "full_avg_daily_return": -0.00014181969238771786,
+  "full_avg_stop_pct": 0.009990625455235646,
+  "full_avg_reward_multiple": 0.5004703643087137,
+  "created_at": "2026-04-08T03:38:37.524413+00:00"
+}

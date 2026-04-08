@@ -1,0 +1,147 @@
+{
+  "core_params": {
+    "timeframe": "1d",
+    "lookback_fast": 5,
+    "lookback_slow": 14,
+    "top_n": 1,
+    "vol_window": 5,
+    "target_vol_ann": 0.8,
+    "regime_threshold": 0.02,
+    "breadth_threshold": 0.5,
+    "gross_cap": 3.0,
+    "fee_rate": 0.0004
+  },
+  "overlay_rule": {
+    "momentum_lookback": 1,
+    "breadth_lookback": 3,
+    "breadth_threshold": 0.25,
+    "signal_mode": "trend_both"
+  },
+  "levels": [
+    {
+      "leverage": 1.0,
+      "validation": {
+        "total_return": 0.2583698284286329,
+        "avg_daily_return": 0.00557903448242854,
+        "daily_win_rate": 0.2826086956521739,
+        "daily_target_hit_rate": 0.2391304347826087,
+        "max_drawdown": -0.10011365002132333
+      },
+      "test": {
+        "total_return": 0.2301198177845445,
+        "avg_daily_return": 0.00474547704610552,
+        "daily_win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.23529411764705882,
+        "max_drawdown": -0.12045044370953939
+      },
+      "oos": {
+        "total_return": 0.53968241821683,
+        "avg_daily_return": 0.0051384173409560726,
+        "daily_win_rate": 0.3125,
+        "daily_target_hit_rate": 0.22916666666666666,
+        "max_drawdown": -0.1636786263862121
+      },
+      "passes_all_avg_daily": false
+    },
+    {
+      "leverage": 1.03,
+      "validation": {
+        "total_return": 0.2660971094627105,
+        "avg_daily_return": 0.005746405516901399,
+        "daily_win_rate": 0.2826086956521739,
+        "daily_target_hit_rate": 0.2391304347826087,
+        "max_drawdown": -0.10301558773878039
+      },
+      "test": {
+        "total_return": 0.23657557273770569,
+        "avg_daily_return": 0.004887841357488687,
+        "daily_win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.2549019607843137,
+        "max_drawdown": -0.12392387088728174
+      },
+      "oos": {
+        "total_return": 0.5570177876333169,
+        "avg_daily_return": 0.005292569861184757,
+        "daily_win_rate": 0.3125,
+        "daily_target_hit_rate": 0.23958333333333334,
+        "max_drawdown": -0.16830674485336383
+      },
+      "passes_all_avg_daily": false
+    },
+    {
+      "leverage": 1.05,
+      "validation": {
+        "total_return": 0.27124529549039944,
+        "avg_daily_return": 0.005857986206549969,
+        "daily_win_rate": 0.2826086956521739,
+        "daily_target_hit_rate": 0.2391304347826087,
+        "max_drawdown": -0.10494697929715469
+      },
+      "test": {
+        "total_return": 0.2408623707596751,
+        "avg_daily_return": 0.0049827508984107965,
+        "daily_win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.2549019607843137,
+        "max_drawdown": -0.12623501109904256
+      },
+      "oos": {
+        "total_return": 0.5686010807970465,
+        "avg_daily_return": 0.005395338208003878,
+        "daily_win_rate": 0.3125,
+        "daily_target_hit_rate": 0.23958333333333334,
+        "max_drawdown": -0.17138312238945308
+      },
+      "passes_all_avg_daily": false
+    },
+    {
+      "leverage": 1.08,
+      "validation": {
+        "total_return": 0.2789622793867399,
+        "avg_daily_return": 0.006025357241022825,
+        "daily_win_rate": 0.2826086956521739,
+        "daily_target_hit_rate": 0.2391304347826087,
+        "max_drawdown": -0.10783922196497753
+      },
+      "test": {
+        "total_return": 0.2472667313826329,
+        "avg_daily_return": 0.005125115209793964,
+        "daily_win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.2549019607843137,
+        "max_drawdown": -0.12969501088067648
+      },
+      "oos": {
+        "total_return": 0.5860142477717831,
+        "avg_daily_return": 0.005549490728232561,
+        "daily_win_rate": 0.3125,
+        "daily_target_hit_rate": 0.23958333333333334,
+        "max_drawdown": -0.17598414878705093
+      },
+      "passes_all_avg_daily": true
+    },
+    {
+      "leverage": 1.1,
+      "validation": {
+        "total_return": 0.28410323426776674,
+        "avg_daily_return": 0.006136937930671395,
+        "daily_win_rate": 0.2826086956521739,
+        "daily_target_hit_rate": 0.2608695652173913,
+        "max_drawdown": -0.10976415729261091
+      },
+      "test": {
+        "total_return": 0.25151891912061397,
+        "avg_daily_return": 0.005220024750716073,
+        "daily_win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.29411764705882354,
+        "max_drawdown": -0.13199720739836762
+      },
+      "oos": {
+        "total_return": 0.5976477211249405,
+        "avg_daily_return": 0.0056522590750516825,
+        "daily_win_rate": 0.3125,
+        "daily_target_hit_rate": 0.2708333333333333,
+        "max_drawdown": -0.17904248031212366
+      },
+      "passes_all_avg_daily": true
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1772198196345,
+  "lastScanned": 1775280743489,
   "projectRoot": "/Users/jsa/work/epic_invest",
   "techStack": {
     "languages": [],
@@ -25,18 +25,56 @@
     "isMonorepo": false,
     "workspaces": [],
     "mainDirectories": [
-      "docs"
+      "docs",
+      "scripts"
     ],
     "gitBranches": null
   },
   "customNotes": [],
   "directoryMap": {
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 0,
+      "lastAccessed": 1775280743477,
+      "keyFiles": []
+    },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 2,
-      "lastAccessed": 1772198196340,
+      "lastAccessed": 1775280743478,
+      "keyFiles": [
+        "gp_parameters_guide.md",
+        "project_analysis_report.md"
+      ]
+    },
+    "models": {
+      "path": "models",
+      "purpose": "Data models",
+      "fileCount": 1,
+      "lastAccessed": 1775280743480,
+      "keyFiles": [
+        "best_crypto_gp.dill"
+      ]
+    },
+    "results": {
+      "path": "results",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1775280743481,
       "keyFiles": []
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1775280743481,
+      "keyFiles": [
+        "backtest_short_vol_breakout.py",
+        "gp_crypto_evolution.py",
+        "gp_crypto_infer.py"
+      ]
     }
   },
   "hotPaths": [],

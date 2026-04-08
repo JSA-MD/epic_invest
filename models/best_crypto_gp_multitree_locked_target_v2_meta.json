@@ -1,0 +1,59 @@
+{
+  "algorithm": "multi_tree_locked_target_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 24,
+  "n_gen": 3,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 18,
+  "tree_sizes": [
+    5,
+    5,
+    3
+  ],
+  "expressions": [
+    "gate_lt(sig_safe_div(BTCUSDT_cci_14, BTCUSDT_dc_run_05), XRPUSDT_bb_p)",
+    "sig_blend(gate_not(0.0), SOLUSDT_cci_14, XRPUSDT_mfi_14)",
+    "sig_add(ETHUSDT_close_rel_btc, ETHUSDT_close)"
+  ],
+  "feature_count": 66,
+  "locked_daily_target_pct": 0.005,
+  "adaptive_stop_range": [
+    0.0025,
+    0.01
+  ],
+  "validation_pick": {
+    "rank": 2,
+    "validation_score": 72.31664272981023,
+    "validation_return": -0.04148432996661311,
+    "validation_max_drawdown": -0.09240383476848235,
+    "validation_daily_target_hit_rate": 0.30434782608695654,
+    "validation_avg_stop_pct": 0.010000000000000002,
+    "validation_avg_reward_multiple": 0.5,
+    "validation_avg_entry_threshold": 4.0
+  },
+  "test_return": 0.012349114638473768,
+  "test_max_dd": -0.0400809398248273,
+  "test_win_rate": 0.6666666666666666,
+  "test_daily_target_hit_rate": 0.43137254901960786,
+  "test_avg_daily_return": 0.00026628322080122325,
+  "test_avg_stop_pct": 0.01,
+  "test_avg_reward_multiple": 0.5,
+  "full_return": -0.027885023080784332,
+  "full_max_dd": -0.11445938283781354,
+  "full_win_rate": 0.6542553191489362,
+  "full_daily_target_hit_rate": 0.3723404255319149,
+  "full_avg_daily_return": -0.00012709269379402113,
+  "full_avg_stop_pct": 0.01,
+  "full_avg_reward_multiple": 0.5,
+  "created_at": "2026-04-08T03:25:43.736362+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "algorithm": "multi_tree_coevolution_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 12,
+  "n_gen": 1,
+  "fold_days": 20,
+  "step_days": 10,
+  "pareto_front_size": 4,
+  "tree_sizes": [
+    9,
+    7,
+    3
+  ],
+  "expressions": [
+    "pdiv(neg(subtract(high, bb_p)), sin(subtract(bb_p, close)))",
+    "gt(abs(cos(atr_14)), cos(cos(macd_h)))",
+    "min(atr_14, bb_p)"
+  ],
+  "validation_pick": {
+    "rank": 1,
+    "validation_score": 50.24143406078502,
+    "validation_return": -0.018495638103861234,
+    "validation_max_drawdown": -0.028780265340044298,
+    "validation_daily_target_hit_rate": 0.043478260869565216,
+    "validation_reward_multiple": 3.1243530017715964,
+    "validation_entry_threshold": 12.880822984055634
+  },
+  "test_return": -0.0069646891358935425,
+  "test_max_dd": -0.020541016958125158,
+  "test_daily_target_hit_rate": 0.13725490196078433,
+  "full_return": -0.03797895928778805,
+  "full_max_dd": -0.05974547057680113,
+  "created_at": "2026-04-07T15:09:30.708062+00:00"
+}

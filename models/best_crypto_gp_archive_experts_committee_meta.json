@@ -1,0 +1,835 @@
+{
+  "algorithm": "archive_of_experts_gp",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 12,
+  "n_gen": 1,
+  "fold_days": 20,
+  "step_days": 10,
+  "min_train_days": 10,
+  "min_val_days": 5,
+  "layouts_evaluated": [
+    "tb",
+    "tbd",
+    "tbv"
+  ],
+  "selected_layout": "tb",
+  "thresholds": {
+    "breadth_threshold": 0.5,
+    "dispersion_threshold": 0.0017902336607590508,
+    "vol_threshold": 0.001458160931459664
+  },
+  "compare": {
+    "official_baseline_after_fix": {
+      "algorithm": "multi_tree_domain_gp_after_direction_fix",
+      "train": {
+        "label": "train",
+        "total_return": -0.0653540918600386,
+        "win_rate": 0.3763440860215054,
+        "daily_target_hit_rate": 0.3655913978494624,
+        "avg_daily_return": -0.0007106215643646846,
+        "max_drawdown": -0.09601313101166131
+      },
+      "validation": {
+        "label": "validation",
+        "total_return": -0.036013059061532404,
+        "win_rate": 0.3695652173913043,
+        "daily_target_hit_rate": 0.3695652173913043,
+        "avg_daily_return": -0.0007822366614305854,
+        "max_drawdown": -0.060297980990882794
+      },
+      "test": {
+        "label": "test",
+        "total_return": -0.01973956341668659,
+        "win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.35294117647058826,
+        "avg_daily_return": -0.0003679236906284723,
+        "max_drawdown": -0.036453067752991286
+      },
+      "full": {
+        "label": "full",
+        "total_return": -0.11798141931911177,
+        "win_rate": 0.3670212765957447,
+        "daily_target_hit_rate": 0.3617021276595745,
+        "avg_daily_return": -0.0006500407870871835,
+        "max_drawdown": -0.13675432681056943
+      }
+    },
+    "routed_global_baseline": {
+      "validation": {
+        "total_return": -0.036013059061532404,
+        "win_rate": 0.3695652173913043,
+        "daily_target_hit_rate": 0.3695652173913043,
+        "avg_daily_return": -0.0007822366614305854,
+        "max_drawdown": -0.060297980990882794,
+        "monthly_target_hit_rate": 0.0
+      },
+      "test": {
+        "total_return": -0.01973956341668659,
+        "win_rate": 0.35294117647058826,
+        "daily_target_hit_rate": 0.35294117647058826,
+        "avg_daily_return": -0.0003679236906284723,
+        "max_drawdown": -0.036453067752991286,
+        "monthly_target_hit_rate": 0.0
+      },
+      "full": {
+        "total_return": -0.11798141931911177,
+        "win_rate": 0.3670212765957447,
+        "daily_target_hit_rate": 0.3617021276595745,
+        "avg_daily_return": -0.0006500407870871835,
+        "max_drawdown": -0.13675432681056943,
+        "monthly_target_hit_rate": 0.0
+      }
+    },
+    "selected_archive": {
+      "layout": "tb",
+      "validation": {
+        "total_return": 0.038580114500481155,
+        "win_rate": 0.5652173913043478,
+        "daily_target_hit_rate": 0.30434782608695654,
+        "avg_daily_return": 0.000838790013835554,
+        "max_drawdown": -0.03447935319051565,
+        "monthly_target_hit_rate": 0.0
+      },
+      "test": {
+        "total_return": -0.05152466953083723,
+        "win_rate": 0.3333333333333333,
+        "daily_target_hit_rate": 0.17647058823529413,
+        "avg_daily_return": -0.0010165222667475853,
+        "max_drawdown": -0.08375124215072771,
+        "monthly_target_hit_rate": 0.0
+      },
+      "full": {
+        "total_return": -0.10201077406641179,
+        "win_rate": 0.42021276595744683,
+        "daily_target_hit_rate": 0.21808510638297873,
+        "avg_daily_return": -0.0005561230893351984,
+        "max_drawdown": -0.13843218889197528,
+        "monthly_target_hit_rate": 0.0
+      }
+    },
+    "test_delta_vs_routed_global": {
+      "return_delta": -0.03178510611415064,
+      "win_rate_delta": -0.019607843137254943,
+      "target_hit_delta": -0.17647058823529413,
+      "avg_daily_return_delta": -0.000648598576119113,
+      "max_drawdown_delta": -0.047298174397736426
+    }
+  },
+  "candidate_summaries": [
+    {
+      "layout": "tb",
+      "validation": {
+        "total_return": 0.038580114500481155,
+        "win_rate": 0.5652173913043478,
+        "daily_target_hit_rate": 0.30434782608695654,
+        "avg_daily_return": 0.000838790013835554,
+        "max_drawdown": -0.03447935319051565,
+        "monthly_target_hit_rate": 0.0
+      },
+      "test": {
+        "total_return": -0.05152466953083723,
+        "win_rate": 0.3333333333333333,
+        "daily_target_hit_rate": 0.17647058823529413,
+        "avg_daily_return": -0.0010165222667475853,
+        "max_drawdown": -0.08375124215072771,
+        "monthly_target_hit_rate": 0.0
+      },
+      "full": {
+        "total_return": -0.10201077406641179,
+        "win_rate": 0.42021276595744683,
+        "daily_target_hit_rate": 0.21808510638297873,
+        "avg_daily_return": -0.0005561230893351984,
+        "max_drawdown": -0.13843218889197528,
+        "monthly_target_hit_rate": 0.0
+      },
+      "adopted_buckets": 3,
+      "bucket_records": [
+        {
+          "bucket": "T0B0",
+          "train_days": 35,
+          "val_days": 17,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 2,
+          "committee_size": 2,
+          "fold_days": 17,
+          "step_days": 8,
+          "validation_pick": {
+            "rank": 10,
+            "validation_score": 33.27974063857165,
+            "validation_return": 0.02475647830914718,
+            "validation_max_drawdown": -0.014925125000000095,
+            "validation_daily_target_hit_rate": 0.23529411764705882,
+            "validation_reward_multiple": 3.197375320224904,
+            "validation_entry_threshold": 10.420997438200768
+          },
+          "specialist_val": {
+            "total_return": 0.02475647830914718,
+            "win_rate": 0.5294117647058824,
+            "daily_target_hit_rate": 0.23529411764705882,
+            "avg_daily_return": 0.001454908583337917,
+            "max_drawdown": -0.014925125000000095,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.015802465081463213,
+            "win_rate": 0.5882352941176471,
+            "daily_target_hit_rate": 0.17647058823529413,
+            "avg_daily_return": 0.0009402894235136366,
+            "max_drawdown": -0.019850499375000163,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.03820007400827696,
+            "win_rate": 0.23529411764705882,
+            "daily_target_hit_rate": 0.23529411764705882,
+            "avg_daily_return": -0.0022779212018288406,
+            "max_drawdown": -0.04487089133722122,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T0B1",
+          "train_days": 11,
+          "val_days": 6,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 4,
+          "committee_size": 3,
+          "fold_days": 11,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 12,
+            "validation_score": 48.40780837916664,
+            "validation_return": 0.0019771887499999696,
+            "validation_max_drawdown": -0.0050000000000000044,
+            "validation_daily_target_hit_rate": 0.0,
+            "validation_reward_multiple": 2.0,
+            "validation_entry_threshold": 20.0
+          },
+          "specialist_val": {
+            "total_return": -0.006315444385092239,
+            "win_rate": 0.3333333333333333,
+            "daily_target_hit_rate": 0.16666666666666666,
+            "avg_daily_return": -0.001046358060187865,
+            "max_drawdown": -0.011477362937500013,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": -0.004725813199727091,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": -0.00078019514826887,
+            "max_drawdown": -0.0123293802196075,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.018005215295598953,
+            "win_rate": 0.16666666666666666,
+            "daily_target_hit_rate": 0.16666666666666666,
+            "avg_daily_return": -0.0030137930090603057,
+            "max_drawdown": -0.02475124687812491,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T1B0",
+          "train_days": 13,
+          "val_days": 5,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 3,
+          "committee_size": 3,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 11,
+            "validation_score": 39.69155775274341,
+            "validation_return": -0.006443859685020148,
+            "validation_max_drawdown": -0.009974999999999956,
+            "validation_daily_target_hit_rate": 0.2,
+            "validation_reward_multiple": 3.9999999999947535,
+            "validation_entry_threshold": 4.00000000004197
+          },
+          "specialist_val": {
+            "total_return": -0.006443859685012376,
+            "win_rate": 0.4,
+            "daily_target_hit_rate": 0.2,
+            "avg_daily_return": -0.001281507433280944,
+            "max_drawdown": -0.009974999999999956,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": -0.007778488136636286,
+            "win_rate": 0.4,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": -0.0015516070348934497,
+            "max_drawdown": -0.009974999999999956,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.014179446930818851,
+            "win_rate": 0.2,
+            "daily_target_hit_rate": 0.2,
+            "avg_daily_return": -0.0028428188882277856,
+            "max_drawdown": -0.01985049937499994,
+            "monthly_target_hit_rate": 0.5
+          }
+        },
+        {
+          "bucket": "T1B1",
+          "train_days": 34,
+          "val_days": 18,
+          "adopted": false,
+          "reason": "fails_local_promotion_rule",
+          "pareto_size": 13,
+          "eligible_models": 0,
+          "committee_size": 0,
+          "fold_days": 17,
+          "step_days": 8,
+          "validation_pick": {
+            "rank": 13,
+            "validation_score": 36.77486266322455,
+            "validation_return": 0.025183988857739203,
+            "validation_max_drawdown": -0.009974999999999956,
+            "validation_daily_target_hit_rate": 0.16666666666666666,
+            "validation_reward_multiple": 3.0,
+            "validation_entry_threshold": 12.0
+          },
+          "specialist_val": {
+            "total_return": 0.025183988857739203,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.16666666666666666,
+            "avg_daily_return": 0.0013921162259938596,
+            "max_drawdown": -0.009974999999999956,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.025183988857739203,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.16666666666666666,
+            "avg_daily_return": 0.0013921162259938596,
+            "max_drawdown": -0.009974999999999956,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": 0.035331342549759004,
+            "win_rate": 0.6111111111111112,
+            "daily_target_hit_rate": 0.6111111111111112,
+            "avg_daily_return": 0.0019465903611546732,
+            "max_drawdown": -0.014925124999999984,
+            "monthly_target_hit_rate": 0.0
+          }
+        }
+      ],
+      "train_bucket_counts": {
+        "T0B0": 35,
+        "T0B1": 11,
+        "T1B0": 13,
+        "T1B1": 34
+      }
+    },
+    {
+      "layout": "tbd",
+      "validation": {
+        "total_return": 0.016167015737271306,
+        "win_rate": 0.43478260869565216,
+        "daily_target_hit_rate": 0.2826086956521739,
+        "avg_daily_return": 0.00036327864178875455,
+        "max_drawdown": -0.02475124687812491,
+        "monthly_target_hit_rate": 0.0
+      },
+      "test": {
+        "total_return": -0.04258552351190281,
+        "win_rate": 0.2549019607843137,
+        "daily_target_hit_rate": 0.19607843137254902,
+        "avg_daily_return": -0.0008353488160650473,
+        "max_drawdown": -0.04783890425596071,
+        "monthly_target_hit_rate": 0.0
+      },
+      "full": {
+        "total_return": -0.09424721539780101,
+        "win_rate": 0.3351063829787234,
+        "daily_target_hit_rate": 0.2074468085106383,
+        "avg_daily_return": -0.0005119463384699725,
+        "max_drawdown": -0.1033616160271339,
+        "monthly_target_hit_rate": 0.0
+      },
+      "adopted_buckets": 3,
+      "bucket_records": [
+        {
+          "bucket": "T0B0D0",
+          "train_days": 15,
+          "val_days": 6,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 12,
+          "committee_size": 3,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 9,
+            "validation_score": 27.146791215434376,
+            "validation_return": 0.008391307490960509,
+            "validation_max_drawdown": -0.0050000000000000044,
+            "validation_daily_target_hit_rate": 0.3333333333333333,
+            "validation_reward_multiple": 2.833606961153174,
+            "validation_entry_threshold": 13.331144310774608
+          },
+          "specialist_val": {
+            "total_return": 0.0,
+            "win_rate": 0.0,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": 0.0,
+            "max_drawdown": 0.0,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.0,
+            "win_rate": 0.0,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": 0.0,
+            "max_drawdown": 0.0,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.027194093370168093,
+            "win_rate": 0.0,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": -0.004584140752846089,
+            "max_drawdown": -0.027194093370168093,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T0B0D1",
+          "train_days": 20,
+          "val_days": 11,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 5,
+          "committee_size": 3,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 12,
+            "validation_score": 35.16497923872421,
+            "validation_return": 0.019689306891594205,
+            "validation_max_drawdown": -0.009975000000000178,
+            "validation_daily_target_hit_rate": 0.18181818181818182,
+            "validation_reward_multiple": 3.050271309078902,
+            "validation_entry_threshold": 11.597829527368784
+          },
+          "specialist_val": {
+            "total_return": 0.01970058781689299,
+            "win_rate": 0.5454545454545454,
+            "daily_target_hit_rate": 0.18181818181818182,
+            "avg_daily_return": 0.001792374984149458,
+            "max_drawdown": -0.009975000000000067,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.009438380809673186,
+            "win_rate": 0.5454545454545454,
+            "daily_target_hit_rate": 0.18181818181818182,
+            "avg_daily_return": 0.0008749549914825292,
+            "max_drawdown": -0.014925124999999984,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.01131364495538234,
+            "win_rate": 0.36363636363636365,
+            "daily_target_hit_rate": 0.36363636363636365,
+            "avg_daily_return": -0.0010199832649103416,
+            "max_drawdown": -0.018170940211796438,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T0B1D0",
+          "train_days": 6,
+          "val_days": 3,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T0B1D1",
+          "train_days": 5,
+          "val_days": 3,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T1B0D0",
+          "train_days": 11,
+          "val_days": 4,
+          "adopted": false,
+          "reason": "insufficient_val_days"
+        },
+        {
+          "bucket": "T1B0D1",
+          "train_days": 2,
+          "val_days": 1,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T1B1D0",
+          "train_days": 14,
+          "val_days": 9,
+          "adopted": false,
+          "reason": "fails_local_promotion_rule",
+          "pareto_size": 13,
+          "eligible_models": 0,
+          "committee_size": 0,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 4,
+            "validation_score": 38.58160837182797,
+            "validation_return": 0.001771421841855414,
+            "validation_max_drawdown": -0.019850499375000052,
+            "validation_daily_target_hit_rate": 0.2222222222222222,
+            "validation_reward_multiple": 3.1970999775723308,
+            "validation_entry_threshold": 10.423200179421354
+          },
+          "specialist_val": {
+            "total_return": 0.0017713842350188802,
+            "win_rate": 0.5555555555555556,
+            "daily_target_hit_rate": 0.2222222222222222,
+            "avg_daily_return": 0.0002078945853347044,
+            "max_drawdown": -0.019850499375000052,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.0017713842350188802,
+            "win_rate": 0.5555555555555556,
+            "daily_target_hit_rate": 0.2222222222222222,
+            "avg_daily_return": 0.0002078945853347044,
+            "max_drawdown": -0.019850499375000052,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": 0.020536572913751883,
+            "win_rate": 0.6666666666666666,
+            "daily_target_hit_rate": 0.6666666666666666,
+            "avg_daily_return": 0.0022746262430028037,
+            "max_drawdown": -0.0050000000000001155,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T1B1D1",
+          "train_days": 20,
+          "val_days": 9,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 12,
+          "eligible_models": 1,
+          "committee_size": 1,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 2,
+            "validation_score": 26.274850523114516,
+            "validation_return": 0.01652586458388261,
+            "validation_max_drawdown": -0.007033008105117089,
+            "validation_daily_target_hit_rate": 0.3333333333333333,
+            "validation_reward_multiple": 3.197375320224904,
+            "validation_entry_threshold": 10.420997438200768
+          },
+          "specialist_val": {
+            "total_return": 0.01894245447862497,
+            "win_rate": 0.6666666666666666,
+            "daily_target_hit_rate": 0.3333333333333333,
+            "avg_daily_return": 0.002101280991605602,
+            "max_drawdown": -0.007033008105116978,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.01894245447862497,
+            "win_rate": 0.6666666666666666,
+            "daily_target_hit_rate": 0.3333333333333333,
+            "avg_daily_return": 0.002101280991605602,
+            "max_drawdown": -0.007033008105116978,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": 0.014497049913426041,
+            "win_rate": 0.5555555555555556,
+            "daily_target_hit_rate": 0.5555555555555556,
+            "avg_daily_return": 0.001618554479306542,
+            "max_drawdown": -0.014925124999999873,
+            "monthly_target_hit_rate": 0.0
+          }
+        }
+      ],
+      "train_bucket_counts": {
+        "T0B0D0": 15,
+        "T0B0D1": 20,
+        "T0B1D0": 6,
+        "T0B1D1": 5,
+        "T1B0D0": 11,
+        "T1B0D1": 2,
+        "T1B1D0": 14,
+        "T1B1D1": 20
+      }
+    },
+    {
+      "layout": "tbv",
+      "validation": {
+        "total_return": 0.023334300241830253,
+        "win_rate": 0.4782608695652174,
+        "daily_target_hit_rate": 0.2826086956521739,
+        "avg_daily_return": 0.0005166582775944961,
+        "max_drawdown": -0.027120425944648918,
+        "monthly_target_hit_rate": 0.0
+      },
+      "test": {
+        "total_return": -0.07890848509167991,
+        "win_rate": 0.2549019607843137,
+        "daily_target_hit_rate": 0.17647058823529413,
+        "avg_daily_return": -0.0015984369915453248,
+        "max_drawdown": -0.08352108352244125,
+        "monthly_target_hit_rate": 0.0
+      },
+      "full": {
+        "total_return": -0.14734508799166335,
+        "win_rate": 0.34574468085106386,
+        "daily_target_hit_rate": 0.2074468085106383,
+        "avg_daily_return": -0.0008343913191888128,
+        "max_drawdown": -0.14949421879597968,
+        "monthly_target_hit_rate": 0.0
+      },
+      "adopted_buckets": 3,
+      "bucket_records": [
+        {
+          "bucket": "T0B0V0",
+          "train_days": 15,
+          "val_days": 6,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 13,
+          "committee_size": 3,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 2,
+            "validation_score": 32.48436381315791,
+            "validation_return": 0.014648627415072779,
+            "validation_max_drawdown": -0.0050000000000000044,
+            "validation_daily_target_hit_rate": 0.16666666666666666,
+            "validation_reward_multiple": 3.0001410517321756,
+            "validation_entry_threshold": 11.998871586142595
+          },
+          "specialist_val": {
+            "total_return": 0.014648998453857587,
+            "win_rate": 0.8333333333333334,
+            "daily_target_hit_rate": 0.16666666666666666,
+            "avg_daily_return": 0.002434833580650066,
+            "max_drawdown": -0.0050000000000000044,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.011394641727592525,
+            "win_rate": 0.6666666666666666,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": 0.0018916690453744886,
+            "max_drawdown": 0.0,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.027194093370168093,
+            "win_rate": 0.0,
+            "daily_target_hit_rate": 0.0,
+            "avg_daily_return": -0.004584140752846089,
+            "max_drawdown": -0.027194093370168093,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T0B0V1",
+          "train_days": 20,
+          "val_days": 11,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 12,
+          "eligible_models": 2,
+          "committee_size": 2,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 1,
+            "validation_score": 40.5100681501402,
+            "validation_return": 0.0010220683748882742,
+            "validation_max_drawdown": -0.01985049937499994,
+            "validation_daily_target_hit_rate": 0.18181818181818182,
+            "validation_reward_multiple": 3.1263508972071983,
+            "validation_entry_threshold": 10.989192822342414
+          },
+          "specialist_val": {
+            "total_return": 0.0009197038298371929,
+            "win_rate": 0.45454545454545453,
+            "daily_target_hit_rate": 0.18181818181818182,
+            "avg_daily_return": 0.00010527414569275873,
+            "max_drawdown": -0.01985049937499994,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.0012358516701826971,
+            "win_rate": 0.45454545454545453,
+            "daily_target_hit_rate": 0.18181818181818182,
+            "avg_daily_return": 0.00013414785613065472,
+            "max_drawdown": -0.019850499375000052,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": -0.01131364495538234,
+            "win_rate": 0.36363636363636365,
+            "daily_target_hit_rate": 0.36363636363636365,
+            "avg_daily_return": -0.0010199832649103416,
+            "max_drawdown": -0.02308008551073737,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T0B1V0",
+          "train_days": 5,
+          "val_days": 2,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T0B1V1",
+          "train_days": 6,
+          "val_days": 4,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T1B0V0",
+          "train_days": 10,
+          "val_days": 4,
+          "adopted": false,
+          "reason": "insufficient_val_days"
+        },
+        {
+          "bucket": "T1B0V1",
+          "train_days": 3,
+          "val_days": 1,
+          "adopted": false,
+          "reason": "insufficient_train_days"
+        },
+        {
+          "bucket": "T1B1V0",
+          "train_days": 16,
+          "val_days": 8,
+          "adopted": false,
+          "reason": "fails_local_promotion_rule",
+          "pareto_size": 13,
+          "eligible_models": 0,
+          "committee_size": 0,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 11,
+            "validation_score": 44.74990978020513,
+            "validation_return": 0.006659364060129791,
+            "validation_max_drawdown": 0.0,
+            "validation_daily_target_hit_rate": 0.125,
+            "validation_reward_multiple": 3.197375320224904,
+            "validation_entry_threshold": 10.420997438200768
+          },
+          "specialist_val": {
+            "total_return": 0.006659364060129791,
+            "win_rate": 0.125,
+            "daily_target_hit_rate": 0.125,
+            "avg_daily_return": 0.0008324205075162344,
+            "max_drawdown": 0.0,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.006659364060129791,
+            "win_rate": 0.125,
+            "daily_target_hit_rate": 0.125,
+            "avg_daily_return": 0.0008324205075162344,
+            "max_drawdown": 0.0,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": 0.02845450183433007,
+            "win_rate": 0.75,
+            "daily_target_hit_rate": 0.75,
+            "avg_daily_return": 0.003525703934626581,
+            "max_drawdown": -0.0050000000000000044,
+            "monthly_target_hit_rate": 0.0
+          }
+        },
+        {
+          "bucket": "T1B1V1",
+          "train_days": 18,
+          "val_days": 10,
+          "adopted": true,
+          "reason": "beats_global_on_bucket_val",
+          "pareto_size": 13,
+          "eligible_models": 1,
+          "committee_size": 1,
+          "fold_days": 10,
+          "step_days": 5,
+          "validation_pick": {
+            "rank": 7,
+            "validation_score": 27.939339684444676,
+            "validation_return": 0.002128857259996675,
+            "validation_max_drawdown": -0.010262174292097304,
+            "validation_daily_target_hit_rate": 0.4,
+            "validation_reward_multiple": 3.858048674128362,
+            "validation_entry_threshold": 5.1356106069731045
+          },
+          "specialist_val": {
+            "total_return": 0.002128857259996675,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.4,
+            "avg_daily_return": 0.00022653575002696226,
+            "max_drawdown": -0.010262174292097304,
+            "monthly_target_hit_rate": 0.0
+          },
+          "committee_val": {
+            "total_return": 0.015005410465384283,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.3,
+            "avg_daily_return": 0.0015031861098150814,
+            "max_drawdown": -0.009974999999999956,
+            "monthly_target_hit_rate": 0.0
+          },
+          "global_val": {
+            "total_return": 0.006686577484140921,
+            "win_rate": 0.5,
+            "daily_target_hit_rate": 0.5,
+            "avg_daily_return": 0.0006832995023771467,
+            "max_drawdown": -0.014925125000000095,
+            "monthly_target_hit_rate": 0.0
+          }
+        }
+      ],
+      "train_bucket_counts": {
+        "T0B0V0": 15,
+        "T0B0V1": 20,
+        "T0B1V0": 5,
+        "T0B1V1": 6,
+        "T1B0V0": 10,
+        "T1B0V1": 3,
+        "T1B1V0": 16,
+        "T1B1V1": 18
+      }
+    }
+  ],
+  "created_at": "2026-04-07T16:07:04.182904+00:00"
+}

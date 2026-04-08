@@ -1,0 +1,61 @@
+{
+  "algorithm": "multi_tree_locked_target_gp",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 24,
+  "n_gen": 3,
+  "fold_days": 30,
+  "step_days": 15,
+  "pareto_front_size": 21,
+  "tree_sizes": [
+    11,
+    5,
+    8,
+    5
+  ],
+  "expressions": [
+    "gate_gt(sig_rank2(sig_safe_div(BTCUSDT_dc_run_05, SOLUSDT_mfi_14), sig_spread(XRPUSDT_atr_rel_btc, SOLUSDT_mfi_14)), sig_sub(ETHUSDT_dc_event_05, XRPUSDT_macd_h))",
+    "sig_neg(sig_blend(1.0, XRPUSDT_close_rel_btc, XRPUSDT_dc_rel_btc))",
+    "sig_abs(sig_from_gate(gate_strength(SOLUSDT_dc_run_05, XRPUSDT_dc_trend_05, 0.3458070619477616), f_abs(13.990821872227487)))",
+    "sig_safe_div(SOLUSDT_atr_rel_btc, sig_safe_div(XRPUSDT_rsi_14, SOLUSDT_cci_14))"
+  ],
+  "feature_count": 66,
+  "locked_daily_target_pct": 0.005,
+  "adaptive_stop_range": [
+    0.0025,
+    0.01
+  ],
+  "validation_pick": {
+    "rank": 20,
+    "validation_score": 70.8279791423688,
+    "validation_return": -0.017333103307917153,
+    "validation_max_drawdown": -0.04192391482813629,
+    "validation_daily_target_hit_rate": 0.30434782608695654,
+    "validation_avg_stop_pct": 0.009972266946840952,
+    "validation_avg_reward_multiple": 0.5013905089638537,
+    "validation_avg_entry_threshold": 4.0
+  },
+  "test_return": -0.057567587305629275,
+  "test_max_dd": -0.0782377259628474,
+  "test_win_rate": 0.6078431372549019,
+  "test_daily_target_hit_rate": 0.21568627450980393,
+  "test_avg_daily_return": -0.001139940214596931,
+  "test_avg_stop_pct": 0.009972266946840953,
+  "test_avg_reward_multiple": 0.5013905089638536,
+  "full_return": -0.2279353006648781,
+  "full_max_dd": -0.23757516650170418,
+  "full_win_rate": 0.5851063829787234,
+  "full_daily_target_hit_rate": 0.2712765957446808,
+  "full_avg_daily_return": -0.0013511902609314715,
+  "full_avg_stop_pct": 0.009972266946840952,
+  "full_avg_reward_multiple": 0.5013905089638537,
+  "created_at": "2026-04-08T03:31:22.474519+00:00"
+}

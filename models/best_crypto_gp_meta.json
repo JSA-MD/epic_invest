@@ -1,0 +1,24 @@
+{
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "primary_pair": "BTCUSDT",
+  "timeframe": "5m",
+  "train_period": "2025-10-01 ~ 2026-01-01",
+  "val_period": "2026-01-01 ~ 2026-02-15",
+  "test_period": "2026-02-15 ~ 2026-04-06",
+  "pop_size": 500,
+  "n_gen": 5,
+  "tree_size": 204,
+  "fitness": 180438.13300955785,
+  "test_return": -0.10627440245592068,
+  "test_sharpe": -9.486100626800631,
+  "test_max_dd": -0.10850314459443455,
+  "test_daily_win_rate": 0.29411764705882354,
+  "test_daily_target_hit_rate": 0.09803921568627451,
+  "daily_target_pct": 0.005,
+  "created_at": "2026-04-07T14:40:45.176355+00:00"
+}

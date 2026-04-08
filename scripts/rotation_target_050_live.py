@@ -323,6 +323,53 @@ def build_kill_switch_notification(report: dict[str, Any]) -> str | None:
     )
 
 
+def build_daily_briefing(plan: dict[str, Any], equity: float) -> str:
+    lines = [
+        "일일 시작 브리핑",
+        f"- 적용일: {plan['effective_day']}",
+        f"- 세션: {str(plan['session_type']).upper()}",
+        f"- 자산: ${float(equity):,.2f}",
+        f"- 전략 레버리지: {float(plan['leverage']):.2f}x",
+        f"- 코어 총 레버리지: {float(plan['core_gross_leverage']):.3f}x",
+    ]
+    if plan["session_type"] == "core":
+        active = [f"{pair} {float(weight):+.2%}" for pair, weight in plan["core_weights"].items() if abs(float(weight)) > EPSILON]
+        lines.append(f"- 코어 진입: {', '.join(active) if active else '없음'}")
+    elif plan["session_type"] == "overlay":
+        overlay = plan["overlay"]
+        lines.append(f"- 오버레이 방향: {overlay['side']}")
+        lines.append(f"- 오버레이 신호: {float(overlay['signal_pct']):+.1f}%")
+    else:
+        lines.append("- 오늘은 관망 예정")
+    return "\n".join(lines)
+
+
+def build_daily_summary(effective_day: str, start_equity: float, end_equity: float) -> str:
+    pnl = float(end_equity) - float(start_equity)
+    ret = float(end_equity / start_equity - 1.0) if abs(start_equity) > EPSILON else 0.0
+    return "\n".join(
+        [
+            "일일 마감 요약",
+            f"- 적용일: {effective_day}",
+            f"- 시작 자산: ${float(start_equity):,.2f}",
+            f"- 종료 자산: ${float(end_equity):,.2f}",
+            f"- 손익: ${pnl:,.2f}",
+            f"- 수익률: {ret * 100:+.2f}%",
+        ]
+    )
+
+
+def build_session_change_notification(previous_session: str, current_session: str, effective_day: str) -> str:
+    return "\n".join(
+        [
+            "세션 상태 변경",
+            f"- 적용일: {effective_day}",
+            f"- 이전 세션: {previous_session.upper()}",
+            f"- 현재 세션: {current_session.upper()}",
+        ]
+    )
+
+
 def dispatch_notifications(messages: list[str]) -> None:
     for message in messages:
         message = message.strip()
@@ -424,6 +471,13 @@ def load_state(path: str | Path) -> dict[str, Any]:
             "overlay_completed_day": None,
             "core_day_state": None,
             "shutdown_protection": [],
+            "notification_state": {
+                "last_briefing_effective_day": None,
+                "last_briefing_equity": None,
+                "last_summary_effective_day": None,
+                "last_session_effective_day": None,
+                "last_session_type": None,
+            },
             "updated_at": None,
         }
     with open(state_file, "r") as f:
@@ -432,6 +486,12 @@ def load_state(path: str | Path) -> dict[str, Any]:
     state.setdefault("overlay_completed_day", None)
     state.setdefault("core_day_state", None)
     state.setdefault("shutdown_protection", [])
+    state.setdefault("notification_state", {})
+    state["notification_state"].setdefault("last_briefing_effective_day", None)
+    state["notification_state"].setdefault("last_briefing_equity", None)
+    state["notification_state"].setdefault("last_summary_effective_day", None)
+    state["notification_state"].setdefault("last_session_effective_day", None)
+    state["notification_state"].setdefault("last_session_type", None)
     state.setdefault("updated_at", None)
     return state
 
@@ -1401,6 +1461,7 @@ def run_once(args: argparse.Namespace) -> None:
     try:
         plan = build_strategy_plan(args.effective_date, args.leverage)
         notifications: list[str] = []
+        notification_state = state.setdefault("notification_state", {})
 
         equity = args.equity
         api_key, secret = get_demo_credentials()
@@ -1412,6 +1473,37 @@ def run_once(args: argparse.Namespace) -> None:
                 raise ValueError("Equity is required for dry-run without demo API credentials.")
             equity = fetch_equity(exchange)
         equity = float(equity)
+
+        if args.execute:
+            previous_briefing_day = notification_state.get("last_briefing_effective_day")
+            previous_briefing_equity = notification_state.get("last_briefing_equity")
+            last_summary_day = notification_state.get("last_summary_effective_day")
+            if (
+                previous_briefing_day
+                and previous_briefing_day != plan["effective_day"]
+                and previous_briefing_equity is not None
+                and last_summary_day != previous_briefing_day
+            ):
+                notifications.append(build_daily_summary(str(previous_briefing_day), float(previous_briefing_equity), equity))
+                notification_state["last_summary_effective_day"] = previous_briefing_day
+
+            if notification_state.get("last_briefing_effective_day") != plan["effective_day"]:
+                notifications.append(build_daily_briefing(plan, equity))
+                notification_state["last_briefing_effective_day"] = plan["effective_day"]
+                notification_state["last_briefing_equity"] = equity
+
+            previous_session_day = notification_state.get("last_session_effective_day")
+            previous_session_type = notification_state.get("last_session_type")
+            if (
+                previous_session_day == plan["effective_day"]
+                and previous_session_type
+                and previous_session_type != plan["session_type"]
+            ):
+                notifications.append(
+                    build_session_change_notification(str(previous_session_type), str(plan["session_type"]), plan["effective_day"])
+                )
+            notification_state["last_session_effective_day"] = plan["effective_day"]
+            notification_state["last_session_type"] = plan["session_type"]
 
         print_plan(plan, equity)
 
@@ -1614,6 +1706,15 @@ def main() -> None:
                 raise
             except Exception as exc:
                 print(f"[ERROR] {exc}")
+                send_telegram_notification(
+                    "\n".join(
+                        [
+                            "트레이더 루프 오류",
+                            f"- 시각: {utc_now().isoformat()}",
+                            f"- 내용: {exc}",
+                        ]
+                    )
+                )
             time.sleep(max(5, int(args.poll_seconds)))
 
 

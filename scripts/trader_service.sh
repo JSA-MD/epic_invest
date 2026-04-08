@@ -19,6 +19,54 @@ print_info() {
   printf '  %s\n' "$1"
 }
 
+read_env_value() {
+  local key="$1"
+  if [[ ! -f "$ROOT_DIR/.env" ]]; then
+    return 0
+  fi
+  awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1)}' "$ROOT_DIR/.env" \
+    | tail -n 1 \
+    | tr -d '"' \
+    | tr -d "'"
+}
+
+telegram_enabled() {
+  local flag
+  flag="$(read_env_value "TELEGRAM_NOTIFICATIONS_ENABLED")"
+  flag="$(printf '%s' "$flag" | tr '[:upper:]' '[:lower:]')"
+  case "$flag" in
+    0|false|no|off) return 1 ;;
+  esac
+  [[ -n "$(read_env_value "TELEGRAM_BOT_TOKEN")" ]]
+}
+
+send_telegram_lifecycle_message() {
+  local text="$1"
+  if ! telegram_enabled; then
+    return 0
+  fi
+
+  local token chat_raw
+  token="$(read_env_value "TELEGRAM_BOT_TOKEN")"
+  chat_raw="$(read_env_value "TELEGRAM_ALLOWED_CHAT_IDS")"
+  if [[ -z "${chat_raw:-}" ]]; then
+    chat_raw="$(read_env_value "TELEGRAM_CHAT_ID")"
+  fi
+  if [[ -z "${token:-}" || -z "${chat_raw:-}" ]]; then
+    return 0
+  fi
+
+  local IFS=','
+  local chat_id
+  for chat_id in $chat_raw; do
+    chat_id="${chat_id//[[:space:]]/}"
+    [[ -n "${chat_id:-}" ]] || continue
+    curl -sS -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+      -d "chat_id=${chat_id}" \
+      --data-urlencode "text=${text}" >/dev/null 2>&1 || true
+  done
+}
+
 collect_process_rows() {
   ps -ax -o pid=,ppid=,stat=,etime=,command= | awk -v entry="$ENTRY_SCRIPT" -v legacy="$LEGACY_SCRIPT" '
     index($0, entry) > 0 || index($0, legacy) > 0 { print }

@@ -8,3 +8,4 @@ stop_trader
 "$ROOT_DIR/telegram_launchd_unload.sh"
 start_trader
 "$ROOT_DIR/telegram_launchd_load.sh"
+send_telegram_lifecycle_message $'트레이더 재시작 완료\n- 상태: 실행 중\n- 텔레그램 봇: 활성\n- 제어 명령: /status /plan /positions'

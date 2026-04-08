@@ -9,10 +9,17 @@ import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import numpy as np
 import pandas as pd
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    njit = None
+    NUMBA_AVAILABLE = False
 
 import gp_crypto_evolution as gp
 from replay_regime_mixture_realistic import (
@@ -27,6 +34,8 @@ from validate_pair_subset_summary import build_validation_bundle
 
 
 UTC = timezone.utc
+BARS_PER_DAY = gp.periods_per_day(gp.TIMEFRAME)
+BAR_FACTOR = np.sqrt(365.25 * 24.0 * 60.0 / 5.0)
 DEFAULT_WINDOWS = (
     ("recent_2m", "2026-02-06", "2026-04-06"),
     ("recent_6m", "2025-10-06", "2026-04-06"),
@@ -62,7 +71,23 @@ def parse_args() -> argparse.Namespace:
         default="0.50,0.65",
         help="Comma-separated route breadth thresholds to test.",
     )
+    parser.add_argument(
+        "--fast-engine",
+        choices=("auto", "python", "numba"),
+        default="auto",
+        help="Fast replay engine for the candidate pre-search stage.",
+    )
     return parser.parse_args()
+
+
+def resolve_fast_engine(requested: str) -> str:
+    if requested == "python":
+        return "python"
+    if requested == "numba":
+        if not NUMBA_AVAILABLE:
+            raise RuntimeError("Numba fast engine requested but numba is not installed.")
+        return "numba"
+    return "numba" if NUMBA_AVAILABLE else "python"
 
 
 def json_safe(value: Any) -> Any:
@@ -81,6 +106,213 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     return value
+
+
+def build_library_lookup(library: list[OverlayParams]) -> dict[str, Any]:
+    spans = sorted({params.signal_span for params in library})
+    span_to_pos = {span: idx for idx, span in enumerate(spans)}
+    return {
+        "spans": tuple(spans),
+        "signal_pos": np.asarray([span_to_pos[params.signal_span] for params in library], dtype="int64"),
+        "rebalance_bars": np.asarray([params.rebalance_bars for params in library], dtype="int64"),
+        "regime_threshold": np.asarray([params.regime_threshold for params in library], dtype="float64"),
+        "breadth_threshold": np.asarray([params.breadth_threshold for params in library], dtype="float64"),
+        "target_vol_ann": np.asarray([params.target_vol_ann for params in library], dtype="float64"),
+        "gross_cap": np.asarray([params.gross_cap for params in library], dtype="float64"),
+        "kill_switch_pct": np.asarray([params.kill_switch_pct for params in library], dtype="float64"),
+        "cooldown_days": np.asarray([params.cooldown_days for params in library], dtype="int64"),
+    }
+
+
+def build_fast_context(
+    df: pd.DataFrame,
+    pair: str,
+    raw_signal: pd.Series,
+    overlay_inputs: dict[str, pd.Series],
+    route_thresholds: tuple[float, ...],
+    library_lookup: dict[str, Any],
+) -> dict[str, Any]:
+    idx = pd.DatetimeIndex(df.index)
+    day_index = idx.normalize()
+    spans = library_lookup["spans"]
+    smooth_signal_matrix = np.vstack(
+        [
+            raw_signal.ewm(span=span, adjust=False).mean().to_numpy(dtype="float64")
+            for span in spans
+        ]
+    )
+    bucket_codes = {
+        float(threshold): build_route_bucket_codes(idx, overlay_inputs, float(threshold)).astype("int64")
+        for threshold in route_thresholds
+    }
+    return {
+        "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
+        "bucket_codes": bucket_codes,
+        "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
+        "smooth_signal_matrix": smooth_signal_matrix,
+    }
+
+
+def _fast_overlay_replay_kernel_impl(
+    close: np.ndarray,
+    bucket_codes: np.ndarray,
+    regime: np.ndarray,
+    breadth: np.ndarray,
+    vol_ann: np.ndarray,
+    smooth_signal_matrix: np.ndarray,
+    library_signal_pos: np.ndarray,
+    library_rebalance_bars: np.ndarray,
+    library_regime_threshold: np.ndarray,
+    library_breadth_threshold: np.ndarray,
+    library_target_vol_ann: np.ndarray,
+    library_gross_cap: np.ndarray,
+    library_kill_switch_pct: np.ndarray,
+    library_cooldown_days: np.ndarray,
+    mapping: np.ndarray,
+    initial_cash: float,
+    commission_pct: float,
+    no_trade_band_pct: float,
+    bars_per_day: int,
+    daily_target: float,
+    bar_factor: float,
+) -> tuple[float, int, float, float, float, float, float, float, float]:
+    equity = initial_cash
+    peak_equity = initial_cash
+    current_weight = 0.0
+    cooldown_bars_left = 0
+    n_trades = 0
+    max_drawdown = 0.0
+
+    mean_bar = 0.0
+    m2_bar = 0.0
+    bar_count = 0
+
+    day_accum = 1.0
+    day_len = 0
+    day_count = 0
+    day_sum = 0.0
+    day_wins = 0
+    day_hits = 0
+    worst_day = 0.0
+    best_day = 0.0
+
+    for i in range(close.shape[0] - 1):
+        active_idx = mapping[bucket_codes[i]]
+        if cooldown_bars_left > 0:
+            cooldown_bars_left -= 1
+
+        signal_pct = smooth_signal_matrix[library_signal_pos[active_idx], i]
+        if signal_pct > 500.0:
+            signal_pct = 500.0
+        elif signal_pct < -500.0:
+            signal_pct = -500.0
+
+        requested_weight = signal_pct / 100.0
+        regime_score = regime[i]
+        breadth_score = breadth[i]
+        long_ok = regime_score >= library_regime_threshold[active_idx] and breadth_score >= library_breadth_threshold[active_idx]
+        short_ok = regime_score <= -library_regime_threshold[active_idx] and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        if requested_weight > 0.0 and not long_ok:
+            requested_weight = 0.0
+        elif requested_weight < 0.0 and not short_ok:
+            requested_weight = 0.0
+
+        bar_vol_ann = vol_ann[i]
+        if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
+            vol_scale = library_target_vol_ann[active_idx] / bar_vol_ann
+            gross_scale = library_gross_cap[active_idx] / max(abs(requested_weight), 1e-8)
+            if gross_scale < vol_scale:
+                vol_scale = gross_scale
+            requested_weight *= vol_scale
+
+        gross_cap = library_gross_cap[active_idx]
+        if requested_weight > gross_cap:
+            requested_weight = gross_cap
+        elif requested_weight < -gross_cap:
+            requested_weight = -gross_cap
+
+        drawdown = equity / max(peak_equity, 1e-8) - 1.0
+        if drawdown <= -library_kill_switch_pct[active_idx] and cooldown_bars_left == 0:
+            cooldown_bars_left = library_cooldown_days[active_idx] * bars_per_day
+
+        target_weight = current_weight
+        if cooldown_bars_left > 0:
+            target_weight = 0.0
+        elif i % library_rebalance_bars[active_idx] == 0:
+            target_weight = requested_weight
+
+        if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
+            target_weight = current_weight
+
+        turnover = abs(target_weight - current_weight)
+        if turnover > 0.001:
+            n_trades += 1
+
+        price_ret = close[i + 1] / close[i] - 1.0
+        bar_net = target_weight * price_ret - turnover * commission_pct * 2.0
+
+        equity *= (1.0 + bar_net)
+        if equity > peak_equity:
+            peak_equity = equity
+        current_weight = target_weight
+
+        dd = equity / peak_equity - 1.0
+        if dd < max_drawdown:
+            max_drawdown = dd
+
+        bar_count += 1
+        delta = bar_net - mean_bar
+        mean_bar += delta / bar_count
+        m2_bar += delta * (bar_net - mean_bar)
+
+        day_accum *= (1.0 + bar_net)
+        day_len += 1
+        if day_len == bars_per_day or i == close.shape[0] - 2:
+            day_ret = day_accum - 1.0
+            day_sum += day_ret
+            day_count += 1
+            if day_ret > 0.0:
+                day_wins += 1
+            if day_ret >= daily_target:
+                day_hits += 1
+            if day_count == 1 or day_ret < worst_day:
+                worst_day = day_ret
+            if day_count == 1 or day_ret > best_day:
+                best_day = day_ret
+            day_accum = 1.0
+            day_len = 0
+
+    total_return = equity / initial_cash - 1.0
+    sharpe = 0.0
+    if bar_count > 1:
+        variance = m2_bar / bar_count
+        if variance > 1e-12:
+            sharpe = mean_bar / np.sqrt(variance) * bar_factor
+
+    avg_daily = 0.0 if day_count == 0 else day_sum / day_count
+    daily_target_hit_rate = 0.0 if day_count == 0 else day_hits / day_count
+    daily_win_rate = 0.0 if day_count == 0 else day_wins / day_count
+
+    return (
+        total_return,
+        n_trades,
+        sharpe,
+        max_drawdown,
+        equity,
+        avg_daily,
+        daily_target_hit_rate,
+        daily_win_rate,
+        worst_day,
+        best_day,
+    )
+
+
+if NUMBA_AVAILABLE:
+    _fast_overlay_replay_kernel = njit(cache=True)(_fast_overlay_replay_kernel_impl)
+else:  # pragma: no cover - fallback for environments without numba
+    _fast_overlay_replay_kernel = _fast_overlay_replay_kernel_impl
 
 
 def build_overlay_inputs(df: pd.DataFrame, pairs: tuple[str, ...], regime_pair: str) -> dict[str, pd.Series]:
@@ -158,27 +390,60 @@ def aggregate_metrics(per_pair: dict[str, dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def fast_overlay_replay(
-    df: pd.DataFrame,
-    pair: str,
-    raw_signal: pd.Series,
-    overlay_inputs: dict[str, pd.Series],
+def fast_overlay_replay_from_context(
+    context: dict[str, Any],
     library: list[OverlayParams],
+    library_lookup: dict[str, Any],
     mapping: tuple[int, int, int, int],
     route_breadth_threshold: float,
+    fast_engine: str,
 ) -> dict[str, Any]:
-    close = df[f"{pair}_close"].to_numpy(dtype="float64")
-    idx = pd.DatetimeIndex(df.index)
-    day_index = idx.normalize()
-    bucket_codes = build_route_bucket_codes(idx, overlay_inputs, route_breadth_threshold)
-    regime = overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64")
-    breadth = overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64")
-    vol_ann = overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64")
-    spans = sorted({params.signal_span for params in library})
-    smooth_signals = {
-        span: raw_signal.ewm(span=span, adjust=False).mean().to_numpy(dtype="float64")
-        for span in spans
-    }
+    if fast_engine == "numba":
+        result = _fast_overlay_replay_kernel(
+            context["close"],
+            context["bucket_codes"][float(route_breadth_threshold)],
+            context["regime"],
+            context["breadth"],
+            context["vol_ann"],
+            context["smooth_signal_matrix"],
+            library_lookup["signal_pos"],
+            library_lookup["rebalance_bars"],
+            library_lookup["regime_threshold"],
+            library_lookup["breadth_threshold"],
+            library_lookup["target_vol_ann"],
+            library_lookup["gross_cap"],
+            library_lookup["kill_switch_pct"],
+            library_lookup["cooldown_days"],
+            np.asarray(mapping, dtype="int64"),
+            float(gp.INITIAL_CASH),
+            float(gp.COMMISSION_PCT),
+            float(gp.NO_TRADE_BAND),
+            int(BARS_PER_DAY),
+            float(gp.DAILY_TARGET_PCT),
+            float(BAR_FACTOR),
+        )
+        return {
+            "total_return": float(result[0]),
+            "n_trades": int(result[1]),
+            "sharpe": float(result[2]),
+            "max_drawdown": float(result[3]),
+            "final_equity": float(result[4]),
+            "daily_metrics": {
+                "avg_daily_return": float(result[5]),
+                "daily_target_hit_rate": float(result[6]),
+                "daily_win_rate": float(result[7]),
+                "worst_day": float(result[8]),
+                "best_day": float(result[9]),
+            },
+        }
+
+    close = context["close"]
+    bucket_codes = context["bucket_codes"][float(route_breadth_threshold)]
+    regime = context["regime"]
+    breadth = context["breadth"]
+    vol_ann = context["vol_ann"]
+    smooth_signal_matrix = context["smooth_signal_matrix"]
+    signal_positions = library_lookup["signal_pos"]
 
     equity = float(gp.INITIAL_CASH)
     peak_equity = float(gp.INITIAL_CASH)
@@ -188,14 +453,14 @@ def fast_overlay_replay(
     equity_curve = [float(gp.INITIAL_CASH)]
     n_trades = 0
 
-    for i in range(len(df) - 1):
+    for i in range(len(close) - 1):
         active_idx = int(mapping[int(bucket_codes[i])])
         params = library[active_idx]
 
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
 
-        signal_pct = float(np.clip(smooth_signals[params.signal_span][i], -500.0, 500.0))
+        signal_pct = float(np.clip(smooth_signal_matrix[signal_positions[active_idx], i], -500.0, 500.0))
         requested_weight = signal_pct / 100.0
         regime_score = float(regime[i])
         breadth_score = float(breadth[i])
@@ -217,7 +482,7 @@ def fast_overlay_replay(
 
         drawdown = equity / max(peak_equity, 1e-8) - 1.0
         if drawdown <= -params.kill_switch_pct and cooldown_bars_left == 0:
-            cooldown_bars_left = params.cooldown_days * gp.periods_per_day(gp.TIMEFRAME)
+            cooldown_bars_left = params.cooldown_days * BARS_PER_DAY
 
         target_weight = current_weight
         if cooldown_bars_left > 0:
@@ -243,7 +508,7 @@ def fast_overlay_replay(
     return {
         "total_return": float(equity / gp.INITIAL_CASH - 1.0),
         "n_trades": int(n_trades),
-        "sharpe": float(np.mean(net_ret) / np.std(net_ret) * np.sqrt(365.25 * 24 * 60.0 / 5.0)) if len(net_ret) > 1 and np.std(net_ret) > 1e-12 else 0.0,
+        "sharpe": float(np.mean(net_ret) / np.std(net_ret) * BAR_FACTOR) if len(net_ret) > 1 and np.std(net_ret) > 1e-12 else 0.0,
         "max_drawdown": float(np.min(np.asarray(equity_curve) / np.maximum.accumulate(np.asarray(equity_curve)) - 1.0)),
         "final_equity": float(equity),
         "daily_metrics": gp.compute_daily_metrics(np.asarray(net_ret, dtype="float64")),
@@ -424,8 +689,13 @@ def main() -> None:
     pairs = parse_csv_tuple(args.pairs, str)
     subset_indices = parse_csv_tuple(args.subset_indices, int)
     route_thresholds = parse_csv_tuple(args.route_thresholds, float)
+    fast_engine = resolve_fast_engine(args.fast_engine)
 
+    total_started = perf_counter()
     baseline_candidate, library, _ = resolve_candidate(Path(args.summary), None, None)
+    if baseline_candidate.route_breadth_threshold not in route_thresholds:
+        route_thresholds = tuple(sorted(set(route_thresholds + (baseline_candidate.route_breadth_threshold,))))
+    library_lookup = build_library_lookup(library)
     model, _ = load_model(Path(args.model))
     compiled = gp.toolbox.compile(expr=model)
 
@@ -442,38 +712,67 @@ def main() -> None:
     }
     funding_all = {pair: load_or_fetch_funding(pair, start_all, end_all) for pair in pairs}
 
-    baseline_fast = {}
-    baseline_realistic = {}
+    prepare_started = perf_counter()
+    window_cache = {}
     for label, start, end in DEFAULT_WINDOWS:
         df = df_all.loc[start:end].copy()
-        per_pair_fast = {}
-        per_pair_realistic = {}
+        pair_cache = {}
         for pair in pairs:
             overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
             signal_slice = raw_signal_all[pair].loc[start:end].copy()
-            per_pair_fast[pair] = summarize_single_result(
-                fast_overlay_replay(
-                    df,
-                    pair,
-                    signal_slice,
-                    overlay_inputs,
-                    library,
-                    baseline_candidate.mapping_indices,
-                    baseline_candidate.route_breadth_threshold,
-                )
-            )
             funding_slice = funding_all[pair]
             if not funding_slice.empty:
                 funding_slice = funding_slice[
                     (funding_slice["fundingTime"] >= pd.Timestamp(start, tz="UTC"))
                     & (funding_slice["fundingTime"] <= pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1))
                 ].copy()
+            pair_cache[pair] = {
+                "overlay_inputs": overlay_inputs,
+                "signal": signal_slice,
+                "funding": funding_slice,
+                "fast_context": build_fast_context(
+                    df=df,
+                    pair=pair,
+                    raw_signal=signal_slice,
+                    overlay_inputs=overlay_inputs,
+                    route_thresholds=route_thresholds,
+                    library_lookup=library_lookup,
+                ),
+            }
+        window_cache[label] = {
+            "start": start,
+            "end": end,
+            "df": df,
+            "pairs": pair_cache,
+        }
+    prepare_seconds = perf_counter() - prepare_started
+
+    baseline_fast = {}
+    baseline_realistic = {}
+    baseline_started = perf_counter()
+    for label, start, end in DEFAULT_WINDOWS:
+        window_data = window_cache[label]
+        df = window_data["df"]
+        per_pair_fast = {}
+        per_pair_realistic = {}
+        for pair in pairs:
+            pair_data = window_data["pairs"][pair]
+            per_pair_fast[pair] = summarize_single_result(
+                fast_overlay_replay_from_context(
+                    pair_data["fast_context"],
+                    library,
+                    library_lookup,
+                    baseline_candidate.mapping_indices,
+                    baseline_candidate.route_breadth_threshold,
+                    fast_engine,
+                )
+            )
             per_pair_realistic[pair] = realistic_overlay_replay(
                 df,
                 pair,
-                signal_slice,
-                overlay_inputs,
-                funding_slice,
+                pair_data["signal"],
+                pair_data["overlay_inputs"],
+                pair_data["funding"],
                 library,
                 baseline_candidate.mapping_indices,
                 baseline_candidate.route_breadth_threshold,
@@ -486,6 +785,7 @@ def main() -> None:
             "per_pair": per_pair_realistic,
             "aggregate": aggregate_metrics(per_pair_realistic),
         }
+    baseline_seconds = perf_counter() - baseline_started
 
     candidate_pool = [
         (route_threshold, tuple(int(v) for v in mapping))
@@ -496,22 +796,22 @@ def main() -> None:
         candidate_pool.append((baseline_candidate.route_breadth_threshold, baseline_candidate.mapping_indices))
 
     scored = []
+    fast_search_started = perf_counter()
     for route_threshold, mapping in candidate_pool:
         windows = {}
         for label, start, end in DEFAULT_WINDOWS[:2]:
-            df = df_all.loc[start:end].copy()
+            window_data = window_cache[label]
             per_pair = {}
             for pair in pairs:
-                overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
+                pair_data = window_data["pairs"][pair]
                 per_pair[pair] = summarize_single_result(
-                    fast_overlay_replay(
-                        df,
-                        pair,
-                        raw_signal_all[pair].loc[start:end].copy(),
-                        overlay_inputs,
+                    fast_overlay_replay_from_context(
+                        pair_data["fast_context"],
                         library,
+                        library_lookup,
                         mapping,
                         route_threshold,
+                        fast_engine,
                     )
                 )
             windows[label] = aggregate_metrics(per_pair)
@@ -530,32 +830,29 @@ def main() -> None:
                 "score": score_candidate(recent_2m, recent_6m),
             }
         )
+    fast_search_seconds = perf_counter() - fast_search_started
 
     scored.sort(key=lambda item: item["score"])
     top_fast = scored[: args.top_k_realistic]
 
     realistic_top = []
+    realistic_started = perf_counter()
     for item in top_fast:
         route_threshold = float(item["route_breadth_threshold"])
         mapping = tuple(int(v) for v in item["mapping_indices"])
         windows = {}
         for label, start, end in DEFAULT_WINDOWS:
-            df = df_all.loc[start:end].copy()
+            window_data = window_cache[label]
+            df = window_data["df"]
             per_pair = {}
             for pair in pairs:
-                overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
-                funding_slice = funding_all[pair]
-                if not funding_slice.empty:
-                    funding_slice = funding_slice[
-                        (funding_slice["fundingTime"] >= pd.Timestamp(start, tz="UTC"))
-                        & (funding_slice["fundingTime"] <= pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1))
-                    ].copy()
+                pair_data = window_data["pairs"][pair]
                 per_pair[pair] = realistic_overlay_replay(
                     df,
                     pair,
-                    raw_signal_all[pair].loc[start:end].copy(),
-                    overlay_inputs,
-                    funding_slice,
+                    pair_data["signal"],
+                    pair_data["overlay_inputs"],
+                    pair_data["funding"],
                     library,
                     mapping,
                     route_threshold,
@@ -576,6 +873,7 @@ def main() -> None:
                 "validation": build_validation_bundle(windows, baseline_realistic),
             }
         )
+    realistic_seconds = perf_counter() - realistic_started
 
     progressive_candidates = [
         item
@@ -627,6 +925,16 @@ def main() -> None:
             "target_060_pass_count": len(target_060_candidates),
             "progressive_pass_count": len(progressive_candidates),
             "realistic_top_count": len(realistic_top),
+        },
+        "runtime": {
+            "fast_engine": fast_engine,
+            "numba_available": NUMBA_AVAILABLE,
+            "prepare_context_seconds": prepare_seconds,
+            "baseline_seconds": baseline_seconds,
+            "fast_search_seconds": fast_search_seconds,
+            "realistic_seconds": realistic_seconds,
+            "total_seconds": perf_counter() - total_started,
+            "candidate_pool_size": len(candidate_pool),
         },
         "selected_candidate": selected,
         "fallback_best_candidate": fallback_best,

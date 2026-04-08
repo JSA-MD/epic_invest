@@ -28,7 +28,7 @@ from search_pair_subset_regime_mixture import (
     json_safe,
     load_or_fetch_funding,
     parse_csv_tuple,
-    realistic_overlay_replay,
+    realistic_overlay_replay_from_context,
     resolve_fast_engine,
     score_realistic_candidate,
     summarize_single_result,
@@ -214,6 +214,7 @@ def main() -> None:
                     overlay_inputs=overlay_inputs,
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
+                    funding_df=funding_slice,
                 ),
             }
         window_cache[label] = {
@@ -244,13 +245,9 @@ def main() -> None:
                     fast_engine,
                 )
             )
-            per_pair_realistic[pair] = realistic_overlay_replay(
-                df,
-                pair,
-                pair_data["signal"],
-                pair_data["overlay_inputs"],
-                pair_data["funding"],
-                library,
+            per_pair_realistic[pair] = realistic_overlay_replay_from_context(
+                pair_data["fast_context"],
+                library_lookup,
                 baseline_candidate.mapping_indices,
                 baseline_candidate.route_breadth_threshold,
             )
@@ -373,13 +370,9 @@ def main() -> None:
             per_pair = {}
             for pair in pairs:
                 pair_data = window_data["pairs"][pair]
-                per_pair[pair] = realistic_overlay_replay(
-                    df,
-                    pair,
-                    pair_data["signal"],
-                    pair_data["overlay_inputs"],
-                    pair_data["funding"],
-                    library,
+                per_pair[pair] = realistic_overlay_replay_from_context(
+                    pair_data["fast_context"],
+                    library_lookup,
                     mapping,
                     route_threshold,
                 )

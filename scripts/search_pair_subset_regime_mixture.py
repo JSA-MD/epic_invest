@@ -25,9 +25,7 @@ import gp_crypto_evolution as gp
 from replay_regime_mixture_realistic import (
     fetch_funding_rates,
     load_model,
-    quantize_amount,
     resolve_candidate,
-    summarize,
 )
 from search_gp_drawdown_overlay import OverlayParams
 from validate_pair_subset_summary import build_validation_bundle
@@ -131,6 +129,7 @@ def build_fast_context(
     overlay_inputs: dict[str, pd.Series],
     route_thresholds: tuple[float, ...],
     library_lookup: dict[str, Any],
+    funding_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     idx = pd.DatetimeIndex(df.index)
     day_index = idx.normalize()
@@ -145,13 +144,28 @@ def build_fast_context(
         float(threshold): build_route_bucket_codes(idx, overlay_inputs, float(threshold)).astype("int64")
         for threshold in route_thresholds
     }
+    funding_rates = np.zeros(len(idx), dtype="float64")
+    if funding_df is not None and not funding_df.empty:
+        funding_series = (
+            funding_df[["fundingTime", "fundingRate"]]
+            .dropna(subset=["fundingTime", "fundingRate"])
+            .assign(fundingTime=lambda frame: pd.to_datetime(frame["fundingTime"], utc=True))
+            .drop_duplicates(subset=["fundingTime"], keep="last")
+            .set_index("fundingTime")["fundingRate"]
+        )
+        funding_rates = (
+            funding_series.reindex(idx, fill_value=0.0)
+            .to_numpy(dtype="float64")
+        )
     return {
+        "open": df[f"{pair}_open"].to_numpy(dtype="float64"),
         "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
         "bucket_codes": bucket_codes,
         "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
+        "funding_rates": funding_rates,
     }
 
 
@@ -313,6 +327,229 @@ if NUMBA_AVAILABLE:
     _fast_overlay_replay_kernel = njit(cache=True)(_fast_overlay_replay_kernel_impl)
 else:  # pragma: no cover - fallback for environments without numba
     _fast_overlay_replay_kernel = _fast_overlay_replay_kernel_impl
+
+
+def _quantize_amount_kernel(value: float, step: float, min_qty: float) -> float:
+    sign = 1.0 if value >= 0.0 else -1.0
+    raw = abs(value)
+    if raw < min_qty:
+        return 0.0
+    precise = np.floor(raw / step + 1e-12) * step
+    if precise < min_qty:
+        return 0.0
+    return sign * precise
+
+
+if NUMBA_AVAILABLE:
+    _quantize_amount_nb = njit(cache=True)(_quantize_amount_kernel)
+else:  # pragma: no cover - fallback for environments without numba
+    _quantize_amount_nb = _quantize_amount_kernel
+
+
+def _realistic_overlay_replay_kernel_impl(
+    open_p: np.ndarray,
+    close_p: np.ndarray,
+    funding_rates: np.ndarray,
+    bucket_codes: np.ndarray,
+    regime: np.ndarray,
+    breadth: np.ndarray,
+    vol_ann: np.ndarray,
+    smooth_signal_matrix: np.ndarray,
+    library_signal_pos: np.ndarray,
+    library_rebalance_bars: np.ndarray,
+    library_regime_threshold: np.ndarray,
+    library_breadth_threshold: np.ndarray,
+    library_target_vol_ann: np.ndarray,
+    library_gross_cap: np.ndarray,
+    library_kill_switch_pct: np.ndarray,
+    library_cooldown_days: np.ndarray,
+    mapping: np.ndarray,
+    initial_cash: float,
+    fee_rate: float,
+    slippage: float,
+    amount_step: float,
+    min_qty: float,
+    no_trade_band_pct: float,
+    bars_per_day: int,
+    daily_target: float,
+    bar_factor: float,
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int]:
+    cash = initial_cash
+    qty = 0.0
+    n_trades = 0
+    fee_paid = 0.0
+    slippage_paid = 0.0
+    funding_paid = 0.0
+    funding_events = 0
+    peak_equity = initial_cash
+    max_drawdown = 0.0
+    cooldown_bars_left = 0
+
+    mean_bar = 0.0
+    m2_bar = 0.0
+    bar_count = 0
+
+    day_accum = 1.0
+    day_len = 0
+    day_count = 0
+    day_sum = 0.0
+    day_wins = 0
+    day_hits = 0
+    worst_day = 0.0
+    best_day = 0.0
+
+    for exec_idx in range(1, open_p.shape[0] - 1):
+        signal_idx = exec_idx - 1
+        px_open = open_p[exec_idx]
+        next_open = open_p[exec_idx + 1]
+        prev_close = close_p[signal_idx]
+
+        funding_rate = funding_rates[exec_idx]
+        if qty != 0.0 and funding_rate != 0.0:
+            funding_cashflow = -qty * px_open * funding_rate
+            cash += funding_cashflow
+            funding_paid += funding_cashflow
+            funding_events += 1
+
+        equity_before = cash + qty * px_open
+        if equity_before <= 1e-9:
+            equity_before = 1e-9
+        if equity_before > peak_equity:
+            peak_equity = equity_before
+
+        active_idx = mapping[bucket_codes[signal_idx]]
+        if cooldown_bars_left > 0:
+            cooldown_bars_left -= 1
+
+        signal_pct = smooth_signal_matrix[library_signal_pos[active_idx], signal_idx]
+        if signal_pct > 500.0:
+            signal_pct = 500.0
+        elif signal_pct < -500.0:
+            signal_pct = -500.0
+
+        requested_weight = signal_pct / 100.0
+        regime_score = regime[signal_idx]
+        breadth_score = breadth[signal_idx]
+        long_ok = regime_score >= library_regime_threshold[active_idx] and breadth_score >= library_breadth_threshold[active_idx]
+        short_ok = regime_score <= -library_regime_threshold[active_idx] and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        if requested_weight > 0.0 and not long_ok:
+            requested_weight = 0.0
+        elif requested_weight < 0.0 and not short_ok:
+            requested_weight = 0.0
+
+        bar_vol_ann = vol_ann[signal_idx]
+        if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
+            vol_scale = library_target_vol_ann[active_idx] / bar_vol_ann
+            gross_scale = library_gross_cap[active_idx] / max(abs(requested_weight), 1e-8)
+            if gross_scale < vol_scale:
+                vol_scale = gross_scale
+            requested_weight *= vol_scale
+
+        gross_cap = library_gross_cap[active_idx]
+        if requested_weight > gross_cap:
+            requested_weight = gross_cap
+        elif requested_weight < -gross_cap:
+            requested_weight = -gross_cap
+
+        drawdown = equity_before / max(peak_equity, 1e-8) - 1.0
+        if drawdown <= -library_kill_switch_pct[active_idx] and cooldown_bars_left == 0:
+            cooldown_bars_left = library_cooldown_days[active_idx] * bars_per_day
+
+        current_weight = 0.0
+        if abs(equity_before) > 1e-9:
+            current_weight = qty * px_open / equity_before
+        target_weight = current_weight
+        if cooldown_bars_left > 0:
+            target_weight = 0.0
+        elif signal_idx % library_rebalance_bars[active_idx] == 0:
+            target_weight = requested_weight
+
+        if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
+            target_weight = current_weight
+
+        target_notional = equity_before * target_weight
+        target_qty = 0.0
+        if abs(prev_close) > 1e-12:
+            target_qty = _quantize_amount_nb(target_notional / prev_close, amount_step, min_qty)
+        diff_qty = _quantize_amount_nb(target_qty - qty, amount_step, min_qty)
+
+        if abs(diff_qty) > 0.0:
+            side = 1.0 if diff_qty > 0.0 else -1.0
+            exec_price = px_open * (1.0 + slippage * side)
+            trade_notional = diff_qty * exec_price
+            fee = abs(diff_qty) * exec_price * fee_rate
+            cash -= trade_notional
+            cash -= fee
+            qty += diff_qty
+            n_trades += 1
+            fee_paid += fee
+            slippage_paid += abs(diff_qty) * px_open * slippage
+
+        equity_after = cash + qty * next_open
+        if equity_after > peak_equity:
+            peak_equity = equity_after
+        dd = equity_after / peak_equity - 1.0
+        if dd < max_drawdown:
+            max_drawdown = dd
+
+        bar_net = equity_after / equity_before - 1.0
+        bar_count += 1
+        delta = bar_net - mean_bar
+        mean_bar += delta / bar_count
+        m2_bar += delta * (bar_net - mean_bar)
+
+        day_accum *= (1.0 + bar_net)
+        day_len += 1
+        if day_len == bars_per_day or exec_idx == open_p.shape[0] - 2:
+            day_ret = day_accum - 1.0
+            day_sum += day_ret
+            day_count += 1
+            if day_ret > 0.0:
+                day_wins += 1
+            if day_ret >= daily_target:
+                day_hits += 1
+            if day_count == 1 or day_ret < worst_day:
+                worst_day = day_ret
+            if day_count == 1 or day_ret > best_day:
+                best_day = day_ret
+            day_accum = 1.0
+            day_len = 0
+
+    total_return = cash + qty * open_p[-1]
+    total_return = total_return / initial_cash - 1.0
+    sharpe = 0.0
+    if bar_count > 1:
+        variance = m2_bar / bar_count
+        if variance > 1e-12:
+            sharpe = mean_bar / np.sqrt(variance) * bar_factor
+
+    avg_daily = 0.0 if day_count == 0 else day_sum / day_count
+    daily_target_hit_rate = 0.0 if day_count == 0 else day_hits / day_count
+    daily_win_rate = 0.0 if day_count == 0 else day_wins / day_count
+    final_equity = cash + qty * open_p[-1]
+
+    return (
+        total_return,
+        n_trades,
+        sharpe,
+        max_drawdown,
+        final_equity,
+        avg_daily,
+        daily_target_hit_rate,
+        daily_win_rate,
+        worst_day,
+        best_day,
+        fee_paid,
+        slippage_paid,
+        funding_paid,
+        funding_events,
+    )
+
+
+if NUMBA_AVAILABLE:
+    _realistic_overlay_replay_kernel = njit(cache=True)(_realistic_overlay_replay_kernel_impl)
+else:  # pragma: no cover - fallback for environments without numba
+    _realistic_overlay_replay_kernel = _realistic_overlay_replay_kernel_impl
 
 
 def build_overlay_inputs(df: pd.DataFrame, pairs: tuple[str, ...], regime_pair: str) -> dict[str, pd.Series]:
@@ -515,6 +752,62 @@ def fast_overlay_replay_from_context(
     }
 
 
+def realistic_overlay_replay_from_context(
+    context: dict[str, Any],
+    library_lookup: dict[str, Any],
+    mapping: tuple[int, int, int, int],
+    route_breadth_threshold: float,
+    fee_rate: float = 0.0004,
+    slippage: float = 0.0002,
+    amount_step: float = 0.001,
+    min_qty: float = 0.001,
+) -> dict[str, Any]:
+    result = _realistic_overlay_replay_kernel(
+        context["open"],
+        context["close"],
+        context["funding_rates"],
+        context["bucket_codes"][float(route_breadth_threshold)],
+        context["regime"],
+        context["breadth"],
+        context["vol_ann"],
+        context["smooth_signal_matrix"],
+        library_lookup["signal_pos"],
+        library_lookup["rebalance_bars"],
+        library_lookup["regime_threshold"],
+        library_lookup["breadth_threshold"],
+        library_lookup["target_vol_ann"],
+        library_lookup["gross_cap"],
+        library_lookup["kill_switch_pct"],
+        library_lookup["cooldown_days"],
+        np.asarray(mapping, dtype="int64"),
+        float(gp.INITIAL_CASH),
+        float(fee_rate),
+        float(slippage),
+        float(amount_step),
+        float(min_qty),
+        float(gp.NO_TRADE_BAND),
+        int(BARS_PER_DAY),
+        float(gp.DAILY_TARGET_PCT),
+        float(BAR_FACTOR),
+    )
+    return {
+        "avg_daily_return": float(result[5]),
+        "total_return": float(result[0]),
+        "max_drawdown": float(result[3]),
+        "sharpe": float(result[2]),
+        "daily_target_hit_rate": float(result[6]),
+        "daily_win_rate": float(result[7]),
+        "worst_day": float(result[8]),
+        "best_day": float(result[9]),
+        "n_trades": int(result[1]),
+        "fee_paid": float(result[10]),
+        "slippage_paid": float(result[11]),
+        "funding_paid": float(result[12]),
+        "funding_events": int(result[13]),
+        "final_equity": float(result[4]),
+    }
+
+
 def realistic_overlay_replay(
     df: pd.DataFrame,
     trade_pair: str,
@@ -525,123 +818,21 @@ def realistic_overlay_replay(
     mapping: tuple[int, int, int, int],
     route_breadth_threshold: float,
 ) -> dict[str, Any]:
-    idx = pd.DatetimeIndex(df.index)
-    open_p = df[f"{trade_pair}_open"].to_numpy(dtype="float64")
-    close_p = df[f"{trade_pair}_close"].to_numpy(dtype="float64")
-    vol_ann = overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64")
-    day_index = idx.normalize()
-    regime = overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64")
-    breadth = overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64")
-    bucket_codes = build_route_bucket_codes(idx, overlay_inputs, route_breadth_threshold)
-    spans = sorted({params.signal_span for params in library})
-    smooth_signals = {
-        span: raw_signal.ewm(span=span, adjust=False).mean().to_numpy(dtype="float64")
-        for span in spans
-    }
-
-    funding_map = {}
-    if not funding_df.empty:
-        for _, row in funding_df.iterrows():
-            funding_map[pd.Timestamp(row["fundingTime"]).tz_convert("UTC")] = float(row["fundingRate"])
-
-    cash = float(gp.INITIAL_CASH)
-    qty = 0.0
-    n_trades = 0
-    fee_paid = 0.0
-    slippage_paid = 0.0
-    funding_paid = 0.0
-    funding_events = 0
-    net_ret: list[float] = []
-    equity_curve = [float(gp.INITIAL_CASH)]
-    peak_equity = float(gp.INITIAL_CASH)
-    cooldown_bars_left = 0
-
-    for exec_idx in range(1, len(df) - 1):
-        signal_idx = exec_idx - 1
-        ts_open = pd.Timestamp(idx[exec_idx])
-        px_open = float(open_p[exec_idx])
-        next_open = float(open_p[exec_idx + 1])
-        prev_close = float(close_p[signal_idx])
-
-        if qty != 0.0 and ts_open in funding_map:
-            funding_rate = funding_map[ts_open]
-            funding_cashflow = -qty * px_open * funding_rate
-            cash += funding_cashflow
-            funding_paid += funding_cashflow
-            funding_events += 1
-
-        equity_before = cash + qty * px_open
-        if equity_before <= 1e-9:
-            equity_before = 1e-9
-        peak_equity = max(peak_equity, equity_before)
-
-        active_idx = int(mapping[int(bucket_codes[signal_idx])])
-        params = library[active_idx]
-        if cooldown_bars_left > 0:
-            cooldown_bars_left -= 1
-
-        signal_pct = float(np.clip(smooth_signals[params.signal_span][signal_idx], -500.0, 500.0))
-        requested_weight = signal_pct / 100.0
-        regime_score = float(regime[signal_idx])
-        breadth_score = float(breadth[signal_idx])
-        long_ok = regime_score >= params.regime_threshold and breadth_score >= params.breadth_threshold
-        short_ok = regime_score <= -params.regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
-        if requested_weight > 0.0 and not long_ok:
-            requested_weight = 0.0
-        elif requested_weight < 0.0 and not short_ok:
-            requested_weight = 0.0
-
-        bar_vol_ann = float(vol_ann[signal_idx])
-        if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
-            vol_scale = min(
-                params.target_vol_ann / bar_vol_ann,
-                params.gross_cap / max(abs(requested_weight), 1e-8),
-            )
-            requested_weight *= float(vol_scale)
-        requested_weight = float(np.clip(requested_weight, -params.gross_cap, params.gross_cap))
-
-        drawdown = equity_before / max(peak_equity, 1e-8) - 1.0
-        if drawdown <= -params.kill_switch_pct and cooldown_bars_left == 0:
-            cooldown_bars_left = params.cooldown_days * gp.periods_per_day(gp.TIMEFRAME)
-
-        current_weight = qty * px_open / equity_before if abs(equity_before) > 1e-9 else 0.0
-        target_weight = current_weight
-        if cooldown_bars_left > 0:
-            target_weight = 0.0
-        elif signal_idx % params.rebalance_bars == 0:
-            target_weight = requested_weight
-
-        if abs(target_weight - current_weight) < gp.NO_TRADE_BAND / 100.0:
-            target_weight = current_weight
-
-        target_notional = equity_before * target_weight
-        target_qty = quantize_amount(target_notional / prev_close if abs(prev_close) > 1e-12 else 0.0, 0.001, 0.001)
-        diff_qty = quantize_amount(target_qty - qty, 0.001, 0.001)
-
-        if abs(diff_qty) > 0.0:
-            side = 1.0 if diff_qty > 0.0 else -1.0
-            exec_price = px_open * (1.0 + 0.0002 * side)
-            trade_notional = diff_qty * exec_price
-            fee = abs(diff_qty) * exec_price * 0.0004
-            cash -= trade_notional
-            cash -= fee
-            qty += diff_qty
-            n_trades += 1
-            fee_paid += fee
-            slippage_paid += abs(diff_qty) * px_open * 0.0002
-
-        equity_after = cash + qty * next_open
-        net_ret.append(float(equity_after / equity_before - 1.0))
-        equity_curve.append(float(equity_after))
-
-    return summarize(
-        np.asarray(net_ret, dtype="float64"),
-        np.asarray(equity_curve, dtype="float64"),
-        n_trades=n_trades,
-        fee_paid=fee_paid,
-        slippage_paid=slippage_paid,
-        funding_paid=funding_paid,
-        funding_events=funding_events,
+    library_lookup = build_library_lookup(library)
+    context = build_fast_context(
+        df=df,
+        pair=trade_pair,
+        raw_signal=raw_signal,
+        overlay_inputs=overlay_inputs,
+        route_thresholds=(float(route_breadth_threshold),),
+        library_lookup=library_lookup,
+        funding_df=funding_df,
+    )
+    return realistic_overlay_replay_from_context(
+        context,
+        library_lookup,
+        mapping,
+        route_breadth_threshold,
     )
 
 
@@ -737,6 +928,7 @@ def main() -> None:
                     overlay_inputs=overlay_inputs,
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
+                    funding_df=funding_slice,
                 ),
             }
         window_cache[label] = {
@@ -767,13 +959,9 @@ def main() -> None:
                     fast_engine,
                 )
             )
-            per_pair_realistic[pair] = realistic_overlay_replay(
-                df,
-                pair,
-                pair_data["signal"],
-                pair_data["overlay_inputs"],
-                pair_data["funding"],
-                library,
+            per_pair_realistic[pair] = realistic_overlay_replay_from_context(
+                pair_data["fast_context"],
+                library_lookup,
                 baseline_candidate.mapping_indices,
                 baseline_candidate.route_breadth_threshold,
             )
@@ -847,13 +1035,9 @@ def main() -> None:
             per_pair = {}
             for pair in pairs:
                 pair_data = window_data["pairs"][pair]
-                per_pair[pair] = realistic_overlay_replay(
-                    df,
-                    pair,
-                    pair_data["signal"],
-                    pair_data["overlay_inputs"],
-                    pair_data["funding"],
-                    library,
+                per_pair[pair] = realistic_overlay_replay_from_context(
+                    pair_data["fast_context"],
+                    library_lookup,
                     mapping,
                     route_threshold,
                 )

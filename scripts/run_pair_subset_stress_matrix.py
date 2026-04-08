@@ -301,6 +301,221 @@ def comparison_block(base_agg: dict[str, Any], sel_agg: dict[str, Any]) -> dict[
     }
 
 
+def make_check(name: str, passed: bool, actual: float, target: float, comparator: str, note: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "passed": bool(passed),
+        "actual": float(actual),
+        "target": float(target),
+        "comparator": comparator,
+        "note": note,
+    }
+
+
+def build_progressive_stress_profile(report: dict[str, Any], candidate_key: str) -> dict[str, Any]:
+    scenarios = report["scenarios"]
+    scenario_names = list(scenarios.keys())
+    recent_2m_worst = [
+        float(scenarios[name][candidate_key]["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    recent_6m_worst = [
+        float(scenarios[name][candidate_key]["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    full_4y_worst = [
+        float(scenarios[name][candidate_key]["full_4y"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    recent_2m_mdd = [
+        abs(float(scenarios[name][candidate_key]["recent_2m"]["aggregate"]["worst_max_drawdown"]))
+        for name in scenario_names
+    ]
+    recent_6m_mdd = [
+        abs(float(scenarios[name][candidate_key]["recent_6m"]["aggregate"]["worst_max_drawdown"]))
+        for name in scenario_names
+    ]
+    full_4y_mdd = [
+        abs(float(scenarios[name][candidate_key]["full_4y"]["aggregate"]["worst_max_drawdown"]))
+        for name in scenario_names
+    ]
+    recent_2m_delta = [
+        float(scenarios[name]["comparison"]["recent_2m"]["delta_worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    recent_6m_delta = [
+        float(scenarios[name]["comparison"]["recent_6m"]["delta_worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    full_4y_mean_delta = [
+        float(scenarios[name]["comparison"]["full_4y"]["delta_mean_avg_daily_return"])
+        for name in scenario_names
+    ]
+    full_4y_worst_delta = [
+        float(scenarios[name]["comparison"]["full_4y"]["delta_worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+
+    checks = [
+        make_check(
+            "recent_2m_worst_pair_positive_all",
+            min(recent_2m_worst) >= 0.0,
+            min(recent_2m_worst),
+            0.0,
+            ">=",
+            "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함",
+        ),
+        make_check(
+            "recent_2m_worst_pair_vs_baseline_all",
+            min(recent_2m_delta) > 0.0,
+            min(recent_2m_delta),
+            0.0,
+            ">",
+            "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함",
+        ),
+        make_check(
+            "recent_6m_worst_pair_positive_all",
+            min(recent_6m_worst) > 0.0,
+            min(recent_6m_worst),
+            0.0,
+            ">",
+            "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함",
+        ),
+        make_check(
+            "recent_6m_worst_pair_vs_baseline_all",
+            min(recent_6m_delta) > 0.0,
+            min(recent_6m_delta),
+            0.0,
+            ">",
+            "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함",
+        ),
+        make_check(
+            "full_4y_worst_pair_positive_all",
+            min(full_4y_worst) > 0.0,
+            min(full_4y_worst),
+            0.0,
+            ">",
+            "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함",
+        ),
+        make_check(
+            "full_4y_mean_vs_baseline_all",
+            min(full_4y_mean_delta) > 0.0,
+            min(full_4y_mean_delta),
+            0.0,
+            ">",
+            "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함",
+        ),
+        make_check(
+            "full_4y_worst_pair_vs_baseline_majority",
+            sum(delta > 0.0 for delta in full_4y_worst_delta) >= max(1, len(full_4y_worst_delta) - 1),
+            sum(delta > 0.0 for delta in full_4y_worst_delta),
+            max(1, len(full_4y_worst_delta) - 1),
+            ">=",
+            "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함",
+        ),
+        make_check(
+            "recent_2m_worst_mdd_cap_all",
+            max(recent_2m_mdd) <= 0.18,
+            max(recent_2m_mdd),
+            0.18,
+            "<=",
+            "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내",
+        ),
+        make_check(
+            "recent_6m_worst_mdd_cap_all",
+            max(recent_6m_mdd) <= 0.17,
+            max(recent_6m_mdd),
+            0.17,
+            "<=",
+            "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내",
+        ),
+        make_check(
+            "full_4y_worst_mdd_cap_all",
+            max(full_4y_mdd) <= 0.26,
+            max(full_4y_mdd),
+            0.26,
+            "<=",
+            "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내",
+        ),
+    ]
+    return {
+        "checks": checks,
+        "passed": all(item["passed"] for item in checks),
+    }
+
+
+def build_target_060_stress_profile(report: dict[str, Any], candidate_key: str) -> dict[str, Any]:
+    scenarios = report["scenarios"]
+    scenario_names = list(scenarios.keys())
+    recent_2m_worst = [
+        float(scenarios[name][candidate_key]["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    recent_6m_worst = [
+        float(scenarios[name][candidate_key]["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    full_4y_worst = [
+        float(scenarios[name][candidate_key]["full_4y"]["aggregate"]["worst_pair_avg_daily_return"])
+        for name in scenario_names
+    ]
+    recent_6m_mdd = [
+        abs(float(scenarios[name][candidate_key]["recent_6m"]["aggregate"]["worst_max_drawdown"]))
+        for name in scenario_names
+    ]
+    full_4y_mdd = [
+        abs(float(scenarios[name][candidate_key]["full_4y"]["aggregate"]["worst_max_drawdown"]))
+        for name in scenario_names
+    ]
+
+    checks = [
+        make_check(
+            "recent_2m_worst_pair_target_060_all",
+            min(recent_2m_worst) >= 0.006,
+            min(recent_2m_worst),
+            0.006,
+            ">=",
+            "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상",
+        ),
+        make_check(
+            "recent_6m_worst_pair_target_060_all",
+            min(recent_6m_worst) >= 0.006,
+            min(recent_6m_worst),
+            0.006,
+            ">=",
+            "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상",
+        ),
+        make_check(
+            "full_4y_worst_pair_target_060_all",
+            min(full_4y_worst) >= 0.006,
+            min(full_4y_worst),
+            0.006,
+            ">=",
+            "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상",
+        ),
+        make_check(
+            "recent_6m_worst_mdd_cap_all",
+            max(recent_6m_mdd) <= 0.17,
+            max(recent_6m_mdd),
+            0.17,
+            "<=",
+            "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내",
+        ),
+        make_check(
+            "full_4y_worst_mdd_cap_all",
+            max(full_4y_mdd) <= 0.20,
+            max(full_4y_mdd),
+            0.20,
+            "<=",
+            "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내",
+        ),
+    ]
+    return {
+        "checks": checks,
+        "passed": all(item["passed"] for item in checks),
+    }
+
+
 def build_candidate_metrics(
     df_all: pd.DataFrame,
     raw_signal_all: dict[str, pd.Series],
@@ -419,6 +634,30 @@ def main() -> None:
             "mapping_indices": summary["selected_candidate"]["mapping_indices"],
         },
         "scenarios": scenarios_report,
+    }
+    report["profiles"] = {
+        "progressive_stress": {
+            "baseline": build_progressive_stress_profile(report, "baseline_candidate"),
+            "selected": build_progressive_stress_profile(report, "selected_candidate"),
+        },
+        "target_060_stress": {
+            "baseline": build_target_060_stress_profile(report, "baseline_candidate"),
+            "selected": build_target_060_stress_profile(report, "selected_candidate"),
+        },
+    }
+    report["promotion_decision"] = {
+        "selected_passes_target_060_stress": report["profiles"]["target_060_stress"]["selected"]["passed"],
+        "selected_passes_progressive_stress": report["profiles"]["progressive_stress"]["selected"]["passed"],
+        "selected_candidate_ready_for_merge": report["profiles"]["target_060_stress"]["selected"]["passed"],
+        "status": (
+            "target_060_stress_pass"
+            if report["profiles"]["target_060_stress"]["selected"]["passed"]
+            else (
+                "progressive_stress_pass"
+                if report["profiles"]["progressive_stress"]["selected"]["passed"]
+                else "stress_fail"
+            )
+        ),
     }
     out_path = Path(args.report_out)
     out_path.write_text(json.dumps(json_safe(report), ensure_ascii=False, indent=2) + "\n")

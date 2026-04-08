@@ -1488,5 +1488,277 @@
         }
       }
     }
+  },
+  "profiles": {
+    "progressive_stress": {
+      "baseline": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive_all",
+            "passed": false,
+            "actual": -0.0027771001469137444,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.006797020141034391,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_positive_all",
+            "passed": false,
+            "actual": -0.0009450851886315243,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.0007156097823965658,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_positive_all",
+            "passed": true,
+            "actual": 9.214335644436991e-05,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline_all",
+            "passed": true,
+            "actual": 0.00014840920672112823,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_vs_baseline_majority",
+            "passed": true,
+            "actual": 3.0,
+            "target": 3.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.17014167326976004,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.16602979141511232,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.2535345654074087,
+            "target": 0.26,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "selected": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.004019919994120646,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.006797020141034391,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.005352024391208078,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.0007156097823965658,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.0003268531461299337,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline_all",
+            "passed": true,
+            "actual": 0.00014840920672112823,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_vs_baseline_majority",
+            "passed": true,
+            "actual": 3.0,
+            "target": 3.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10693005897361174,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.1648791537658022,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.24689199324256705,
+            "target": 0.26,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+          }
+        ],
+        "passed": true
+      }
+    },
+    "target_060_stress": {
+      "baseline": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": -0.0027771001469137444,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": -0.0009450851886315243,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 9.214335644436991e-05,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.16602979141511232,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": false,
+            "actual": 0.2535345654074087,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "selected": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.004019919994120646,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.005352024391208078,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.0003268531461299337,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.1648791537658022,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": false,
+            "actual": 0.24689199324256705,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      }
+    }
+  },
+  "promotion_decision": {
+    "selected_passes_target_060_stress": false,
+    "selected_passes_progressive_stress": true,
+    "selected_candidate_ready_for_merge": false,
+    "status": "progressive_stress_pass"
   }
 }

@@ -1,0 +1,142 @@
+{
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_search_summary.json",
+  "candidate": {
+    "route_breadth_threshold": 0.5,
+    "mapping_indices": [
+      0,
+      7,
+      0,
+      5
+    ],
+    "mapping": {
+      "down_narrow": {
+        "signal_span": 1,
+        "rebalance_bars": 3,
+        "regime_threshold": 0.0,
+        "breadth_threshold": 0.5,
+        "target_vol_ann": 0.8,
+        "gross_cap": 1.5,
+        "kill_switch_pct": 0.16,
+        "cooldown_days": 1,
+        "vol_window_bars": 864,
+        "regime_fast_days": 3,
+        "regime_slow_days": 14,
+        "breadth_lookback_days": 3
+      },
+      "down_broad": {
+        "signal_span": 1,
+        "rebalance_bars": 3,
+        "regime_threshold": 0.0,
+        "breadth_threshold": 0.5,
+        "target_vol_ann": 0.4,
+        "gross_cap": 0.75,
+        "kill_switch_pct": 0.08,
+        "cooldown_days": 1,
+        "vol_window_bars": 864,
+        "regime_fast_days": 3,
+        "regime_slow_days": 14,
+        "breadth_lookback_days": 3
+      },
+      "up_narrow": {
+        "signal_span": 1,
+        "rebalance_bars": 3,
+        "regime_threshold": 0.0,
+        "breadth_threshold": 0.5,
+        "target_vol_ann": 0.8,
+        "gross_cap": 1.5,
+        "kill_switch_pct": 0.16,
+        "cooldown_days": 1,
+        "vol_window_bars": 864,
+        "regime_fast_days": 3,
+        "regime_slow_days": 14,
+        "breadth_lookback_days": 3
+      },
+      "up_broad": {
+        "signal_span": 1,
+        "rebalance_bars": 3,
+        "regime_threshold": 0.01,
+        "breadth_threshold": 0.65,
+        "target_vol_ann": 0.4,
+        "gross_cap": 0.75,
+        "kill_switch_pct": 0.12,
+        "cooldown_days": 1,
+        "vol_window_bars": 864,
+        "regime_fast_days": 3,
+        "regime_slow_days": 14,
+        "breadth_lookback_days": 3
+      }
+    }
+  },
+  "assumptions": {
+    "execution_timing": "Use the just-closed 5m bar for signal, execute on the next 5m bar open.",
+    "fee_rate_per_side": 0.0004,
+    "slippage_per_side": 0.0002,
+    "amount_step": 0.001,
+    "min_qty": 0.001,
+    "dead_band_pp": 10,
+    "delay_bars": 1,
+    "funding_cache_path": "/Users/jsa/work/epic_invest/data/binance_futures/BTCUSDT_funding_2022-04-06_2026-04-06.csv",
+    "funding_loaded": true
+  },
+  "windows": {
+    "recent_2m": {
+      "avg_daily_return": -0.0022490012486769944,
+      "total_return": -0.1328499911103086,
+      "max_drawdown": -0.1616203441534828,
+      "sharpe": -4.443066151307021,
+      "daily_target_hit_rate": 0.0,
+      "daily_win_rate": 0.3220338983050847,
+      "worst_day": -0.13269107367194288,
+      "best_day": 4.440892098500626e-16,
+      "n_trades": 93,
+      "fee_paid": 243.804452953976,
+      "slippage_paid": 121.90171038000004,
+      "funding_paid": -16.86824769625047,
+      "funding_events": 76,
+      "final_equity": 86715.00088896914,
+      "start": "2026-02-06",
+      "end": "2026-04-06",
+      "bars": 16993
+    },
+    "recent_6m": {
+      "avg_daily_return": 0.01079441075460111,
+      "total_return": 5.456018012330988,
+      "max_drawdown": -0.1316699500441092,
+      "sharpe": 6.71223431163,
+      "daily_target_hit_rate": 0.3516483516483517,
+      "daily_win_rate": 0.5934065934065934,
+      "worst_day": -0.08277951320984123,
+      "best_day": 0.24659977610497763,
+      "n_trades": 5033,
+      "fee_paid": 18931.396034475405,
+      "slippage_paid": 9465.720955859986,
+      "funding_paid": 533.3603234833525,
+      "funding_events": 218,
+      "final_equity": 645601.8012330988,
+      "start": "2025-10-06",
+      "end": "2026-04-06",
+      "bars": 52417
+    },
+    "full_4y": {
+      "avg_daily_return": 0.0040728093357065235,
+      "total_return": 310.790655039701,
+      "max_drawdown": -0.16121097039884913,
+      "sharpe": 4.140840696608604,
+      "daily_target_hit_rate": 0.14852840520191649,
+      "daily_win_rate": 0.5441478439425051,
+      "worst_day": -0.11321584271108376,
+      "best_day": 0.15754019518870233,
+      "n_trades": 12406,
+      "fee_paid": 1698926.542972196,
+      "slippage_paid": 849464.5978262601,
+      "funding_paid": 468952.62867385935,
+      "funding_events": 2551,
+      "final_equity": 31179065.503970098,
+      "start": "2022-04-06",
+      "end": "2026-04-06",
+      "bars": 420769
+    }
+  },
+  "created_at": "2026-04-08T12:00:29.937726+00:00"
+}

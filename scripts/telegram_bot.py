@@ -8,8 +8,10 @@ import json
 import os
 import secrets
 import subprocess
+import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -56,6 +58,12 @@ DEFAULT_MODE = os.getenv("BINANCE_MODE", "demo")
 POLL_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_POLL_TIMEOUT_SECONDS", "30"))
 PENDING_CONFIRM_TTL_SECONDS = int(os.getenv("TELEGRAM_CONFIRM_TTL_SECONDS", "120"))
 MESSAGE_LIMIT = 3500
+TRADER_STATE_STALE_SECONDS = int(os.getenv("TRADER_STATE_STALE_SECONDS", "180"))
+BOT_MAX_WORKERS = max(1, int(os.getenv("TELEGRAM_BOT_MAX_WORKERS", "4")))
+ASYNC_READ_COMMANDS = {"status", "plan", "positions", "protection", "killswitch", "logs", "recent"}
+SNAPSHOT_CACHE_STALE_SECONDS = int(os.getenv("TELEGRAM_SNAPSHOT_CACHE_STALE_SECONDS", "180"))
+STATE_LOCK = threading.Lock()
+COMMAND_EXECUTOR = ThreadPoolExecutor(max_workers=BOT_MAX_WORKERS, thread_name_prefix="telegram-bot")
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,13 +78,76 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def default_bot_runtime() -> dict[str, Any]:
+    return {
+        "last_started_at": None,
+        "last_poll_started_at": None,
+        "last_poll_ok_at": None,
+        "last_reply_at": None,
+        "last_error_at": None,
+        "last_error_message": None,
+        "consecutive_poll_errors": 0,
+        "last_update_id": None,
+        "last_command": None,
+        "pid": None,
+    }
+
+
+def ensure_bot_runtime(state: dict[str, Any]) -> dict[str, Any]:
+    runtime = state.setdefault("runtime", {})
+    defaults = default_bot_runtime()
+    for key, value in defaults.items():
+        runtime.setdefault(key, value)
+    return runtime
+
+
+def update_bot_runtime(state: dict[str, Any], **updates: Any) -> dict[str, Any]:
+    runtime = ensure_bot_runtime(state)
+    for key, value in updates.items():
+        runtime[key] = value
+    return runtime
+
+
+def parse_iso_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def age_seconds(value: Any) -> float | None:
+    parsed = parse_iso_datetime(value)
+    if parsed is None:
+        return None
+    return max(0.0, (utc_now() - parsed).total_seconds())
+
+
+def latest_signal(values: list[Any]) -> str | None:
+    parsed: list[tuple[datetime, str]] = []
+    for value in values:
+        dt = parse_iso_datetime(value)
+        if dt is None:
+            continue
+        parsed.append((dt, str(value)))
+    if not parsed:
+        return None
+    parsed.sort(key=lambda item: item[0])
+    return parsed[-1][1]
+
+
 def load_bot_state() -> dict[str, Any]:
     if not BOT_STATE_PATH.exists():
-        return {"offset": None, "pending": {}}
+        return {"offset": None, "pending": {}, "runtime": default_bot_runtime()}
     with open(BOT_STATE_PATH, "r") as f:
         state = json.load(f)
     state.setdefault("offset", None)
     state.setdefault("pending", {})
+    ensure_bot_runtime(state)
     return state
 
 
@@ -150,6 +221,32 @@ def send_message(chat_id: int, text: str) -> None:
         )
 
 
+def send_chat_action(chat_id: int, action: str = "typing") -> None:
+    telegram_api(
+        "sendChatAction",
+        {
+            "chat_id": chat_id,
+            "action": action,
+        },
+    )
+
+
+def processing_notice(state: dict[str, Any], chat_id: int, command: str) -> str | None:
+    if command in {"status", "plan", "positions", "protection", "killswitch", "logs", "recent"}:
+        return (
+            f"/{command} 요청을 받았습니다.\n"
+            "지금 상태를 확인하는 중입니다. 결과를 곧 보내드리겠습니다."
+        )
+    if command == "confirm":
+        pending = state.get("pending", {}).get(str(chat_id))
+        summary = str((pending or {}).get("summary") or "요청한 작업")
+        return (
+            f"{summary} 요청을 실행 중입니다.\n"
+            "먼저 진행 중임을 알려드립니다. 완료되면 결과를 바로 보내드리겠습니다."
+        )
+    return None
+
+
 def normalize_command(text: str) -> tuple[str, list[str]]:
     tokens = text.strip().split()
     if not tokens:
@@ -165,12 +262,15 @@ def normalize_command(text: str) -> tuple[str, list[str]]:
 
 def trader_process_rows() -> list[dict[str, str]]:
     entry = str(TRADER_SCRIPT)
-    output = subprocess.run(
-        ["ps", "-ax", "-o", "pid=,ppid=,stat=,etime=,command="],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
+    try:
+        output = subprocess.run(
+            ["ps", "-ax", "-o", "pid=,ppid=,stat=,etime=,command="],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except Exception:
+        return []
     rows: list[dict[str, str]] = []
     for line in output:
         if entry not in line:
@@ -190,8 +290,89 @@ def trader_process_rows() -> list[dict[str, str]]:
     return rows
 
 
+def read_pid(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    try:
+        raw = path.read_text().strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def is_pid_running(pid: int | None) -> bool:
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def trader_runtime_pid() -> int | None:
+    state = load_state(STATE_PATH)
+    runtime_health = state.get("runtime_health") or {}
+    raw_pid = runtime_health.get("pid")
+    try:
+        return int(raw_pid) if raw_pid is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def live_state_fresh() -> bool:
+    state = load_state(STATE_PATH)
+    runtime_health = state.get("runtime_health") or {}
+    last_progress_at = latest_signal(
+        [
+            runtime_health.get("last_success_at"),
+            runtime_health.get("last_loop_started_at"),
+            runtime_health.get("last_loop_completed_at"),
+            state.get("updated_at"),
+        ]
+    )
+    last_age = age_seconds(last_progress_at)
+    return last_age is not None and last_age <= TRADER_STATE_STALE_SECONDS
+
+
+def snapshot_cache_age(snapshot: dict[str, Any] | None) -> float | None:
+    if not snapshot:
+        return None
+    return age_seconds(snapshot.get("captured_at"))
+
+
+def snapshot_cache_fresh(snapshot: dict[str, Any] | None) -> bool:
+    age = snapshot_cache_age(snapshot)
+    return age is not None and age <= SNAPSHOT_CACHE_STALE_SECONDS
+
+
+def cached_positions_map(snapshot: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    positions = (snapshot or {}).get("positions") or []
+    result: dict[str, dict[str, Any]] = {}
+    for pos in positions:
+        pair = str(pos.get("pair") or "")
+        if not pair:
+            continue
+        result[pair] = pos
+    return result
+
+
 def is_trader_running() -> bool:
-    return bool(trader_process_rows())
+    runtime_pid = trader_runtime_pid()
+    if is_pid_running(runtime_pid):
+        return True
+    pid = read_pid(TRADER_PID_PATH)
+    if is_pid_running(pid):
+        return True
+    rows = trader_process_rows()
+    if rows:
+        return True
+    return live_state_fresh()
 
 
 def read_recent_lines(path: Path, max_lines: int = 20) -> list[str]:
@@ -218,29 +399,41 @@ def read_recent_audit(max_items: int = 10) -> list[dict[str, Any]]:
 
 
 def get_runtime_snapshot() -> dict[str, Any]:
+    bot_state = load_bot_state()
+    bot_runtime = ensure_bot_runtime(bot_state)
+    trader_state = load_state(STATE_PATH)
+    trader_runtime = trader_state.get("runtime_health") or {}
+    trader_pid = trader_runtime_pid() or read_pid(TRADER_PID_PATH)
+    trader_rows = trader_process_rows()
+    cached_snapshot = trader_state.get("latest_runtime_snapshot") or {}
     snapshot: dict[str, Any] = {
         "mode": DEFAULT_MODE,
         "leverage": resolve_default_leverage(),
-        "processes": trader_process_rows(),
-        "state": load_state(STATE_PATH),
+        "processes": trader_rows,
+        "state": trader_state,
+        "trader_running": bool(trader_rows) or is_pid_running(trader_pid) or live_state_fresh(),
+        "trader_pid": trader_pid,
+        "trader_runtime": trader_runtime,
+        "bot_runtime": bot_runtime,
+        "snapshot_age_seconds": snapshot_cache_age(cached_snapshot),
+        "snapshot_captured_at": cached_snapshot.get("captured_at"),
+        "snapshot_ready": bool(cached_snapshot.get("captured_at")),
     }
-    exchange = None
-    try:
-        exchange = get_exchange(DEFAULT_MODE)
-        snapshot["equity"] = fetch_equity(exchange)
-        snapshot["positions"] = fetch_open_position_map(exchange)
-        snapshot["protections"] = fetch_strategy_protection_orders(exchange)
-    except Exception as exc:
-        snapshot["exchange_error"] = str(exc)
+    if cached_snapshot:
+        snapshot["equity"] = cached_snapshot.get("equity")
+        snapshot["positions"] = cached_positions_map(cached_snapshot)
+        snapshot["protections"] = cached_snapshot.get("protections") or []
+        snapshot["exchange_error"] = cached_snapshot.get("exchange_error")
+        snapshot["plan"] = cached_snapshot.get("plan")
+        if not snapshot["plan"] and snapshot_cache_fresh(cached_snapshot):
+            snapshot["plan_error"] = "트레이더 초기화 중입니다."
+    else:
         snapshot["equity"] = None
         snapshot["positions"] = {}
         snapshot["protections"] = []
-
-    try:
-        snapshot["plan"] = build_strategy_plan(None, snapshot["leverage"])
-    except Exception as exc:
-        snapshot["plan_error"] = str(exc)
+        snapshot["exchange_error"] = "트레이더 캐시가 아직 준비되지 않았습니다."
         snapshot["plan"] = None
+        snapshot["plan_error"] = "트레이더 캐시가 아직 준비되지 않았습니다."
 
     return snapshot
 
@@ -251,12 +444,18 @@ def format_status(snapshot: dict[str, Any]) -> str:
     plan = snapshot.get("plan")
     positions = snapshot.get("positions", {})
     protections = snapshot.get("protections", [])
+    trader_runtime = snapshot.get("trader_runtime") or {}
+    bot_runtime = snapshot.get("bot_runtime") or {}
+    trader_running = bool(snapshot.get("trader_running"))
+    snapshot_ready = bool(snapshot.get("snapshot_ready"))
 
     lines = ["에픽 인베스트 상태"]
-    lines.append(f"- 트레이더: {'실행 중' if processes else '중지됨'}")
+    lines.append(f"- 트레이더: {'실행 중' if trader_running else '중지됨'}")
     if processes:
         p = processes[0]
         lines.append(f"- PID: {p['pid']} ({p['etime']})")
+    elif snapshot.get("trader_pid"):
+        lines.append(f"- PID: {snapshot['trader_pid']} (PID 파일 기준)")
     lines.append(f"- 모드: {snapshot['mode']}")
     lines.append(f"- 전략 레버리지: {snapshot['leverage']:.2f}x")
 
@@ -265,6 +464,10 @@ def format_status(snapshot: dict[str, Any]) -> str:
         lines.append(f"- 자산: ${float(equity):,.2f}")
     if snapshot.get("exchange_error"):
         lines.append(f"- 거래소 오류: {snapshot['exchange_error']}")
+    if snapshot.get("snapshot_captured_at"):
+        lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
+    elif trader_running:
+        lines.append("- 상세 데이터: 초기 동기화 중")
 
     if plan:
         lines.append(f"- 세션: {plan['session_type'].upper()}")
@@ -272,8 +475,18 @@ def format_status(snapshot: dict[str, Any]) -> str:
         lines.append(f"- 적용일: {plan['effective_day']}")
         lines.append(f"- 코어 총 레버리지: {plan['core_gross_leverage']:.3f}x")
 
-    lines.append(f"- 열린 포지션 수: {len(positions)}")
-    lines.append(f"- 관리 중 보호주문 수: {len(protections)}")
+    if snapshot_ready:
+        lines.append(f"- 열린 포지션 수: {len(positions)}")
+        lines.append(f"- 관리 중 보호주문 수: {len(protections)}")
+    else:
+        lines.append("- 열린 포지션 수: 초기 동기화 중")
+        lines.append("- 관리 중 보호주문 수: 초기 동기화 중")
+    if trader_runtime.get("last_success_at"):
+        lines.append(f"- 최근 트레이더 정상 시각: {trader_runtime['last_success_at']}")
+    if bot_runtime.get("last_reply_at"):
+        lines.append(f"- 최근 봇 응답 시각: {bot_runtime['last_reply_at']}")
+    if trader_runtime.get("last_error_message"):
+        lines.append(f"- 최근 트레이더 오류: {trader_runtime['last_error_message']}")
 
     core_day_state = state.get("core_day_state") or {}
     if core_day_state:
@@ -290,9 +503,13 @@ def format_status(snapshot: dict[str, Any]) -> str:
 def format_plan(snapshot: dict[str, Any]) -> str:
     plan = snapshot.get("plan")
     if not plan:
+        if not snapshot.get("snapshot_ready"):
+            return "전략 계획 캐시를 준비 중입니다. 첫 동기화가 끝나면 바로 조회됩니다."
         return f"전략 계획을 불러오지 못했습니다: {snapshot.get('plan_error', '알 수 없는 오류')}"
 
     lines = ["오늘의 전략 계획"]
+    if snapshot.get("snapshot_captured_at"):
+        lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
     lines.append(f"- 세션: {plan['session_type'].upper()}")
     lines.append(f"- 시장 기준일: {plan['market_day']}")
     lines.append(f"- 적용일: {plan['effective_day']}")
@@ -310,9 +527,13 @@ def format_plan(snapshot: dict[str, Any]) -> str:
 
 def format_positions(snapshot: dict[str, Any]) -> str:
     positions = snapshot.get("positions", {})
+    if not snapshot.get("snapshot_ready"):
+        return "포지션 캐시를 준비 중입니다. 첫 동기화가 끝나면 바로 조회됩니다."
     if not positions:
         return "열린 포지션이 없습니다."
     lines = ["열린 포지션"]
+    if snapshot.get("snapshot_captured_at"):
+        lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
     for pair, pos in positions.items():
         side = {"LONG": "롱", "SHORT": "숏"}.get(str(pos["side"]), str(pos["side"]))
         margin_mode = {"isolated": "아이솔레이티드", "cross": "크로스"}.get(
@@ -329,9 +550,13 @@ def format_positions(snapshot: dict[str, Any]) -> str:
 
 def format_protections(snapshot: dict[str, Any]) -> str:
     protections = snapshot.get("protections", [])
+    if not snapshot.get("snapshot_ready"):
+        return "보호주문 캐시를 준비 중입니다. 첫 동기화가 끝나면 바로 조회됩니다."
     if not protections:
         return "관리 중인 보호주문이 없습니다."
     lines = ["관리 중인 보호주문"]
+    if snapshot.get("snapshot_captured_at"):
+        lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
     for order in protections:
         lines.append(
             f"- {order.get('symbol')}: 유형={order.get('type')} 방향={order.get('side')} "
@@ -556,6 +781,62 @@ def handle_command(state: dict[str, Any], chat_id: int, text: str) -> str:
     return "알 수 없는 명령입니다. /help 를 사용하세요."
 
 
+def record_bot_reply(state: dict[str, Any], command: str) -> None:
+    with STATE_LOCK:
+        update_bot_runtime(
+            state,
+            last_reply_at=utc_now().isoformat(),
+            last_command=command,
+            last_error_message=None,
+            pid=os.getpid(),
+        )
+        save_bot_state(state)
+
+
+def record_bot_error(state: dict[str, Any], command: str, exc: Exception) -> None:
+    with STATE_LOCK:
+        update_bot_runtime(
+            state,
+            last_error_at=utc_now().isoformat(),
+            last_error_message=f"{command}: {exc}",
+            last_command=command,
+            pid=os.getpid(),
+        )
+        save_bot_state(state)
+
+
+def send_response_and_audit(state: dict[str, Any], chat_id: int, text: str, response: str, command: str) -> None:
+    send_message(int(chat_id), response)
+    record_bot_reply(state, command)
+    audit("outgoing_message", {"chat_id": chat_id, "response_preview": response[:500]})
+
+
+def handle_async_read_command(state: dict[str, Any], chat_id: int, text: str, command: str) -> None:
+    try:
+        send_chat_action(int(chat_id), "typing")
+    except Exception:
+        pass
+    try:
+        response = handle_command(state, int(chat_id), text)
+    except Exception as exc:
+        response = f"명령 처리 중 오류가 발생했습니다: {exc}"
+        audit("command_error", {"chat_id": chat_id, "text": text, "error": str(exc)})
+        record_bot_error(state, command, exc)
+    try:
+        send_response_and_audit(state, int(chat_id), text, response, command)
+    except Exception as exc:
+        audit(
+            "send_error",
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "response_preview": response[:500],
+                "error": str(exc),
+            },
+        )
+        record_bot_error(state, command, exc)
+
+
 def process_update(state: dict[str, Any], update: dict[str, Any]) -> None:
     message = update.get("message") or update.get("edited_message")
     if not message:
@@ -576,14 +857,32 @@ def process_update(state: dict[str, Any], update: dict[str, Any]) -> None:
             pass
         return
 
+    command, _ = normalize_command(text)
+    notice = processing_notice(state, int(chat_id), command)
+    if notice:
+        try:
+            send_message(int(chat_id), notice)
+            audit("processing_notice", {"chat_id": chat_id, "command": command, "preview": notice[:500]})
+        except Exception as exc:
+            audit(
+                "processing_notice_error",
+                {"chat_id": chat_id, "command": command, "error": str(exc)},
+            )
+
+    if command in ASYNC_READ_COMMANDS:
+        COMMAND_EXECUTOR.submit(handle_async_read_command, state, int(chat_id), text, command)
+        audit("async_command_queued", {"chat_id": chat_id, "command": command})
+        return
+
     try:
         response = handle_command(state, int(chat_id), text)
     except Exception as exc:
         response = f"명령 처리 중 오류가 발생했습니다: {exc}"
         audit("command_error", {"chat_id": chat_id, "text": text, "error": str(exc)})
+        record_bot_error(state, command or "unknown", exc)
 
     try:
-        send_message(int(chat_id), response)
+        send_response_and_audit(state, int(chat_id), text, response, command or "unknown")
     except Exception as exc:
         audit(
             "send_error",
@@ -594,9 +893,8 @@ def process_update(state: dict[str, Any], update: dict[str, Any]) -> None:
                 "error": str(exc),
             },
         )
+        record_bot_error(state, command or "unknown", exc)
         return
-
-    audit("outgoing_message", {"chat_id": chat_id, "response_preview": response[:500]})
 
 
 def run_loop() -> None:
@@ -605,24 +903,57 @@ def run_loop() -> None:
     if not TELEGRAM_ALLOWED_CHAT_IDS:
         raise RuntimeError("TELEGRAM_ALLOWED_CHAT_IDS is not configured")
     state = load_bot_state()
+    with STATE_LOCK:
+        update_bot_runtime(
+            state,
+            last_started_at=utc_now().isoformat(),
+            last_error_message=None,
+            consecutive_poll_errors=0,
+            pid=os.getpid(),
+        )
+        save_bot_state(state)
     print("Telegram bot ready")
     audit("bot_start", {"allowed_chat_ids": sorted(TELEGRAM_ALLOWED_CHAT_IDS)})
 
     while True:
         try:
+            with STATE_LOCK:
+                update_bot_runtime(state, last_poll_started_at=utc_now().isoformat(), pid=os.getpid())
+                save_bot_state(state)
             updates = get_updates(state.get("offset"))
+            with STATE_LOCK:
+                update_bot_runtime(
+                    state,
+                    last_poll_ok_at=utc_now().isoformat(),
+                    consecutive_poll_errors=0,
+                    last_error_message=None,
+                    pid=os.getpid(),
+                )
+                save_bot_state(state)
             for update in updates:
                 update_id = int(update["update_id"])
                 state["offset"] = update_id + 1
-                save_bot_state(state)
+                with STATE_LOCK:
+                    update_bot_runtime(state, last_update_id=update_id, pid=os.getpid())
+                    save_bot_state(state)
                 try:
                     process_update(state, update)
                 except Exception as exc:
                     audit("update_error", {"update_id": update_id, "error": str(exc)})
+                    record_bot_error(state, "update", exc)
         except KeyboardInterrupt:
             raise
         except Exception as exc:
             audit("poll_error", {"error": str(exc)})
+            with STATE_LOCK:
+                runtime = update_bot_runtime(
+                    state,
+                    last_error_at=utc_now().isoformat(),
+                    last_error_message=str(exc),
+                    pid=os.getpid(),
+                )
+                runtime["consecutive_poll_errors"] = int(runtime.get("consecutive_poll_errors", 0)) + 1
+                save_bot_state(state)
             time.sleep(5)
 
 

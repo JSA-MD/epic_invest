@@ -1,0 +1,310 @@
+{
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_search_summary.json",
+  "pairs": [
+    "BTCUSDT",
+    "BNBUSDT"
+  ],
+  "baseline_candidate": {
+    "route_breadth_threshold": 0.5,
+    "mapping_indices": [
+      0,
+      7,
+      0,
+      5
+    ]
+  },
+  "selected_candidate": {
+    "route_breadth_threshold": 0.5,
+    "mapping_indices": [
+      2,
+      5,
+      7,
+      5
+    ]
+  },
+  "comparison": {
+    "recent_2m": {
+      "baseline_mean_avg_daily_return": 0.0020593863088981305,
+      "selected_mean_avg_daily_return": 0.005782172627933045,
+      "delta_mean_avg_daily_return": 0.003722786319034915,
+      "baseline_worst_pair_avg_daily_return": -0.0022490012486769944,
+      "selected_worst_pair_avg_daily_return": 0.005604196229101778,
+      "delta_worst_pair_avg_daily_return": 0.007853197477778772,
+      "baseline_worst_max_drawdown": -0.1616203441534828,
+      "selected_worst_max_drawdown": -0.10496191286058987,
+      "delta_worst_max_drawdown": 0.05665843129289294
+    },
+    "recent_6m": {
+      "baseline_mean_avg_daily_return": 0.00868472462435555,
+      "selected_mean_avg_daily_return": 0.008620217021361842,
+      "delta_mean_avg_daily_return": -6.450760299370716e-05,
+      "baseline_worst_pair_avg_daily_return": 0.0063222964704799925,
+      "selected_worst_pair_avg_daily_return": 0.007118387102473057,
+      "delta_worst_pair_avg_daily_return": 0.0007960906319930648,
+      "baseline_worst_max_drawdown": -0.1316420532356628,
+      "selected_worst_max_drawdown": -0.15048709910963487,
+      "delta_worst_max_drawdown": -0.018845045873972066
+    },
+    "full_4y": {
+      "baseline_mean_avg_daily_return": 0.004151364016625912,
+      "selected_mean_avg_daily_return": 0.004376816310405127,
+      "delta_mean_avg_daily_return": 0.00022545229377921548,
+      "baseline_worst_pair_avg_daily_return": 0.004059281646747695,
+      "selected_worst_pair_avg_daily_return": 0.004058248752325344,
+      "delta_worst_pair_avg_daily_return": -1.0328944223510564e-06,
+      "baseline_worst_max_drawdown": -0.16170318366897884,
+      "selected_worst_max_drawdown": -0.16351124150615126,
+      "delta_worst_max_drawdown": -0.0018080578371724165
+    }
+  },
+  "profiles": {
+    "progressive_improvement": {
+      "baseline": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive",
+            "passed": false,
+            "actual": -0.0022490012486769944,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인도 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline",
+            "passed": true,
+            "actual": -0.0022490012486769944,
+            "target": -0.0022490012486769944,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인 기준으로 baseline 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_min",
+            "passed": true,
+            "actual": 0.0063222964704799925,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline",
+            "passed": true,
+            "actual": 0.0063222964704799925,
+            "target": 0.0063222964704799925,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인 기준 baseline 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_positive",
+            "passed": true,
+            "actual": 0.004059281646747695,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline",
+            "passed": true,
+            "actual": 0.004151364016625912,
+            "target": 0.004151364016625912,
+            "comparator": ">=",
+            "note": "4년 평균 일수익률은 baseline 이상"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.1616203441534828,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.1316420532356628,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.16170318366897884,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "selected": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive",
+            "passed": true,
+            "actual": 0.005604196229101778,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인도 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline",
+            "passed": true,
+            "actual": 0.005604196229101778,
+            "target": -0.0022490012486769944,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인 기준으로 baseline 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_min",
+            "passed": true,
+            "actual": 0.007118387102473057,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline",
+            "passed": true,
+            "actual": 0.007118387102473057,
+            "target": 0.0063222964704799925,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인 기준 baseline 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_positive",
+            "passed": true,
+            "actual": 0.004058248752325344,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline",
+            "passed": true,
+            "actual": 0.004376816310405127,
+            "target": 0.004151364016625912,
+            "comparator": ">=",
+            "note": "4년 평균 일수익률은 baseline 이상"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.10496191286058987,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.15048709910963487,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.16351124150615126,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": true
+      }
+    },
+    "target_060": {
+      "baseline": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060",
+            "passed": false,
+            "actual": -0.0022490012486769944,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060",
+            "passed": true,
+            "actual": 0.0063222964704799925,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060",
+            "passed": false,
+            "actual": 0.004059281646747695,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.1316420532356628,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.16170318366897884,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "selected": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060",
+            "passed": false,
+            "actual": 0.005604196229101778,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060",
+            "passed": true,
+            "actual": 0.007118387102473057,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060",
+            "passed": false,
+            "actual": 0.004058248752325344,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.15048709910963487,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap",
+            "passed": true,
+            "actual": 0.16351124150615126,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      }
+    }
+  }
+}

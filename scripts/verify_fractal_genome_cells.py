@@ -375,6 +375,12 @@ def run_btc_backtest(
     ]
     completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
     report = json.loads(summary_path.read_text())
+    walk_forward = report.get("walk_forward", {})
+    wf_1 = walk_forward.get("wf_1")
+    min_fold_stress_survival_rate = walk_forward.get("min_fold_stress_survival_rate")
+    promotion_gate_passed = walk_forward.get("promotion_gate_passed")
+    assert wf_1 is not None, "btc summary must expose wf_1 core metrics"
+    assert min_fold_stress_survival_rate is not None, "btc summary must expose min fold stress survival rate"
     command_log_obj = {
         "command": cmd,
         "returncode": completed.returncode,
@@ -391,8 +397,29 @@ def run_btc_backtest(
         "summary_path": str(summary_path),
         "selection": report.get("selection", {}),
         "overall": report.get("overall", {}),
+        "walk_forward": {
+            "wf_1": wf_1,
+            "fold_pass_rate": walk_forward.get("fold_pass_rate"),
+            "stress_survival_rate_mean": walk_forward.get("stress_survival_rate_mean"),
+            "min_fold_stress_survival_rate": min_fold_stress_survival_rate,
+            "stress_survival_mean_threshold": walk_forward.get("stress_survival_mean_threshold"),
+            "stress_survival_min_threshold": walk_forward.get("stress_survival_min_threshold"),
+            "promotion_gate_passed": promotion_gate_passed,
+            "promotion_gate_reason": walk_forward.get("promotion_gate_reason"),
+            "wf_1_candidate_total_return": walk_forward.get("wf_1_candidate_total_return"),
+            "wf_1_candidate_daily_win_rate": walk_forward.get("wf_1_candidate_daily_win_rate"),
+            "wf_1_baseline_total_return": walk_forward.get("wf_1_baseline_total_return"),
+            "wf_1_baseline_daily_win_rate": walk_forward.get("wf_1_baseline_daily_win_rate"),
+            "wf_1_delta_total_return": walk_forward.get("wf_1_delta_total_return"),
+            "wf_1_delta_daily_win_rate": walk_forward.get("wf_1_delta_daily_win_rate"),
+        },
         "stage_count": len(report.get("stages", [])),
     }
+    assert btc_summary["walk_forward"]["promotion_gate_passed"] in {True, False}, "btc walk-forward promotion gate must be explicit"
+    assert btc_summary["walk_forward"]["wf_1"]["candidate"]["total_return"] is not None, "btc summary must expose wf_1 candidate total return"
+    assert btc_summary["walk_forward"]["wf_1"]["candidate"]["daily_win_rate"] is not None, "btc summary must expose wf_1 candidate daily win rate"
+    assert btc_summary["walk_forward"]["wf_1_delta_total_return"] is not None, "btc summary must expose wf_1 delta total return"
+    assert btc_summary["walk_forward"]["wf_1_delta_daily_win_rate"] is not None, "btc summary must expose wf_1 delta daily win rate"
     assert btc_summary["stage_count"] >= 1, "btc backtest should produce at least one curriculum stage"
     assert report.get("window_contract", {}).get("full_start_matches_first_data"), "full-range window must start at the first collected bar"
     return btc_summary

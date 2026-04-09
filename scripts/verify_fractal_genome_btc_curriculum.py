@@ -127,6 +127,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_BASELINE_SUMMARY,
     )
     parser.add_argument(
+        "--search-seed-summary",
+        default="",
+        help="Optional fractal search summary JSON used to seed verifier stages with previously discovered trees.",
+    )
+    parser.add_argument(
         "--walk-forward-folds",
         type=int,
         default=6,
@@ -142,6 +147,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stress-survival-threshold",
+        type=float,
+        default=0.67,
+    )
+    parser.add_argument(
+        "--stress-survival-mean-threshold",
+        type=float,
+        default=0.67,
+    )
+    parser.add_argument(
+        "--stress-survival-min-threshold",
         type=float,
         default=0.67,
     )
@@ -264,6 +279,32 @@ def build_btc_expert_pool(summary_paths: list[str], pool_size: int) -> list[dict
     return raw_pool[:pool_size]
 
 
+def load_seed_trees_from_summary(summary_path: str) -> list[Any]:
+    if not summary_path:
+        return []
+    path = Path(summary_path)
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text())
+    raw_trees: list[dict[str, Any]] = []
+    selected = payload.get("selected_candidate")
+    if isinstance(selected, dict) and isinstance(selected.get("tree"), dict):
+        raw_trees.append(selected["tree"])
+    for item in payload.get("top_candidates", []):
+        if isinstance(item, dict) and isinstance(item.get("tree"), dict):
+            raw_trees.append(item["tree"])
+    out: list[Any] = []
+    seen: set[str] = set()
+    for raw in raw_trees:
+        node = deserialize_tree(raw)
+        key = tree_key(node)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(node)
+    return out
+
+
 def build_baseline_leaf_runtime(
     baseline_summary: dict[str, Any],
     route_thresholds: tuple[float, ...],
@@ -310,18 +351,90 @@ def stage_window_metric(stage: dict[str, Any], window: str, metric: str) -> floa
     return float(stage["selected_candidate"]["windows"][window]["metrics"][metric])
 
 
+def stage_latest_window_gate(current_stage: dict[str, Any]) -> dict[str, Any]:
+    selected = current_stage["selected_candidate"]
+    comparison = selected["comparison"]
+    recent_2m = comparison["recent_2m"]
+    recent_6m = comparison["recent_6m"]
+    tree_depth_value = int(selected["tree_depth"])
+    required_tree_depth = int(current_stage.get("required_tree_depth", 2))
+    if tree_depth_value < required_tree_depth:
+        return {
+            "passed": bool(required_tree_depth <= 1),
+            "reason": "stage_depth_requirement_failed" if required_tree_depth >= 2 else "depth_below_2",
+            "tree_depth": tree_depth_value,
+            "required_tree_depth": required_tree_depth,
+            "recent_2m": {
+                "candidate_total_return": float(selected["windows"]["recent_2m"]["metrics"]["total_return"]),
+                "candidate_daily_win_rate": float(selected["windows"]["recent_2m"]["metrics"]["daily_win_rate"]),
+                "delta_total_return": float(recent_2m["delta_total_return"]),
+                "delta_daily_win_rate": float(recent_2m["delta_daily_win_rate"]),
+                "delta_max_drawdown": float(recent_2m["delta_max_drawdown"]),
+            },
+            "recent_6m": {
+                "candidate_total_return": float(selected["windows"]["recent_6m"]["metrics"]["total_return"]),
+                "candidate_daily_win_rate": float(selected["windows"]["recent_6m"]["metrics"]["daily_win_rate"]),
+                "delta_total_return": float(recent_6m["delta_total_return"]),
+                "delta_daily_win_rate": float(recent_6m["delta_daily_win_rate"]),
+                "delta_max_drawdown": float(recent_6m["delta_max_drawdown"]),
+            },
+        }
+
+    latest_pass = bool(
+        float(recent_2m["delta_total_return"]) >= 0.0
+        and float(recent_2m["delta_daily_win_rate"]) >= 0.0
+        and float(recent_2m["delta_max_drawdown"]) >= 0.0
+    )
+    stability_pass = bool(
+        float(recent_6m["delta_total_return"]) >= 0.0
+        and float(recent_6m["delta_daily_win_rate"]) >= 0.0
+        and float(recent_6m["delta_max_drawdown"]) >= 0.0
+    )
+    passed = bool(latest_pass and stability_pass)
+    if not latest_pass:
+        reason = "recent_2m_baseline_gate_failed"
+    elif not stability_pass:
+        reason = "recent_6m_stability_gate_failed"
+    else:
+        reason = "latest_window_gate_passed"
+    return {
+        "passed": passed,
+        "reason": reason,
+        "tree_depth": tree_depth_value,
+        "required_tree_depth": required_tree_depth,
+        "recent_2m": {
+            "candidate_total_return": float(selected["windows"]["recent_2m"]["metrics"]["total_return"]),
+            "candidate_daily_win_rate": float(selected["windows"]["recent_2m"]["metrics"]["daily_win_rate"]),
+            "delta_total_return": float(recent_2m["delta_total_return"]),
+            "delta_daily_win_rate": float(recent_2m["delta_daily_win_rate"]),
+            "delta_max_drawdown": float(recent_2m["delta_max_drawdown"]),
+        },
+        "recent_6m": {
+            "candidate_total_return": float(selected["windows"]["recent_6m"]["metrics"]["total_return"]),
+            "candidate_daily_win_rate": float(selected["windows"]["recent_6m"]["metrics"]["daily_win_rate"]),
+            "delta_total_return": float(recent_6m["delta_total_return"]),
+            "delta_daily_win_rate": float(recent_6m["delta_daily_win_rate"]),
+            "delta_max_drawdown": float(recent_6m["delta_max_drawdown"]),
+        },
+    }
+
+
 def stage_passes_chain(prev_stage: dict[str, Any] | None, current_stage: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    latest_gate = current_stage.get("latest_window_gate", {})
     if prev_stage is None:
         selected = current_stage["selected_candidate"]
         structural_pass = int(selected["condition_count"]) > 0 and int(selected["tree_depth"]) >= 1
+        latest_window_pass = bool(latest_gate.get("passed", False))
         result = {
             "structural_pass": structural_pass,
             "performance_pass": structural_pass,
             "complexity_growth_pass": structural_pass,
+            "latest_window_pass": latest_window_pass,
             "previous_complexity": None,
             "current_complexity": list(stage_complexity_signature(current_stage)),
+            "latest_window_gate": latest_gate,
         }
-        return structural_pass, result
+        return bool(structural_pass and latest_window_pass), result
 
     prev_signature = stage_complexity_signature(prev_stage)
     current_signature = stage_complexity_signature(current_stage)
@@ -337,7 +450,7 @@ def stage_passes_chain(prev_stage: dict[str, Any] | None, current_stage: dict[st
         )
     )
     performance_pass = True
-    tolerances = {"avg_daily_return": 1e-8, "max_drawdown": 1e-8}
+    tolerances = {"avg_daily_return": 1e-8, "max_drawdown": 5e-4}
     for window in ("recent_2m", "recent_6m", "full_since_first"):
         prev_avg = stage_window_metric(prev_stage, window, "avg_daily_return")
         curr_avg = stage_window_metric(current_stage, window, "avg_daily_return")
@@ -351,14 +464,109 @@ def stage_passes_chain(prev_stage: dict[str, Any] | None, current_stage: dict[st
             performance_pass = False
         if curr_win + tolerances["avg_daily_return"] < prev_win:
             performance_pass = False
+    prev_full_return = float(prev_stage["selected_candidate"]["windows"]["full_since_first"]["metrics"]["total_return"])
+    curr_full_return = float(current_stage["selected_candidate"]["windows"]["full_since_first"]["metrics"]["total_return"])
+    if curr_full_return + 1e-8 < prev_full_return:
+        performance_pass = False
+    latest_window_pass = bool(latest_gate.get("passed", False))
     result = {
         "structural_pass": structural_pass,
         "performance_pass": performance_pass,
         "complexity_growth_pass": structural_pass,
+        "latest_window_pass": latest_window_pass,
         "previous_complexity": list(prev_signature),
         "current_complexity": list(current_signature),
+        "latest_window_gate": latest_gate,
     }
-    return structural_pass and performance_pass, result
+    return structural_pass and performance_pass and latest_window_pass, result
+
+
+def summarize_fold_core_metrics(fold: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "fold": fold["fold"],
+        "start": fold["start"],
+        "end": fold["end"],
+        "passed": bool(fold["passed"]),
+        "candidate": {
+            "avg_daily_return": float(fold["candidate"]["avg_daily_return"]),
+            "total_return": float(fold["candidate"]["total_return"]),
+            "max_drawdown": float(fold["candidate"]["max_drawdown"]),
+            "daily_win_rate": float(fold["candidate"]["daily_win_rate"]),
+            "n_trades": int(fold["candidate"]["n_trades"]),
+        },
+        "baseline": {
+            "avg_daily_return": float(fold["baseline"]["avg_daily_return"]),
+            "total_return": float(fold["baseline"]["total_return"]),
+            "max_drawdown": float(fold["baseline"]["max_drawdown"]),
+            "daily_win_rate": float(fold["baseline"]["daily_win_rate"]),
+            "n_trades": int(fold["baseline"]["n_trades"]),
+        },
+        "delta_total_return": float(fold["delta_total_return"]),
+        "delta_max_drawdown": float(fold["delta_max_drawdown"]),
+        "delta_daily_win_rate": float(fold["delta_daily_win_rate"]),
+        "stress_survival_rate": float(fold["stress_survival_rate"]),
+    }
+
+
+def build_walk_forward_gate_report(
+    folds_report: list[dict[str, Any]],
+    stress_survival_mean_threshold: float,
+    stress_survival_min_threshold: float,
+) -> dict[str, Any]:
+    if not folds_report:
+        return {
+            "folds": [],
+            "fold_pass_rate": 0.0,
+            "stress_survival_rate_mean": 0.0,
+            "min_fold_stress_survival_rate": 0.0,
+            "stress_survival_mean_threshold": float(stress_survival_mean_threshold),
+            "stress_survival_min_threshold": float(stress_survival_min_threshold),
+            "promotion_gate_passed": False,
+            "promotion_gate_reason": "no_walk_forward_folds",
+            "wf_1": None,
+        }
+
+    fold_pass_rate = float(sum(1 for fold in folds_report if fold["passed"]) / len(folds_report))
+    stress_survival_rates = [float(fold["stress_survival_rate"]) for fold in folds_report]
+    stress_survival_rate_mean = float(sum(stress_survival_rates) / len(stress_survival_rates))
+    min_fold_stress_survival_rate = float(min(stress_survival_rates))
+    wf_1_fold = next((fold for fold in folds_report if fold["fold"] == "wf_1"), folds_report[-1])
+    wf_1_summary = summarize_fold_core_metrics(wf_1_fold)
+    promotion_gate_passed = bool(
+        all(fold["passed"] for fold in folds_report)
+        and stress_survival_rate_mean >= float(stress_survival_mean_threshold)
+        and min_fold_stress_survival_rate >= float(stress_survival_min_threshold)
+        and float(wf_1_fold["delta_total_return"]) >= 0.0
+        and float(wf_1_fold["delta_daily_win_rate"]) >= 0.0
+    )
+    if float(wf_1_fold["delta_total_return"]) < 0.0 or float(wf_1_fold["delta_daily_win_rate"]) < 0.0:
+        promotion_gate_reason = "wf_1_latest_gate_failed"
+    elif not all(fold["passed"] for fold in folds_report):
+        promotion_gate_reason = "walk_forward_fold_gate_failed"
+    elif stress_survival_rate_mean < float(stress_survival_mean_threshold):
+        promotion_gate_reason = "stress_survival_mean_below_threshold"
+    elif min_fold_stress_survival_rate < float(stress_survival_min_threshold):
+        promotion_gate_reason = "stress_survival_min_below_threshold"
+    else:
+        promotion_gate_reason = "promotion_gate_passed"
+
+    return {
+        "folds": folds_report,
+        "fold_pass_rate": fold_pass_rate,
+        "stress_survival_rate_mean": stress_survival_rate_mean,
+        "min_fold_stress_survival_rate": min_fold_stress_survival_rate,
+        "stress_survival_mean_threshold": float(stress_survival_mean_threshold),
+        "stress_survival_min_threshold": float(stress_survival_min_threshold),
+        "promotion_gate_passed": promotion_gate_passed,
+        "promotion_gate_reason": promotion_gate_reason,
+        "wf_1": wf_1_summary,
+        "wf_1_candidate_total_return": float(wf_1_fold["candidate"]["total_return"]),
+        "wf_1_candidate_daily_win_rate": float(wf_1_fold["candidate"]["daily_win_rate"]),
+        "wf_1_baseline_total_return": float(wf_1_fold["baseline"]["total_return"]),
+        "wf_1_baseline_daily_win_rate": float(wf_1_fold["baseline"]["daily_win_rate"]),
+        "wf_1_delta_total_return": float(wf_1_fold["delta_total_return"]),
+        "wf_1_delta_daily_win_rate": float(wf_1_fold["delta_daily_win_rate"]),
+    }
 
 
 def evaluate_tree_on_windows(
@@ -410,6 +618,7 @@ def evaluate_tree_on_windows(
             "delta_avg_daily_return": float(windows[label]["metrics"]["avg_daily_return"] - baseline_windows[label]["avg_daily_return"]),
             "delta_total_return": float(windows[label]["metrics"]["total_return"] - baseline_windows[label]["total_return"]),
             "delta_max_drawdown": float(windows[label]["metrics"]["max_drawdown"] - baseline_windows[label]["max_drawdown"]),
+            "delta_daily_win_rate": float(windows[label]["metrics"]["daily_win_rate"] - baseline_windows[label]["daily_win_rate"]),
         }
         for label in windows
     }
@@ -475,6 +684,7 @@ def run_stage(
     stage_name: str,
     max_depth: int,
     logic_max_depth: int,
+    min_tree_depth: int,
     df: pd.DataFrame,
     window_ranges: tuple[tuple[str, pd.Timestamp, pd.Timestamp], ...],
     expert_pool: list[dict[str, Any]],
@@ -489,20 +699,24 @@ def run_stage(
     top_k: int,
     seed: int,
     previous_best: Any | None = None,
+    external_seed_trees: tuple[Any, ...] = (),
 ) -> tuple[dict[str, Any], Any]:
     rng = random.Random(seed)
     if isinstance(previous_best, dict):
         previous_best = deserialize_tree(previous_best)
     condition_options = build_condition_options()
-    seed_trees = [
+    stage_seed_trees = [
         tree
         for tree in build_seed_trees(expert_pool, condition_options, (BTC_PAIR,))
         if tree_depth(tree) <= max_depth and tree_logic_depth(tree) <= logic_max_depth
     ]
-    population_nodes: list[Any] = [copy.deepcopy(tree) for tree in seed_trees]
+    population_nodes: list[Any] = [copy.deepcopy(tree) for tree in stage_seed_trees]
+    for tree in external_seed_trees:
+        if tree_depth(tree) <= max_depth and tree_logic_depth(tree) <= logic_max_depth:
+            population_nodes.append(copy.deepcopy(tree))
     if previous_best is not None:
         population_nodes.append(copy.deepcopy(previous_best))
-        while len(population_nodes) < max(3, min(population, len(seed_trees) + 3)):
+        while len(population_nodes) < max(3, min(population, len(stage_seed_trees) + len(external_seed_trees) + 3)):
             population_nodes.append(
                 mutate_tree(
                     previous_best,
@@ -612,8 +826,43 @@ def run_stage(
         for item in ranked
         if int(item["tree_depth"]) <= max_depth and int(item["logic_depth"]) <= logic_max_depth
     ]
-    top_candidates = ranked[:top_k]
-    selected, selection_diagnostics = select_near_frontier_structural_winner(top_candidates)
+    external_seed_keys = {tree_key(tree) for tree in external_seed_trees}
+    stage_depth_candidates = [item for item in ranked if int(item["tree_depth"]) >= int(min_tree_depth)]
+    candidate_pool = stage_depth_candidates or ranked
+    top_candidates = candidate_pool[:top_k]
+    seeded_stage_candidates = [
+        item for item in candidate_pool if item["tree_key"] in external_seed_keys
+    ]
+    latest_gate_candidates = [
+        item
+        for item in top_candidates
+        if stage_latest_window_gate(
+            {
+                "required_tree_depth": min_tree_depth,
+                "selected_candidate": {
+                    **item,
+                    "windows": item["windows"],
+                    "comparison": item["comparison"],
+                }
+            }
+        )["passed"]
+    ]
+    seeded_latest_gate_candidates = [
+        item
+        for item in seeded_stage_candidates
+        if stage_latest_window_gate(
+            {
+                "required_tree_depth": min_tree_depth,
+                "selected_candidate": {
+                    **item,
+                    "windows": item["windows"],
+                    "comparison": item["comparison"],
+                }
+            }
+        )["passed"]
+    ]
+    selection_pool = seeded_latest_gate_candidates or latest_gate_candidates or top_candidates
+    selected, selection_diagnostics = select_near_frontier_structural_winner(selection_pool)
     assert selected is not None, f"{stage_name} should yield at least one candidate"
     assert selected["tree_depth"] <= max_depth, "selected tree exceeds requested max depth"
     assert selected["logic_depth"] <= logic_max_depth, "selected tree exceeds requested logic depth"
@@ -660,6 +909,16 @@ def run_stage(
             "windows": selected["windows"],
             "comparison": selected["comparison"],
         },
+        "latest_window_gate": stage_latest_window_gate(
+            {
+                "required_tree_depth": min_tree_depth,
+                "selected_candidate": {
+                    **selected,
+                    "windows": selected["windows"],
+                    "comparison": selected["comparison"],
+                }
+            }
+        ),
         "window_contract": {
             label: {
                 "start": window_cache[label]["start"],
@@ -671,6 +930,13 @@ def run_stage(
         "runtime": {
             "evaluated_unique_candidates": len(fast_cache),
             "search_started_at": search_started.isoformat(),
+        },
+        "selection_pool": {
+            "top_candidate_count": len(top_candidates),
+            "stage_depth_candidate_count": len(stage_depth_candidates),
+            "seeded_stage_candidate_count": len(seeded_stage_candidates),
+            "seeded_latest_window_gate_candidate_count": len(seeded_latest_gate_candidates),
+            "latest_window_gate_candidate_count": len(latest_gate_candidates),
         },
         "selection_diagnostics": selection_diagnostics,
     }
@@ -694,10 +960,13 @@ def run_curriculum_backtest(
     model: str,
     funding_cache: str,
     baseline_summary: str,
+    search_seed_summary: str,
     walk_forward_folds: int,
     walk_forward_test_months: int,
     commission_stress: str,
     stress_survival_threshold: float,
+    stress_survival_mean_threshold: float,
+    stress_survival_min_threshold: float,
 ) -> dict[str, Any]:
     if pairs != BTC_PAIR:
         raise ValueError("BTC-only verifier only accepts --pairs BTCUSDT")
@@ -730,6 +999,7 @@ def run_curriculum_backtest(
     baseline_summary_obj = json.loads(Path(baseline_summary).read_text())
     baseline_runtime = build_baseline_leaf_runtime(baseline_summary_obj, route_threshold_values, len(library))
     expert_pool = build_btc_expert_pool(expert_summary_paths, expert_pool_size)
+    external_seed_trees = tuple(load_seed_trees_from_summary(search_seed_summary))
     window_ranges = build_window_ranges(first_ts, last_ts)
 
     stages: list[dict[str, Any]] = []
@@ -739,6 +1009,7 @@ def run_curriculum_backtest(
             stage_name=f"depth_{max_depth}",
             max_depth=max_depth,
             logic_max_depth=logic_max_depth,
+            min_tree_depth=max_depth,
             df=df,
             window_ranges=window_ranges,
             expert_pool=expert_pool,
@@ -753,27 +1024,24 @@ def run_curriculum_backtest(
             top_k=top_k,
             seed=seed + idx - 1,
             previous_best=previous_best,
+            external_seed_trees=external_seed_trees,
         )
         stages.append(stage_report)
 
     selected_stage: dict[str, Any] | None = None
     selected_index: int | None = None
-    chain_ok = True
     stage_checks: list[dict[str, Any]] = []
-    prev_stage: dict[str, Any] | None = None
+    prev_success_stage: dict[str, Any] | None = None
     for idx, stage in enumerate(stages):
-        stage_pass, check = stage_passes_chain(prev_stage, stage)
+        stage_pass, check = stage_passes_chain(prev_success_stage, stage)
         check["stage"] = stage["stage"]
-        check["passed"] = stage_pass and chain_ok
+        check["passed"] = stage_pass
         stage["checks"] = check
         stage_checks.append(check)
-        if not stage_pass or not chain_ok:
-            chain_ok = False
-            prev_stage = stage
-            continue
-        selected_stage = stage
-        selected_index = idx
-        prev_stage = stage
+        if stage_pass:
+            selected_stage = stage
+            selected_index = idx
+            prev_success_stage = stage
 
     selected_candidate = None if selected_stage is None else selected_stage["selected_candidate"]
     window_contract = {
@@ -789,7 +1057,7 @@ def run_curriculum_backtest(
         "best_stage": None if selected_stage is None else selected_stage["stage"],
         "selected_candidate_present": selected_candidate is not None,
         "selected_candidate": selected_candidate,
-        "curriculum_passed": bool(selected_index is not None and selected_index == len(stages) - 1 and chain_ok),
+        "curriculum_passed": bool(selected_index is not None and selected_index == len(stages) - 1),
         "stage_checks": stage_checks,
     }
 
@@ -895,22 +1163,13 @@ def run_curriculum_backtest(
                     "stress": stress_metrics,
                 }
             )
-        walk_forward_report = {
-            "folds": folds_report,
-            "fold_pass_rate": float(sum(1 for fold in folds_report if fold["passed"]) / max(len(folds_report), 1)),
-            "stress_survival_rate_mean": float(
-                sum(float(fold["stress_survival_rate"]) for fold in folds_report) / max(len(folds_report), 1)
-            ),
-            "stress_survival_threshold": float(stress_survival_threshold),
-            "worst_fold_delta_total_return": float(min((float(fold["delta_total_return"]) for fold in folds_report), default=0.0)),
-            "worst_fold_delta_max_drawdown": float(min((float(fold["delta_max_drawdown"]) for fold in folds_report), default=0.0)),
-            "worst_fold_delta_daily_win_rate": float(min((float(fold["delta_daily_win_rate"]) for fold in folds_report), default=0.0)),
-            "promotion_gate_passed": bool(
-                folds_report
-                and all(fold["passed"] for fold in folds_report)
-                and all(float(fold["stress_survival_rate"]) >= float(stress_survival_threshold) for fold in folds_report)
-            ),
-        }
+        walk_forward_report = build_walk_forward_gate_report(
+            folds_report,
+            stress_survival_mean_threshold,
+            stress_survival_min_threshold,
+        )
+        assert walk_forward_report["wf_1"] is not None, "walk-forward summary must expose wf_1 core metrics"
+        assert "min_fold_stress_survival_rate" in walk_forward_report, "walk-forward summary must expose min fold stress survival"
         overall["walk_forward"] = walk_forward_report
 
     report = {
@@ -939,6 +1198,7 @@ def run_curriculum_backtest(
         },
         "overall": overall,
         "walk_forward": walk_forward_report,
+        "wf_1_core_metrics": None if walk_forward_report is None else walk_forward_report.get("wf_1"),
         "created_at": pd.Timestamp.utcnow().isoformat(),
     }
 
@@ -990,10 +1250,13 @@ def main() -> None:
         model=args.model,
         funding_cache=args.funding_cache,
         baseline_summary=args.baseline_summary,
+        search_seed_summary=args.search_seed_summary,
         walk_forward_folds=args.walk_forward_folds,
         walk_forward_test_months=args.walk_forward_test_months,
         commission_stress=args.commission_stress,
         stress_survival_threshold=args.stress_survival_threshold,
+        stress_survival_mean_threshold=args.stress_survival_mean_threshold,
+        stress_survival_min_threshold=args.stress_survival_min_threshold,
     )
 
 

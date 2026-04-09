@@ -953,6 +953,8 @@ def select_generation_survivors(
     depth_weight: float,
     target_tree_depth: int = 1,
     target_logic_depth: int = 0,
+    persistent_tree_depth: int = 3,
+    persistent_logic_depth: int = 2,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if survivor_count <= 0:
         return [], {"selected_count": 0}
@@ -973,7 +975,31 @@ def select_generation_survivors(
     selected: list[dict[str, Any]] = []
     selected_depths: set[int] = set()
     selected_logic_depths: set[int] = set()
+    persistent_archive_candidate = None
     archived_target_candidate = None
+
+    persistent_candidates = [
+        item
+        for item in candidates
+        if int(item["tree_depth"]) >= int(persistent_tree_depth) or int(item["logic_depth"]) >= int(persistent_logic_depth)
+    ]
+    if persistent_candidates:
+        persistent_archive_candidate = max(
+            persistent_candidates,
+            key=lambda item: (
+                1 if candidate_stress_pass(item) else 0,
+                1 if candidate_wf1_pass(item) else 0,
+                int(item["tree_depth"]) >= int(persistent_tree_depth),
+                int(item["logic_depth"]) >= int(persistent_logic_depth),
+                float(item["search_fitness"]),
+                float(item["structural_score"]),
+                item["tree_key"],
+            ),
+        )
+        selected.append(persistent_archive_candidate)
+        selected_depths.add(int(persistent_archive_candidate["tree_depth"]))
+        selected_logic_depths.add(int(persistent_archive_candidate["logic_depth"]))
+        candidates = [item for item in candidates if item["tree_key"] != persistent_archive_candidate["tree_key"]]
 
     if target_tree_depth > 1 or target_logic_depth > 0:
         target_candidates = [
@@ -991,6 +1017,9 @@ def select_generation_survivors(
             archived_target_candidate = max(
                 target_candidates,
                 key=lambda item: (
+                    1 if candidate_cost_reserve_pass(item) else 0,
+                    1 if candidate_stress_pass(item) else 0,
+                    1 if candidate_wf1_pass(item) else 0,
                     min(int(item["tree_depth"]), int(target_tree_depth)),
                     min(int(item["logic_depth"]), int(target_logic_depth)),
                     float(item["search_fitness"]),
@@ -998,10 +1027,11 @@ def select_generation_survivors(
                     item["tree_key"],
                 ),
             )
-            selected.append(archived_target_candidate)
-            selected_depths.add(int(archived_target_candidate["tree_depth"]))
-            selected_logic_depths.add(int(archived_target_candidate["logic_depth"]))
-            candidates = [item for item in candidates if item["tree_key"] != archived_target_candidate["tree_key"]]
+            if len(selected) < survivor_count:
+                selected.append(archived_target_candidate)
+                selected_depths.add(int(archived_target_candidate["tree_depth"]))
+                selected_logic_depths.add(int(archived_target_candidate["logic_depth"]))
+                candidates = [item for item in candidates if item["tree_key"] != archived_target_candidate["tree_key"]]
 
     while candidates and len(selected) < survivor_count:
         best_item = None
@@ -1015,6 +1045,8 @@ def select_generation_survivors(
                 depth_coverage_bonus += 1.0
             if logic_bucket not in selected_logic_depths:
                 depth_coverage_bonus += 0.5
+            if depth_bucket >= int(persistent_tree_depth) or logic_bucket >= int(persistent_logic_depth):
+                depth_coverage_bonus += 0.85
             target_alignment_bonus = 0.0
             if depth_bucket >= int(target_tree_depth):
                 target_alignment_bonus += 1.0
@@ -1024,10 +1056,51 @@ def select_generation_survivors(
                 target_alignment_bonus += 0.5
             else:
                 target_alignment_bonus -= 0.30 * float(int(target_logic_depth) - logic_bucket)
+            robustness = item["robustness"]
+            stress_floor = float(
+                robustness.get("min_fold_stress_survival_rate", robustness.get("stress_survival_rate_min", 0.0))
+            )
+            stress_mean = float(robustness.get("stress_survival_rate_mean", 0.0))
+            stress_threshold = float(robustness.get("stress_survival_threshold", 0.0))
+            stress_reserve_score = float(robustness.get("latest_fold_stress_reserve_score", 0.0))
+            non_nominal_stress_rate = float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
+            non_nominal_stress_floor = float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
+            non_nominal_stress_reserve = float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))
+            robustness_bonus = 0.0
+            robustness_bonus += 0.90 if candidate_wf1_pass(item) else -0.90
+            robustness_bonus += 2.20 if candidate_stress_pass(item) else -3.20
+            robustness_bonus += 2.60 if candidate_cost_reserve_pass(item) else -3.40
+            robustness_bonus += max(0.0, stress_mean - stress_threshold) * 3.80
+            robustness_bonus += max(0.0, stress_floor - stress_threshold) * 4.60
+            robustness_bonus += max(0.0, stress_reserve_score) / 6000.0
+            robustness_bonus += max(0.0, non_nominal_stress_rate - stress_threshold) * 5.20
+            robustness_bonus += max(0.0, non_nominal_stress_floor - stress_threshold) * 6.20
+            robustness_bonus += max(0.0, non_nominal_stress_reserve) / 6000.0
+            if stress_mean < stress_threshold:
+                robustness_bonus -= (stress_threshold - stress_mean) * 4.20
+            if stress_floor < stress_threshold:
+                robustness_bonus -= (stress_threshold - stress_floor) * 5.40
+            if stress_reserve_score < 0.0:
+                robustness_bonus -= abs(stress_reserve_score) / 2500.0
+            if non_nominal_stress_rate < stress_threshold:
+                robustness_bonus -= (stress_threshold - non_nominal_stress_rate) * 6.20
+            if non_nominal_stress_floor < stress_threshold:
+                robustness_bonus -= (stress_threshold - non_nominal_stress_floor) * 7.20
+            if non_nominal_stress_reserve < 0.0:
+                robustness_bonus -= abs(non_nominal_stress_reserve) / 2200.0
             utility = normalized_fitness(item) + diversity_weight * min_distance + depth_weight * depth_coverage_bonus
             utility += depth_weight * 0.75 * target_alignment_bonus
+            utility += depth_weight * 0.45 * robustness_bonus
             utility += 0.35 * float(item["structural_score"])
-            tie_break = (utility, float(item["search_fitness"]), min_distance, item["tree_key"])
+            tie_break = (
+                utility,
+                1.0 if candidate_cost_reserve_pass(item) else 0.0,
+                1.0 if candidate_wf1_pass(item) else 0.0,
+                1.0 if candidate_stress_pass(item) else 0.0,
+                float(item["search_fitness"]),
+                min_distance,
+                item["tree_key"],
+            )
             if best_key is None or tie_break > best_key:
                 best_key = tie_break
                 best_item = item
@@ -1071,11 +1144,21 @@ def select_generation_survivors(
         "depth_weight": depth_weight,
         "target_tree_depth": int(target_tree_depth),
         "target_logic_depth": int(target_logic_depth),
+        "persistent_tree_depth": int(persistent_tree_depth),
+        "persistent_logic_depth": int(persistent_logic_depth),
+        "persistent_archive_candidate": None if persistent_archive_candidate is None else {
+            "tree_key": persistent_archive_candidate["tree_key"],
+            "tree_depth": int(persistent_archive_candidate["tree_depth"]),
+            "logic_depth": int(persistent_archive_candidate["logic_depth"]),
+        },
         "archived_target_candidate": None if archived_target_candidate is None else {
             "tree_key": archived_target_candidate["tree_key"],
             "tree_depth": int(archived_target_candidate["tree_depth"]),
             "logic_depth": int(archived_target_candidate["logic_depth"]),
         },
+        "wf1_pass_count": sum(1 for item in selected if candidate_wf1_pass(item)),
+        "stress_pass_count": sum(1 for item in selected if candidate_stress_pass(item)),
+        "cost_reserve_pass_count": sum(1 for item in selected if candidate_cost_reserve_pass(item)),
         "top_fitness_depths": [int(item["tree_depth"]) for item in ranked[:survivor_count]],
         "top_fitness_logic_depths": [int(item["logic_depth"]) for item in ranked[:survivor_count]],
     }
@@ -1099,21 +1182,36 @@ def select_near_frontier_structural_winner(
     if not frontier:
         frontier = candidates[:]
 
-    def key(item: dict[str, Any]) -> tuple[float, float, float, float, str]:
+    wf1_frontier = [item for item in frontier if candidate_wf1_pass(item)]
+    stress_frontier = [item for item in wf1_frontier if candidate_stress_pass(item)]
+    reserve_frontier = [item for item in wf1_frontier if candidate_cost_reserve_pass(item)]
+    selection_frontier = stress_frontier or reserve_frontier or wf1_frontier or frontier
+
+    def key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, float, float, str]:
+        robustness = item.get("robustness", {})
         return (
+            float(candidate_wf1_pass(item)),
+            float(candidate_stress_pass(item)),
+            float(candidate_cost_reserve_pass(item)),
+            float(robustness.get("latest_fold_stress_reserve_score", 0.0)),
             float(item["structural_score"]),
             float(item["logic_depth"]),
+            float(item["tree_depth"]),
             float(item["leaf_cardinality"]),
             float(item["performance_score"]),
             float(item["fitness"]),
             item["tree_key"],
         )
 
-    winner = max(frontier, key=key)
+    winner = max(selection_frontier, key=key)
     diagnostics = {
         "selected": True,
         "candidate_count": len(candidates),
         "frontier_count": len(frontier),
+        "wf1_frontier_count": len(wf1_frontier),
+        "stress_frontier_count": len(stress_frontier),
+        "reserve_frontier_count": len(reserve_frontier),
+        "selection_frontier_count": len(selection_frontier),
         "best_performance_score": best_performance,
         "frontier_band": frontier_band,
         "winner_performance_score": float(winner["performance_score"]),
@@ -1121,6 +1219,10 @@ def select_near_frontier_structural_winner(
         "winner_tree_depth": int(winner["tree_depth"]),
         "winner_logic_depth": int(winner["logic_depth"]),
         "winner_leaf_cardinality": int(winner["leaf_cardinality"]),
+        "winner_stress_reserve_score": float(winner.get("robustness", {}).get("latest_fold_stress_reserve_score", 0.0)),
+        "winner_wf1_pass": candidate_wf1_pass(winner),
+        "winner_stress_pass": candidate_stress_pass(winner),
+        "winner_cost_reserve_pass": candidate_cost_reserve_pass(winner),
     }
     return winner, diagnostics
 
@@ -1712,45 +1814,319 @@ def relative_gate_pass(relative: dict[str, float], tolerance: float = 1e-12) -> 
     )
 
 
+def candidate_wf1_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    robustness = item.get("robustness", {})
+    return bool(
+        float(robustness.get("latest_fold_delta_worst_pair_total_return", 0.0)) >= -tolerance
+        and float(robustness.get("latest_fold_delta_worst_max_drawdown", 0.0)) >= -tolerance
+        and float(robustness.get("latest_fold_delta_worst_daily_win_rate", 0.0)) >= -tolerance
+    )
+
+
+def candidate_stress_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    robustness = item.get("robustness", {})
+    threshold = float(robustness.get("stress_survival_threshold", 0.0))
+    mean_survival = float(robustness.get("stress_survival_rate_mean", 0.0))
+    min_survival = float(
+        robustness.get("min_fold_stress_survival_rate", robustness.get("stress_survival_rate_min", 0.0))
+    )
+    reserve_score = float(robustness.get("latest_fold_stress_reserve_score", 0.0))
+    return bool(
+        mean_survival >= threshold - tolerance
+        and min_survival >= threshold - tolerance
+        and reserve_score >= -tolerance
+    )
+
+
+def candidate_cost_reserve_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    robustness = item.get("robustness", {})
+    threshold = float(robustness.get("stress_survival_threshold", 0.67))
+    latest_rate = float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
+    min_rate = float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
+    latest_reserve = float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))
+    return bool(
+        latest_rate >= threshold - tolerance
+        and min_rate >= threshold - tolerance
+        and latest_reserve >= -tolerance
+    )
+
+
+def defensive_leaf_gene_variant(gene: LeafGene, profile: str) -> LeafGene:
+    if profile == "ultra":
+        return LeafGene(
+            route_threshold_bias=max(int(gene.route_threshold_bias), 2),
+            mapping_shift=0,
+            target_vol_scale=min(float(gene.target_vol_scale), 0.55),
+            gross_cap_scale=min(float(gene.gross_cap_scale), 0.55),
+            kill_switch_scale=min(float(gene.kill_switch_scale), 0.70),
+            cooldown_scale=max(float(gene.cooldown_scale), 2.00),
+        )
+    if profile == "max_defense":
+        return LeafGene(
+            route_threshold_bias=max(int(gene.route_threshold_bias), 2),
+            mapping_shift=0,
+            target_vol_scale=min(float(gene.target_vol_scale), 0.40),
+            gross_cap_scale=min(float(gene.gross_cap_scale), 0.40),
+            kill_switch_scale=min(float(gene.kill_switch_scale), 0.70),
+            cooldown_scale=max(float(gene.cooldown_scale), 2.50),
+        )
+    if profile == "strong":
+        return LeafGene(
+            route_threshold_bias=max(int(gene.route_threshold_bias), 1),
+            mapping_shift=0,
+            target_vol_scale=min(float(gene.target_vol_scale), 0.70),
+            gross_cap_scale=min(float(gene.gross_cap_scale), 0.70),
+            kill_switch_scale=min(float(gene.kill_switch_scale), 0.85),
+            cooldown_scale=max(float(gene.cooldown_scale), 1.50),
+        )
+    return LeafGene(
+        route_threshold_bias=max(int(gene.route_threshold_bias), 1),
+        mapping_shift=0 if abs(int(gene.mapping_shift)) > 4 else int(gene.mapping_shift),
+        target_vol_scale=min(float(gene.target_vol_scale), 0.85),
+        gross_cap_scale=min(float(gene.gross_cap_scale), 0.85),
+        kill_switch_scale=min(float(gene.kill_switch_scale), 0.85),
+        cooldown_scale=max(float(gene.cooldown_scale), 1.25),
+    )
+
+
+def apply_leaf_gene_profile(node: TreeNode, profile: str) -> TreeNode:
+    if isinstance(node, LeafNode):
+        return LeafNode(node.expert_idx, defensive_leaf_gene_variant(getattr(node, "gene", LeafGene()), profile))
+    assert isinstance(node, ConditionNode)
+    return ConditionNode(
+        condition=node.condition,
+        if_true=apply_leaf_gene_profile(node.if_true, profile),
+        if_false=apply_leaf_gene_profile(node.if_false, profile),
+    )
+
+
+def evaluate_defensive_variants(
+    ranked: list[dict[str, Any]],
+    evaluate_tree_fn: Any,
+    candidate_limit: int = 12,
+) -> list[dict[str, Any]]:
+    seen = {item["tree_key"] for item in ranked}
+    variants: list[dict[str, Any]] = []
+    for item in ranked[:candidate_limit]:
+        for profile in ("mild", "strong", "ultra", "max_defense"):
+            variant_tree = apply_leaf_gene_profile(item["tree"], profile)
+            variant_key = tree_key(variant_tree)
+            if variant_key in seen:
+                continue
+            seen.add(variant_key)
+            variants.append(evaluate_tree_fn(variant_tree))
+    return variants
+
+
 def summarize_robustness_folds(
     folds: list[dict[str, Any]],
     stress_survival_threshold: float,
 ) -> dict[str, Any]:
+    def stress_run_delta_score(relative: dict[str, float]) -> float:
+        score = 0.0
+        score += float(relative["delta_worst_pair_avg_daily_return"]) * 640000.0
+        score += float(relative["delta_mean_avg_daily_return"]) * 360000.0
+        score += float(relative["delta_worst_pair_total_return"]) * 2400.0
+        score += float(relative["delta_worst_max_drawdown"]) * 26000.0
+        score += float(relative["delta_worst_daily_win_rate"]) * 26000.0
+        return float(score)
+
+    def summarize_stress_runs(stress_runs: list[dict[str, Any]]) -> dict[str, Any]:
+        if not stress_runs:
+            return {
+                "count": 0,
+                "pass_rate": 0.0,
+                "reserve_score": 0.0,
+                "by_multiplier": {},
+            }
+        by_multiplier: dict[str, dict[str, Any]] = {}
+        scores: list[float] = []
+        for run in stress_runs:
+            multiplier_key = f"{float(run['commission_multiplier']):.1f}"
+            summary = by_multiplier.setdefault(
+                multiplier_key,
+                {
+                    "count": 0,
+                    "pass_count": 0,
+                    "delta_worst_pair_avg_daily_return": [],
+                    "delta_mean_avg_daily_return": [],
+                    "delta_worst_pair_total_return": [],
+                    "delta_worst_max_drawdown": [],
+                    "delta_worst_daily_win_rate": [],
+                    "scores": [],
+                },
+            )
+            relative = run["relative"]
+            summary["count"] += 1
+            summary["pass_count"] += 1 if bool(run["passed"]) else 0
+            summary["delta_worst_pair_avg_daily_return"].append(float(relative["delta_worst_pair_avg_daily_return"]))
+            summary["delta_mean_avg_daily_return"].append(float(relative["delta_mean_avg_daily_return"]))
+            summary["delta_worst_pair_total_return"].append(float(relative["delta_worst_pair_total_return"]))
+            summary["delta_worst_max_drawdown"].append(float(relative["delta_worst_max_drawdown"]))
+            summary["delta_worst_daily_win_rate"].append(float(relative["delta_worst_daily_win_rate"]))
+            run_score = stress_run_delta_score(relative)
+            summary["scores"].append(run_score)
+            scores.append(run_score)
+        normalized: dict[str, Any] = {}
+        for multiplier_key, summary in by_multiplier.items():
+            count = max(int(summary["count"]), 1)
+            normalized[multiplier_key] = {
+                "count": int(summary["count"]),
+                "pass_rate": float(summary["pass_count"] / count),
+                "mean_delta_worst_pair_avg_daily_return": float(sum(summary["delta_worst_pair_avg_daily_return"]) / count),
+                "mean_delta_mean_avg_daily_return": float(sum(summary["delta_mean_avg_daily_return"]) / count),
+                "mean_delta_worst_pair_total_return": float(sum(summary["delta_worst_pair_total_return"]) / count),
+                "mean_delta_worst_max_drawdown": float(sum(summary["delta_worst_max_drawdown"]) / count),
+                "mean_delta_worst_daily_win_rate": float(sum(summary["delta_worst_daily_win_rate"]) / count),
+                "min_delta_worst_pair_avg_daily_return": float(min(summary["delta_worst_pair_avg_daily_return"])),
+                "min_delta_mean_avg_daily_return": float(min(summary["delta_mean_avg_daily_return"])),
+                "min_delta_worst_pair_total_return": float(min(summary["delta_worst_pair_total_return"])),
+                "min_delta_worst_max_drawdown": float(min(summary["delta_worst_max_drawdown"])),
+                "min_delta_worst_daily_win_rate": float(min(summary["delta_worst_daily_win_rate"])),
+                "mean_score": float(sum(summary["scores"]) / count),
+                "min_score": float(min(summary["scores"])),
+            }
+        return {
+            "count": len(stress_runs),
+            "pass_rate": float(sum(1 for run in stress_runs if bool(run["passed"])) / len(stress_runs)),
+            "reserve_score": float(min(scores)),
+            "by_multiplier": normalized,
+        }
+
     if not folds:
         return {
             "folds": [],
             "fold_pass_rate": 0.0,
             "stress_survival_rate_mean": 0.0,
+            "stress_survival_rate_min": 0.0,
+            "min_fold_stress_survival_rate": 0.0,
+            "non_nominal_stress_survival_rate_mean": 0.0,
+            "min_fold_non_nominal_stress_survival_rate": 0.0,
             "stress_survival_threshold": float(stress_survival_threshold),
+            "stress_run_summary": {
+                "count": 0,
+                "pass_rate": 0.0,
+                "reserve_score": 0.0,
+                "by_multiplier": {},
+            },
+            "latest_fold_stress_run_summary": {
+                "count": 0,
+                "pass_rate": 0.0,
+                "reserve_score": 0.0,
+                "by_multiplier": {},
+            },
+            "latest_fold_stress_reserve_score": 0.0,
+            "latest_non_nominal_stress_survival_rate": 0.0,
+            "latest_non_nominal_stress_reserve_score": 0.0,
             "worst_fold_delta_worst_pair_avg_daily_return": 0.0,
             "worst_fold_delta_worst_pair_total_return": 0.0,
             "worst_fold_delta_worst_max_drawdown": 0.0,
             "worst_fold_delta_worst_daily_win_rate": 0.0,
             "latest_fold_delta_worst_pair_total_return": 0.0,
+            "latest_fold_delta_worst_pair_avg_daily_return": 0.0,
+            "latest_fold_delta_mean_avg_daily_return": 0.0,
+            "latest_fold_delta_worst_max_drawdown": 0.0,
             "latest_fold_delta_worst_daily_win_rate": 0.0,
+            "latest_fold_trade_count_ratio": 0.0,
+            "mean_fold_trade_count_ratio": 0.0,
+            "min_fold_trade_count_ratio": 0.0,
+            "wf_1": None,
             "gate_passed": False,
         }
 
     relatives = [fold["relative"] for fold in folds]
-    latest = folds[-1]["relative"]
+    latest_fold = next((fold for fold in reversed(folds) if str(fold.get("fold")) == "wf_1"), folds[-1])
+    latest = latest_fold["relative"]
+    stress_run_summary = summarize_stress_runs([run for fold in folds for run in fold.get("stress", [])])
+    latest_fold_stress_run_summary = summarize_stress_runs(list(latest_fold.get("stress", [])))
     fold_pass_rate = float(sum(1 for fold in folds if fold["passed"]) / len(folds))
     stress_survival_rate_mean = float(sum(float(fold["stress_survival_rate"]) for fold in folds) / len(folds))
+    stress_survival_rate_min = float(min(float(fold["stress_survival_rate"]) for fold in folds))
+    non_nominal_fold_pass_rates: list[float] = []
+    non_nominal_fold_reserve_scores: list[float] = []
+    latest_non_nominal_runs = [
+        run
+        for run in latest_fold.get("stress", [])
+        if float(run.get("commission_multiplier", 1.0)) > 1.0
+    ]
+    latest_non_nominal_stress_run_summary = summarize_stress_runs(latest_non_nominal_runs)
+    for fold in folds:
+        non_nominal_runs = [
+            run
+            for run in fold.get("stress", [])
+            if float(run.get("commission_multiplier", 1.0)) > 1.0
+        ]
+        non_nominal_summary = summarize_stress_runs(non_nominal_runs)
+        non_nominal_fold_pass_rates.append(float(non_nominal_summary["pass_rate"]))
+        non_nominal_fold_reserve_scores.append(float(non_nominal_summary["reserve_score"]))
+    latest_fold_stress_reserve_score = float(latest_fold_stress_run_summary["reserve_score"])
     return {
         "folds": folds,
         "fold_pass_rate": fold_pass_rate,
         "stress_survival_rate_mean": stress_survival_rate_mean,
+        "stress_survival_rate_min": stress_survival_rate_min,
+        "min_fold_stress_survival_rate": stress_survival_rate_min,
+        "non_nominal_stress_survival_rate_mean": float(
+            sum(non_nominal_fold_pass_rates) / len(non_nominal_fold_pass_rates)
+        ) if non_nominal_fold_pass_rates else 0.0,
+        "min_fold_non_nominal_stress_survival_rate": float(
+            min(non_nominal_fold_pass_rates)
+        ) if non_nominal_fold_pass_rates else 0.0,
         "stress_survival_threshold": float(stress_survival_threshold),
+        "stress_run_summary": stress_run_summary,
+        "latest_fold_stress_run_summary": latest_fold_stress_run_summary,
+        "latest_fold_stress_reserve_score": latest_fold_stress_reserve_score,
+        "latest_non_nominal_stress_survival_rate": float(latest_non_nominal_stress_run_summary["pass_rate"]),
+        "latest_non_nominal_stress_reserve_score": float(latest_non_nominal_stress_run_summary["reserve_score"]),
         "worst_fold_delta_worst_pair_avg_daily_return": float(min(rel["delta_worst_pair_avg_daily_return"] for rel in relatives)),
         "worst_fold_delta_worst_pair_total_return": float(min(rel["delta_worst_pair_total_return"] for rel in relatives)),
         "worst_fold_delta_worst_max_drawdown": float(min(rel["delta_worst_max_drawdown"] for rel in relatives)),
         "worst_fold_delta_worst_daily_win_rate": float(min(rel["delta_worst_daily_win_rate"] for rel in relatives)),
+        "latest_fold_delta_worst_pair_avg_daily_return": float(latest["delta_worst_pair_avg_daily_return"]),
         "latest_fold_delta_worst_pair_total_return": float(latest["delta_worst_pair_total_return"]),
+        "latest_fold_delta_mean_avg_daily_return": float(latest["delta_mean_avg_daily_return"]),
+        "latest_fold_delta_worst_max_drawdown": float(latest["delta_worst_max_drawdown"]),
         "latest_fold_delta_worst_daily_win_rate": float(latest["delta_worst_daily_win_rate"]),
+        "latest_fold_trade_count_ratio": float(latest["trade_count_ratio"]),
+        "mean_fold_trade_count_ratio": float(sum(float(rel["trade_count_ratio"]) for rel in relatives) / len(relatives)),
+        "min_fold_trade_count_ratio": float(min(float(rel["trade_count_ratio"]) for rel in relatives)),
+        "wf_1": {
+            "fold": latest_fold["fold"],
+            "start": latest_fold["start"],
+            "end": latest_fold["end"],
+            "passed": bool(latest_fold["passed"]),
+            "stress_survival_rate": float(latest_fold["stress_survival_rate"]),
+            "stress_reserve_score": latest_fold_stress_reserve_score,
+            "non_nominal_stress_survival_rate": float(latest_non_nominal_stress_run_summary["pass_rate"]),
+            "non_nominal_stress_reserve_score": float(latest_non_nominal_stress_run_summary["reserve_score"]),
+            "delta_worst_pair_avg_daily_return": float(latest["delta_worst_pair_avg_daily_return"]),
+            "delta_worst_pair_total_return": float(latest["delta_worst_pair_total_return"]),
+            "delta_worst_max_drawdown": float(latest["delta_worst_max_drawdown"]),
+            "delta_worst_daily_win_rate": float(latest["delta_worst_daily_win_rate"]),
+            "trade_count_ratio": float(latest["trade_count_ratio"]),
+        },
         "gate_passed": bool(
             all(bool(fold["passed"]) for fold in folds)
             and all(float(fold["stress_survival_rate"]) >= float(stress_survival_threshold) for fold in folds)
         ),
     }
+
+
+def leaf_gene_deviation_score(leaf_catalog: list[LeafNode]) -> float:
+    if not leaf_catalog:
+        return 0.0
+    total = 0.0
+    for leaf in leaf_catalog:
+        gene = getattr(leaf, "gene", LeafGene())
+        total += (
+            0.85 * abs(int(gene.route_threshold_bias))
+            + 0.16 * abs(int(gene.mapping_shift)) / 8.0
+            + 1.15 * abs(float(gene.target_vol_scale) - 1.0) / 0.15
+            + 1.05 * abs(float(gene.gross_cap_scale) - 1.0) / 0.15
+            + 1.35 * abs(float(gene.kill_switch_scale) - 1.0) / 0.15
+            + 0.95 * abs(float(gene.cooldown_scale) - 1.0) / 0.25
+        )
+    return float(total / len(leaf_catalog))
 
 
 def fractal_fast_scalar_score(
@@ -1759,6 +2135,7 @@ def fractal_fast_scalar_score(
     filter_decision: FilterDecision,
     node: TreeNode,
     robustness: dict[str, Any],
+    leaf_gene_penalty: float,
 ) -> tuple[float, dict[str, dict[str, float]]]:
     recent_2m_key, recent_6m_key, full_key = score_window_labels(windows)
     relative = build_baseline_relative_metrics(windows, baseline_windows)
@@ -1766,12 +2143,12 @@ def fractal_fast_scalar_score(
     rel_6m = relative[recent_6m_key]
     rel_4y = relative[full_key]
     score = 0.0
-    score += rel_2m["delta_worst_pair_avg_daily_return"] * 420000.0
-    score += rel_6m["delta_worst_pair_avg_daily_return"] * 320000.0
-    score += rel_4y["delta_worst_pair_avg_daily_return"] * 260000.0
-    score += rel_4y["delta_mean_avg_daily_return"] * 220000.0
-    score += rel_2m["delta_mean_avg_daily_return"] * 70000.0
-    score += rel_6m["delta_mean_avg_daily_return"] * 50000.0
+    score += rel_2m["delta_worst_pair_avg_daily_return"] * 320000.0
+    score += rel_6m["delta_worst_pair_avg_daily_return"] * 240000.0
+    score += rel_4y["delta_worst_pair_avg_daily_return"] * 180000.0
+    score += rel_4y["delta_mean_avg_daily_return"] * 160000.0
+    score += rel_2m["delta_mean_avg_daily_return"] * 50000.0
+    score += rel_6m["delta_mean_avg_daily_return"] * 38000.0
     score += rel_2m["delta_worst_pair_total_return"] * 1800.0
     score += rel_6m["delta_worst_pair_total_return"] * 1200.0
     score += rel_4y["delta_worst_pair_total_return"] * 60.0
@@ -1784,35 +2161,98 @@ def fractal_fast_scalar_score(
     score += rel_2m["delta_worst_daily_win_rate"] * 18000.0
     score += rel_6m["delta_worst_daily_win_rate"] * 14000.0
     score += rel_4y["delta_worst_daily_win_rate"] * 10000.0
-    score += float(robustness["worst_fold_delta_worst_pair_avg_daily_return"]) * 260000.0
-    score += float(robustness["worst_fold_delta_worst_pair_total_return"]) * 1800.0
-    score += float(robustness["worst_fold_delta_worst_max_drawdown"]) * 18000.0
-    score += float(robustness["worst_fold_delta_worst_daily_win_rate"]) * 16000.0
-    score += float(robustness["latest_fold_delta_worst_pair_total_return"]) * 1200.0
-    score += float(robustness["latest_fold_delta_worst_daily_win_rate"]) * 12000.0
-    score += float(robustness["fold_pass_rate"]) * 1200.0
+    score += float(robustness["worst_fold_delta_worst_pair_avg_daily_return"]) * 220000.0
+    score += float(robustness["worst_fold_delta_worst_pair_total_return"]) * 1600.0
+    score += float(robustness["worst_fold_delta_worst_max_drawdown"]) * 16000.0
+    score += float(robustness["worst_fold_delta_worst_daily_win_rate"]) * 14000.0
+    score += float(robustness["latest_fold_delta_worst_pair_avg_daily_return"]) * 640000.0
+    score += float(robustness["latest_fold_delta_mean_avg_daily_return"]) * 360000.0
+    score += float(robustness["latest_fold_delta_worst_pair_total_return"]) * 2400.0
+    score += float(robustness["latest_fold_delta_worst_max_drawdown"]) * 26000.0
+    score += float(robustness["latest_fold_delta_worst_daily_win_rate"]) * 26000.0
+    score += float(robustness["latest_fold_stress_reserve_score"]) * 1.0
+    score += float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)) * 2.2
+    score += float(robustness["stress_survival_rate_mean"]) * 3200.0
+    score += float(robustness["stress_survival_rate_min"]) * 5200.0
+    score += float(robustness.get("non_nominal_stress_survival_rate_mean", 0.0)) * 6800.0
+    score += float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) * 9200.0
+    score += (
+        float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
+        - float(robustness["stress_survival_threshold"])
+    ) * 18000.0
+    score += (
+        float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
+        - float(robustness["stress_survival_threshold"])
+    ) * 22000.0
+    score += float(robustness["fold_pass_rate"]) * 1000.0
     score += (
         float(robustness["stress_survival_rate_mean"]) - float(robustness["stress_survival_threshold"])
-    ) * 2400.0
+    ) * 9000.0
+    score += (
+        float(robustness["stress_survival_rate_min"]) - float(robustness["stress_survival_threshold"])
+    ) * 12000.0
+    score += (float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0)) - 0.5) * 12000.0
+    score += (float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) - 0.5) * 14000.0
     if float(robustness["fold_pass_rate"]) < 1.0:
         score -= (1.0 - float(robustness["fold_pass_rate"])) * 3500.0
+    if float(robustness["latest_fold_stress_reserve_score"]) < 0.0:
+        score -= abs(float(robustness["latest_fold_stress_reserve_score"])) * 4.5
+    if float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)) < 0.0:
+        score -= abs(float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))) * 8.0
     if float(robustness["stress_survival_rate_mean"]) < float(robustness["stress_survival_threshold"]):
         score -= (
             float(robustness["stress_survival_threshold"]) - float(robustness["stress_survival_rate_mean"])
-        ) * 5000.0
+        ) * 9000.0
+    if float(robustness["stress_survival_rate_min"]) < float(robustness["stress_survival_threshold"]):
+        score -= (
+            float(robustness["stress_survival_threshold"]) - float(robustness["stress_survival_rate_min"])
+        ) * 14000.0
+    if float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0)) < 0.5:
+        score -= (0.5 - float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))) * 16000.0
+    if float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) < 0.5:
+        score -= (0.5 - float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))) * 18000.0
+    if float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0)) < float(robustness["stress_survival_threshold"]):
+        score -= (
+            float(robustness["stress_survival_threshold"])
+            - float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
+        ) * 32000.0
+    if float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) < float(robustness["stress_survival_threshold"]):
+        score -= (
+            float(robustness["stress_survival_threshold"])
+            - float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
+        ) * 42000.0
+    if float(robustness["latest_fold_delta_worst_pair_total_return"]) < 0.010:
+        score -= (0.010 - float(robustness["latest_fold_delta_worst_pair_total_return"])) * 3800.0
+    if float(robustness["latest_fold_delta_worst_daily_win_rate"]) < 0.010:
+        score -= (0.010 - float(robustness["latest_fold_delta_worst_daily_win_rate"])) * 32000.0
+    if float(robustness["latest_fold_delta_worst_pair_avg_daily_return"]) < 0.0:
+        score -= abs(float(robustness["latest_fold_delta_worst_pair_avg_daily_return"])) * 520000.0
     if float(robustness["worst_fold_delta_worst_pair_total_return"]) < 0.0:
         score -= abs(float(robustness["worst_fold_delta_worst_pair_total_return"])) * 3000.0
     if float(robustness["latest_fold_delta_worst_pair_total_return"]) < 0.0:
         score -= abs(float(robustness["latest_fold_delta_worst_pair_total_return"])) * 2500.0
+    if float(robustness["latest_fold_delta_worst_max_drawdown"]) < 0.0:
+        score -= abs(float(robustness["latest_fold_delta_worst_max_drawdown"])) * 28000.0
     if float(robustness["latest_fold_delta_worst_daily_win_rate"]) < 0.0:
         score -= abs(float(robustness["latest_fold_delta_worst_daily_win_rate"])) * 22000.0
+    if float(robustness["latest_fold_trade_count_ratio"]) > 1.0:
+        score -= (float(robustness["latest_fold_trade_count_ratio"]) - 1.0) * 26000.0
+    if float(robustness["mean_fold_trade_count_ratio"]) > 1.0:
+        score -= (float(robustness["mean_fold_trade_count_ratio"]) - 1.0) * 14000.0
+    if float(robustness["latest_fold_trade_count_ratio"]) > 0.9:
+        score -= (float(robustness["latest_fold_trade_count_ratio"]) - 0.9) * 36000.0
+    if float(robustness["mean_fold_trade_count_ratio"]) > 0.9:
+        score -= (float(robustness["mean_fold_trade_count_ratio"]) - 0.9) * 22000.0
     for rel in (rel_2m, rel_6m, rel_4y):
         if rel["trade_count_ratio"] < 0.05:
             score -= (0.05 - rel["trade_count_ratio"]) * 150000.0
+        if rel["trade_count_ratio"] > 1.0:
+            score -= (rel["trade_count_ratio"] - 1.0) * 18000.0
     score -= tree_size(node) * 120.0
     score -= max(0, tree_depth(node) - 2) * 180.0
     score -= tree_logic_size(node) * 45.0
     score -= max(0, tree_logic_depth(node) - 1) * 90.0
+    score -= float(leaf_gene_penalty) * 1800.0
     if not filter_decision.accepted:
         score -= 10_000_000.0
     return float(score), relative
@@ -2290,6 +2730,7 @@ def main() -> None:
         condition_count = len(collect_specs(tree))
         reference_features = window_cache[window_specs[0]["key"]]["features"]
         _, leaf_catalog = evaluate_tree_leaf_codes(tree, reference_features)
+        leaf_gene_penalty = leaf_gene_deviation_score(leaf_catalog)
         leaf_runtime_arrays = {
             pair: build_leaf_runtime_arrays_for_pair(
                 pair,
@@ -2403,6 +2844,7 @@ def main() -> None:
             filter_decision,
             tree,
             robustness,
+            leaf_gene_penalty,
         )
         cached = {
             "tree": copy.deepcopy(tree),
@@ -2420,6 +2862,7 @@ def main() -> None:
             "condition_count": condition_count,
             "leaf_signature": leaf_signature,
             "leaf_cardinality": len(leaf_signature),
+            "leaf_gene_penalty": float(leaf_gene_penalty),
             "structural_score": structural_bonus_from_metrics(
                 tree_depth_value,
                 tree_logic_depth_value,
@@ -2546,12 +2989,140 @@ def main() -> None:
 
     evaluated = [evaluate_tree(tree) for tree in population]
     ranked = sorted({tree_key(item["tree"]): item for item in evaluated}.values(), key=lambda item: item["search_fitness"], reverse=True)
+    defensive_variants = evaluate_defensive_variants(ranked, evaluate_tree)
+    if defensive_variants:
+        ranked = sorted(
+            {item["tree_key"]: item for item in [*ranked, *defensive_variants]}.values(),
+            key=lambda item: item["search_fitness"],
+            reverse=True,
+        )
     top_candidates = ranked[: args.top_k]
+    cost_reserve_candidates = [
+        item
+        for item in ranked
+        if candidate_wf1_pass(item) and candidate_cost_reserve_pass(item)
+    ]
+    cost_reserve_archive_candidate = max(
+        cost_reserve_candidates,
+        key=lambda item: (
+            int(item["tree_depth"]) >= 2,
+            int(item["logic_depth"]) >= 2,
+            float(item["robustness"].get("latest_non_nominal_stress_reserve_score", 0.0)),
+            float(item["robustness"].get("latest_fold_stress_reserve_score", 0.0)),
+            float(item["performance_score"]),
+            float(item["search_fitness"]),
+            item["tree_key"],
+        ),
+    ) if cost_reserve_candidates else None
+    persistent_gate_candidates = [
+        item
+        for item in ranked
+        if (int(item["tree_depth"]) >= 2 or int(item["logic_depth"]) >= 2)
+        and candidate_wf1_pass(item)
+        and candidate_stress_pass(item)
+    ]
+    strict_persistent_archive_candidate = max(
+        persistent_gate_candidates,
+        key=lambda item: (
+            int(item["tree_depth"]) >= 3,
+            int(item["logic_depth"]) >= 2,
+            float(item["performance_score"]),
+            float(item["search_fitness"]),
+            float(item["structural_score"]),
+            item["tree_key"],
+        ),
+    ) if persistent_gate_candidates else None
+    persistent_candidates = [
+        item
+        for item in ranked
+        if int(item["tree_depth"]) >= 3 or int(item["logic_depth"]) >= 2
+    ]
+    persistent_archive_candidate = max(
+        persistent_candidates,
+        key=lambda item: (
+            int(item["tree_depth"]) >= 3,
+            int(item["logic_depth"]) >= 2,
+            1 if candidate_cost_reserve_pass(item) else 0,
+            float(item["performance_score"]),
+            float(item["search_fitness"]),
+            float(item["structural_score"]),
+            item["tree_key"],
+        ),
+    ) if persistent_candidates else None
+    persistent_archive_injected_into_top_k = False
+    if cost_reserve_archive_candidate is not None and cost_reserve_archive_candidate["tree_key"] not in {item["tree_key"] for item in top_candidates}:
+        replacement_idx = min(
+            range(len(top_candidates)),
+            key=lambda idx: (
+                float(top_candidates[idx]["search_fitness"]),
+                float(top_candidates[idx]["performance_score"]),
+                float(top_candidates[idx]["structural_score"]),
+                top_candidates[idx]["tree_key"],
+            ),
+        ) if top_candidates else None
+        if replacement_idx is not None:
+            top_candidates[replacement_idx] = cost_reserve_archive_candidate
+            top_candidates = sorted(
+                {item["tree_key"]: item for item in top_candidates}.values(),
+                key=lambda item: item["search_fitness"],
+                reverse=True,
+            )[: args.top_k]
+            persistent_archive_injected_into_top_k = True
+    elif strict_persistent_archive_candidate is not None and strict_persistent_archive_candidate["tree_key"] not in {item["tree_key"] for item in top_candidates}:
+        replacement_idx = min(
+            range(len(top_candidates)),
+            key=lambda idx: (
+                float(top_candidates[idx]["search_fitness"]),
+                float(top_candidates[idx]["performance_score"]),
+                float(top_candidates[idx]["structural_score"]),
+                top_candidates[idx]["tree_key"],
+            ),
+        ) if top_candidates else None
+        if replacement_idx is not None:
+            top_candidates[replacement_idx] = strict_persistent_archive_candidate
+            top_candidates = sorted(
+                {item["tree_key"]: item for item in top_candidates}.values(),
+                key=lambda item: item["search_fitness"],
+                reverse=True,
+            )[: args.top_k]
+            persistent_archive_injected_into_top_k = True
+    elif persistent_archive_candidate is not None and persistent_archive_candidate["tree_key"] not in {item["tree_key"] for item in top_candidates}:
+        best_top_performance = max(float(item["performance_score"]) for item in top_candidates) if top_candidates else float(persistent_archive_candidate["performance_score"])
+        persistent_frontier_band = max(250.0, abs(best_top_performance) * 0.080)
+        if top_candidates and (
+            best_top_performance - float(persistent_archive_candidate["performance_score"]) <= persistent_frontier_band
+            or bool(persistent_archive_candidate["robustness"]["gate_passed"])
+        ):
+            replacement_idx = min(
+                range(len(top_candidates)),
+                key=lambda idx: (
+                    float(top_candidates[idx]["search_fitness"]),
+                    float(top_candidates[idx]["performance_score"]),
+                    float(top_candidates[idx]["structural_score"]),
+                    top_candidates[idx]["tree_key"],
+                ),
+            )
+            top_candidates[replacement_idx] = persistent_archive_candidate
+            top_candidates = sorted(
+                {item["tree_key"]: item for item in top_candidates}.values(),
+                key=lambda item: item["search_fitness"],
+                reverse=True,
+            )[: args.top_k]
+            persistent_archive_injected_into_top_k = True
     progressive_candidates = [item for item in top_candidates if item["validation"]["profiles"]["progressive_improvement"]["passed"]]
     target_candidates = [item for item in top_candidates if item["validation"]["profiles"]["target_060"]["passed"]]
     robust_candidates = [item for item in top_candidates if bool(item["robustness"]["gate_passed"])]
     fallback_best = max(top_candidates, key=lambda item: float(item["performance_score"])) if top_candidates else None
     winner_pool = target_candidates or progressive_candidates or robust_candidates or top_candidates
+    if cost_reserve_archive_candidate is not None:
+        winner_pool = [item for item in winner_pool if item["tree_key"] != cost_reserve_archive_candidate["tree_key"]]
+        winner_pool.append(cost_reserve_archive_candidate)
+    elif strict_persistent_archive_candidate is not None:
+        winner_pool = [item for item in winner_pool if item["tree_key"] != strict_persistent_archive_candidate["tree_key"]]
+        winner_pool.append(strict_persistent_archive_candidate)
+    elif persistent_archive_candidate is not None:
+        winner_pool = [item for item in winner_pool if item["tree_key"] != persistent_archive_candidate["tree_key"]]
+        winner_pool.append(persistent_archive_candidate)
     selected, selection_diagnostics = select_near_frontier_structural_winner(winner_pool)
     structural_champion_forced_into_top_k = False
     if selected is not None and selected["tree_key"] not in {item["tree_key"] for item in top_candidates}:
@@ -2650,6 +3221,7 @@ def main() -> None:
                 "logic_cell_count": int(tree_logic_size(item["tree"])),
                 "condition_count": int(len(collect_specs(item["tree"]))),
                 "leaf_cardinality": int(len(set(collect_leaf_keys(item["tree"])))),
+                "leaf_gene_penalty": float(item["leaf_gene_penalty"]),
                 "filter": {
                     "accepted": item["filter"].accepted,
                     "source": item["filter"].source,
@@ -2672,6 +3244,36 @@ def main() -> None:
             "target_060_pass_count": len(target_candidates),
             "progressive_pass_count": len(progressive_candidates),
             "robustness_gate_pass_count": len(robust_candidates),
+            "top_k_wf1_pass_count": sum(1 for item in top_candidates if candidate_wf1_pass(item)),
+            "top_k_stress_pass_count": sum(1 for item in top_candidates if candidate_stress_pass(item)),
+            "top_k_cost_reserve_pass_count": sum(1 for item in top_candidates if candidate_cost_reserve_pass(item)),
+            "top_k_stress_reserve_scores": [float(item["robustness"].get("latest_fold_stress_reserve_score", 0.0)) for item in top_candidates],
+            "stress_run_summary": top_candidates[0]["robustness"].get("stress_run_summary", {}) if top_candidates else {},
+            "latest_fold_stress_run_summary": top_candidates[0]["robustness"].get("latest_fold_stress_run_summary", {}) if top_candidates else {},
+            "cost_reserve_archive_candidate": None if cost_reserve_archive_candidate is None else {
+                "tree_key": cost_reserve_archive_candidate["tree_key"],
+                "tree_depth": int(cost_reserve_archive_candidate["tree_depth"]),
+                "logic_depth": int(cost_reserve_archive_candidate["logic_depth"]),
+                "performance_score": float(cost_reserve_archive_candidate["performance_score"]),
+                "stress_reserve_score": float(cost_reserve_archive_candidate["robustness"].get("latest_non_nominal_stress_reserve_score", 0.0)),
+            },
+            "persistent_archive_candidate": None if persistent_archive_candidate is None else {
+                "tree_key": persistent_archive_candidate["tree_key"],
+                "tree_depth": int(persistent_archive_candidate["tree_depth"]),
+                "logic_depth": int(persistent_archive_candidate["logic_depth"]),
+                "performance_score": float(persistent_archive_candidate["performance_score"]),
+                "structural_score": float(persistent_archive_candidate["structural_score"]),
+                "stress_reserve_score": float(persistent_archive_candidate["robustness"].get("latest_fold_stress_reserve_score", 0.0)),
+            },
+            "strict_persistent_archive_candidate": None if strict_persistent_archive_candidate is None else {
+                "tree_key": strict_persistent_archive_candidate["tree_key"],
+                "tree_depth": int(strict_persistent_archive_candidate["tree_depth"]),
+                "logic_depth": int(strict_persistent_archive_candidate["logic_depth"]),
+                "performance_score": float(strict_persistent_archive_candidate["performance_score"]),
+                "structural_score": float(strict_persistent_archive_candidate["structural_score"]),
+                "stress_reserve_score": float(strict_persistent_archive_candidate["robustness"].get("latest_fold_stress_reserve_score", 0.0)),
+            },
+            "persistent_archive_injected_into_top_k": persistent_archive_injected_into_top_k,
             "structural_champion_forced_into_top_k": structural_champion_forced_into_top_k,
             "selection_diagnostics": selection_diagnostics,
         },
@@ -2686,6 +3288,7 @@ def main() -> None:
             "logic_cell_count": int(tree_logic_size(fallback_best["tree"])),
             "condition_count": int(len(collect_specs(fallback_best["tree"]))),
             "leaf_cardinality": int(len(set(collect_leaf_keys(fallback_best["tree"])))),
+            "leaf_gene_penalty": float(fallback_best["leaf_gene_penalty"]),
             "structural_score": float(fallback_best["structural_score"]),
             "baseline_relative": fallback_best["baseline_relative"],
             "robustness": fallback_best["robustness"],
@@ -2709,6 +3312,7 @@ def main() -> None:
             "logic_cell_count": int(tree_logic_size(selected["tree"])),
             "condition_count": int(len(collect_specs(selected["tree"]))),
             "leaf_cardinality": int(len(set(collect_leaf_keys(selected["tree"])))),
+            "leaf_gene_penalty": float(selected["leaf_gene_penalty"]),
             "baseline_relative": selected["baseline_relative"],
             "robustness": selected["robustness"],
             "windows": selected["windows"],

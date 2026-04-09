@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 ENTRY_SCRIPT="$ROOT_DIR/scripts/rotation_target_050_live.py"
 LEGACY_SCRIPT="$ROOT_DIR/scripts/live_trader.py"
+TRADER_PLIST_PATH="$ROOT_DIR/scripts/com.epicinvest.trader.plist"
+TRADER_LAUNCHD_ENTRY="$ROOT_DIR/scripts/trader_launchd_entry.sh"
+TRADER_DOMAIN="gui/$(id -u)"
+TRADER_LABEL="com.epicinvest.trader"
 LOG_FILE="${TRADER_LOG_FILE:-/tmp/epic-invest-trader.log}"
 PID_FILE="${TRADER_PID_FILE:-/tmp/epic-invest-trader.pid}"
 POLL_SECONDS="${TRADER_POLL_SECONDS:-60}"
@@ -68,8 +72,12 @@ send_telegram_lifecycle_message() {
 }
 
 collect_process_rows() {
-  ps -ax -o pid=,ppid=,stat=,etime=,command= | awk -v entry="$ENTRY_SCRIPT" -v legacy="$LEGACY_SCRIPT" '
-    index($0, entry) > 0 || index($0, legacy) > 0 { print }
+  ps -ax -o pid=,ppid=,stat=,etime=,command= | awk \
+    -v entry="$ENTRY_SCRIPT" \
+    -v entry_rel="scripts/rotation_target_050_live.py" \
+    -v legacy="$LEGACY_SCRIPT" \
+    -v legacy_rel="scripts/live_trader.py" '
+    index($0, entry) > 0 || index($0, entry_rel) > 0 || index($0, legacy) > 0 || index($0, legacy_rel) > 0 { print }
   '
 }
 
@@ -79,6 +87,14 @@ collect_pids() {
 
 collect_zombie_rows() {
   collect_process_rows | awk '$3 ~ /^Z/ { print }'
+}
+
+launchd_trader_pid() {
+  launchctl print "$TRADER_DOMAIN/$TRADER_LABEL" 2>/dev/null | awk '/^[[:space:]]*pid = / {print $3; exit}'
+}
+
+bootout_trader_launchd() {
+  launchctl bootout "$TRADER_DOMAIN/$TRADER_LABEL" >/dev/null 2>&1 || true
 }
 
 read_pid_file() {
@@ -114,6 +130,14 @@ ensure_prerequisites() {
   fi
   if [[ ! -f "$ENTRY_SCRIPT" ]]; then
     print_line "❌ 실행 스크립트를 찾을 수 없습니다: $ENTRY_SCRIPT"
+    exit 1
+  fi
+  if [[ ! -f "$TRADER_PLIST_PATH" ]]; then
+    print_line "❌ launchd plist를 찾을 수 없습니다: $TRADER_PLIST_PATH"
+    exit 1
+  fi
+  if [[ ! -f "$TRADER_LAUNCHD_ENTRY" ]]; then
+    print_line "❌ launchd 실행 스크립트를 찾을 수 없습니다: $TRADER_LAUNCHD_ENTRY"
     exit 1
   fi
   if [[ ! -f "$ROOT_DIR/.env" ]]; then
@@ -177,6 +201,7 @@ stop_pid() {
 stop_trader() {
   print_line "🛑 Epic Invest 트레이더 종료"
   cleanup_stale_pid_file
+  bootout_trader_launchd
 
   local pids=()
   local pid_line
@@ -250,8 +275,26 @@ start_trader() {
   print_info "미세 리밸런싱 band: \$${REBALANCE_NOTIONAL_BAND_USD}"
 
   : > "$LOG_FILE"
-  nohup "$PYTHON_BIN" -u "$ENTRY_SCRIPT" loop --execute --poll-seconds "$POLL_SECONDS" > "$LOG_FILE" 2>&1 < /dev/null &
-  local pid="$!"
+  bootout_trader_launchd
+  launchctl bootstrap "$TRADER_DOMAIN" "$TRADER_PLIST_PATH"
+  launchctl enable "$TRADER_DOMAIN/$TRADER_LABEL" >/dev/null 2>&1 || true
+  launchctl kickstart -k "$TRADER_DOMAIN/$TRADER_LABEL"
+
+  local pid=""
+  local launch_attempt
+  for ((launch_attempt = 0; launch_attempt < 10; launch_attempt++)); do
+    pid="$(launchd_trader_pid || true)"
+    if [[ -n "${pid:-}" ]] && is_pid_running "$pid"; then
+      break
+    fi
+    pid=""
+    sleep 1
+  done
+  if [[ -z "${pid:-}" ]]; then
+    print_line "❌ launchd 트레이더 PID를 확인하지 못했습니다."
+    exit 1
+  fi
+
   echo "$pid" > "$PID_FILE"
   print_info "트레이더 시작 (PID: $pid, 로그: $LOG_FILE)"
   print_info "준비 대기 중..."
@@ -259,12 +302,11 @@ start_trader() {
   local ready=0
   local i
   for ((i = 0; i < STARTUP_WAIT_SECONDS; i++)); do
-    if ! is_pid_running "$pid"; then
-      print_line "❌ 트레이더가 시작 직후 종료되었습니다."
-      print_info "최근 로그:"
-      tail -n 40 "$LOG_FILE" || true
-      rm -f "$PID_FILE"
-      exit 1
+    local current_pid
+    current_pid="$(launchd_trader_pid || true)"
+    if [[ -n "${current_pid:-}" ]] && is_pid_running "$current_pid"; then
+      pid="$current_pid"
+      echo "$pid" > "$PID_FILE"
     fi
     if rg -q 'Rotation Target 0.5% Live Plan|Action:' "$LOG_FILE" 2>/dev/null; then
       ready=1
@@ -272,6 +314,14 @@ start_trader() {
     fi
     sleep 1
   done
+
+  if ! is_pid_running "$pid"; then
+    print_line "❌ 트레이더가 시작 직후 종료되었습니다."
+    print_info "최근 로그:"
+    tail -n 40 "$LOG_FILE" || true
+    rm -f "$PID_FILE"
+    exit 1
+  fi
 
   if (( ready == 1 )); then
     print_info "트레이더 준비 완료"

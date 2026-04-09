@@ -471,12 +471,34 @@ def load_state(path: str | Path) -> dict[str, Any]:
             "overlay_completed_day": None,
             "core_day_state": None,
             "shutdown_protection": [],
+            "latest_runtime_snapshot": {
+                "captured_at": None,
+                "equity": None,
+                "positions": [],
+                "protections": [],
+                "exchange_error": None,
+                "plan": None,
+            },
             "notification_state": {
                 "last_briefing_effective_day": None,
                 "last_briefing_equity": None,
                 "last_summary_effective_day": None,
                 "last_session_effective_day": None,
                 "last_session_type": None,
+            },
+            "runtime_health": {
+                "process_started_at": None,
+                "last_loop_started_at": None,
+                "last_loop_completed_at": None,
+                "last_success_at": None,
+                "last_error_at": None,
+                "last_error_message": None,
+                "consecutive_errors": 0,
+                "loop_success_count": 0,
+                "loop_error_count": 0,
+                "last_duration_seconds": None,
+                "pid": None,
+                "poll_seconds": None,
             },
             "updated_at": None,
         }
@@ -486,14 +508,41 @@ def load_state(path: str | Path) -> dict[str, Any]:
     state.setdefault("overlay_completed_day", None)
     state.setdefault("core_day_state", None)
     state.setdefault("shutdown_protection", [])
+    state.setdefault("latest_runtime_snapshot", {})
+    state["latest_runtime_snapshot"].setdefault("captured_at", None)
+    state["latest_runtime_snapshot"].setdefault("equity", None)
+    state["latest_runtime_snapshot"].setdefault("positions", [])
+    state["latest_runtime_snapshot"].setdefault("protections", [])
+    state["latest_runtime_snapshot"].setdefault("exchange_error", None)
+    state["latest_runtime_snapshot"].setdefault("plan", None)
     state.setdefault("notification_state", {})
     state["notification_state"].setdefault("last_briefing_effective_day", None)
     state["notification_state"].setdefault("last_briefing_equity", None)
     state["notification_state"].setdefault("last_summary_effective_day", None)
     state["notification_state"].setdefault("last_session_effective_day", None)
     state["notification_state"].setdefault("last_session_type", None)
+    state.setdefault("runtime_health", {})
+    state["runtime_health"].setdefault("process_started_at", None)
+    state["runtime_health"].setdefault("last_loop_started_at", None)
+    state["runtime_health"].setdefault("last_loop_completed_at", None)
+    state["runtime_health"].setdefault("last_success_at", None)
+    state["runtime_health"].setdefault("last_error_at", None)
+    state["runtime_health"].setdefault("last_error_message", None)
+    state["runtime_health"].setdefault("consecutive_errors", 0)
+    state["runtime_health"].setdefault("loop_success_count", 0)
+    state["runtime_health"].setdefault("loop_error_count", 0)
+    state["runtime_health"].setdefault("last_duration_seconds", None)
+    state["runtime_health"].setdefault("pid", None)
+    state["runtime_health"].setdefault("poll_seconds", None)
     state.setdefault("updated_at", None)
     return state
+
+
+def update_runtime_health(state: dict[str, Any], **updates: Any) -> dict[str, Any]:
+    runtime_health = state.setdefault("runtime_health", {})
+    for key, value in updates.items():
+        runtime_health[key] = value
+    return runtime_health
 
 
 def save_state(path: str | Path, state: dict[str, Any]) -> None:
@@ -977,6 +1026,87 @@ def sync_exchange_state(
         "cancel_actions": cancel_actions,
         "overlay_sync": overlay_report,
     }
+
+
+def update_latest_runtime_snapshot(
+    exchange: ccxt.binanceusdm,
+    state: dict[str, Any],
+    plan: dict[str, Any] | None,
+    equity_hint: float | None = None,
+) -> dict[str, Any]:
+    snapshot = state.setdefault("latest_runtime_snapshot", {})
+    captured_at = utc_now().isoformat()
+    try:
+        equity = float(equity_hint) if equity_hint is not None else fetch_equity(exchange)
+        positions = fetch_open_position_map(exchange)
+        protections = fetch_strategy_protection_orders(exchange)
+        snapshot.update(
+            {
+                "captured_at": captured_at,
+                "equity": equity,
+                "positions": [
+                    {
+                        "pair": pair,
+                        "symbol": pos["symbol"],
+                        "qty": pos["qty"],
+                        "side": pos["side"],
+                        "entry_price": pos["entry_price"],
+                        "mark_price": pos["mark_price"],
+                        "margin_mode": pos["margin_mode"],
+                    }
+                    for pair, pos in positions.items()
+                ],
+                "protections": [
+                    {
+                        "id": order.get("id"),
+                        "client_order_id": extract_client_order_id(order),
+                        "symbol": order.get("symbol"),
+                        "type": order.get("type"),
+                        "side": order.get("side"),
+                    }
+                    for order in protections
+                ],
+                "exchange_error": None,
+                "plan": plan,
+            }
+        )
+    except Exception as exc:
+        snapshot.update(
+            {
+                "captured_at": captured_at,
+                "exchange_error": str(exc),
+                "plan": plan,
+            }
+        )
+    return snapshot
+
+
+def prime_latest_runtime_snapshot(
+    state: dict[str, Any],
+    plan: dict[str, Any] | None,
+    equity: float | None = None,
+) -> dict[str, Any]:
+    snapshot = state.setdefault("latest_runtime_snapshot", {})
+    snapshot["captured_at"] = utc_now().isoformat()
+    snapshot["plan"] = plan
+    if equity is not None:
+        snapshot["equity"] = float(equity)
+    snapshot.setdefault("positions", [])
+    snapshot.setdefault("protections", [])
+    snapshot.setdefault("exchange_error", None)
+    return snapshot
+
+
+def update_snapshot_from_sync_report(
+    state: dict[str, Any],
+    plan: dict[str, Any] | None,
+    equity: float | None,
+    sync_report: dict[str, Any],
+) -> dict[str, Any]:
+    snapshot = prime_latest_runtime_snapshot(state, plan, equity)
+    snapshot["positions"] = sync_report.get("positions") or []
+    snapshot["protections"] = sync_report.get("managed_protection_orders") or []
+    return snapshot
 
 
 def install_shutdown_protection(
@@ -1473,6 +1603,8 @@ def run_once(args: argparse.Namespace) -> None:
                 raise ValueError("Equity is required for dry-run without demo API credentials.")
             equity = fetch_equity(exchange)
         equity = float(equity)
+        prime_latest_runtime_snapshot(state, plan, equity)
+        save_state(args.state_path, state)
 
         if args.execute:
             previous_briefing_day = notification_state.get("last_briefing_effective_day")
@@ -1508,6 +1640,8 @@ def run_once(args: argparse.Namespace) -> None:
         print_plan(plan, equity)
 
         sync_report = sync_exchange_state(exchange, state, plan, args.execute)
+        update_snapshot_from_sync_report(state, plan, equity, sync_report)
+        save_state(args.state_path, state)
         print("\nExchange Sync")
         print(json.dumps(sync_report, indent=2))
 
@@ -1630,6 +1764,7 @@ def run_once(args: argparse.Namespace) -> None:
                 if note:
                     notifications.append(note)
 
+        update_latest_runtime_snapshot(exchange, state, plan, equity_hint=equity)
         save_state(args.state_path, state)
         print(f"\nState saved: {args.state_path}")
         if args.execute and notifications:
@@ -1690,7 +1825,24 @@ def main() -> None:
         return
 
     if args.command == "loop":
+        loop_state = load_state(args.state_path)
+        update_runtime_health(
+            loop_state,
+            process_started_at=utc_now().isoformat(),
+            pid=os.getpid(),
+            poll_seconds=int(args.poll_seconds),
+        )
+        save_state(args.state_path, loop_state)
         while True:
+            loop_started_at = utc_now()
+            loop_state = load_state(args.state_path)
+            update_runtime_health(
+                loop_state,
+                last_loop_started_at=loop_started_at.isoformat(),
+                pid=os.getpid(),
+                poll_seconds=int(args.poll_seconds),
+            )
+            save_state(args.state_path, loop_state)
             try:
                 ns = argparse.Namespace(
                     command="run-once",
@@ -1702,9 +1854,37 @@ def main() -> None:
                     state_path=args.state_path,
                 )
                 run_once(ns)
+                loop_completed_at = utc_now()
+                loop_state = load_state(args.state_path)
+                runtime_health = update_runtime_health(
+                    loop_state,
+                    last_loop_completed_at=loop_completed_at.isoformat(),
+                    last_success_at=loop_completed_at.isoformat(),
+                    last_error_message=None,
+                    consecutive_errors=0,
+                    last_duration_seconds=round((loop_completed_at - loop_started_at).total_seconds(), 3),
+                    pid=os.getpid(),
+                    poll_seconds=int(args.poll_seconds),
+                )
+                runtime_health["loop_success_count"] = int(runtime_health.get("loop_success_count", 0)) + 1
+                save_state(args.state_path, loop_state)
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                loop_failed_at = utc_now()
+                loop_state = load_state(args.state_path)
+                runtime_health = update_runtime_health(
+                    loop_state,
+                    last_loop_completed_at=loop_failed_at.isoformat(),
+                    last_error_at=loop_failed_at.isoformat(),
+                    last_error_message=str(exc),
+                    last_duration_seconds=round((loop_failed_at - loop_started_at).total_seconds(), 3),
+                    pid=os.getpid(),
+                    poll_seconds=int(args.poll_seconds),
+                )
+                runtime_health["consecutive_errors"] = int(runtime_health.get("consecutive_errors", 0)) + 1
+                runtime_health["loop_error_count"] = int(runtime_health.get("loop_error_count", 0)) + 1
+                save_state(args.state_path, loop_state)
                 print(f"[ERROR] {exc}")
                 send_telegram_notification(
                     "\n".join(

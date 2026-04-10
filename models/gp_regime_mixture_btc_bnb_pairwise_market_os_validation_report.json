@@ -1,0 +1,522 @@
+{
+  "pairs": [
+    "BTCUSDT",
+    "BNBUSDT"
+  ],
+  "summary_path": null,
+  "selected_candidate": {
+    "route_breadth_threshold": null,
+    "mapping_indices": null,
+    "pair_configs": {
+      "BTCUSDT": {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          3018,
+          2140,
+          3769,
+          4028,
+          3018,
+          2140,
+          3769,
+          4028,
+          3018,
+          2140,
+          3769,
+          4028
+        ],
+        "route_state_mode": "equity_corr"
+      },
+      "BNBUSDT": {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          3560,
+          3090,
+          2043,
+          2892,
+          3560,
+          3090,
+          2043,
+          2892,
+          3560,
+          3090,
+          2043,
+          2892
+        ],
+        "route_state_mode": "equity_corr"
+      }
+    },
+    "candidate_id": "0.5|equity_corr|3018|2140|3769|4028|3018|2140|3769|4028|3018|2140|3769|4028|0.5|equity_corr|3560|3090|2043|2892|3560|3090|2043|2892|3560|3090|2043|2892"
+  },
+  "validation_engine": {
+    "metrics": {
+      "total_return": 1086.2117968592534,
+      "max_drawdown": -0.06478861179415096,
+      "sharpe": 5.5731771434387,
+      "avg_daily_return": 0.0049353056671919025,
+      "daily_target_hit_rate": 0.23819301848049282,
+      "worst_day": -0.06320840407656003,
+      "best_day": 0.16623529345177956
+    },
+    "dsr_proxy": 1.0,
+    "cpcv": {
+      "n_splits": 15,
+      "pass_rate": 1.0,
+      "test_positive_rate": 1.0,
+      "avg_test_return": 9.915459956885808,
+      "min_test_return": 4.4026315081181995,
+      "avg_test_mdd": -0.05645430052576948,
+      "splits": [
+        {
+          "test_blocks": [
+            0,
+            1
+          ],
+          "train_days": 971,
+          "test_days": 488,
+          "score": 3388.648051943712,
+          "passed": true,
+          "test_total_return": 7.710745799014594,
+          "test_sharpe": 5.717613079202002,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 123.85016591802805
+        },
+        {
+          "test_blocks": [
+            0,
+            2
+          ],
+          "train_days": 967,
+          "test_days": 488,
+          "score": 3592.891026147336,
+          "passed": true,
+          "test_total_return": 6.102892679837395,
+          "test_sharpe": 4.8671750300122225,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 148.28442300883373
+        },
+        {
+          "test_blocks": [
+            0,
+            3
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3208.544338851079,
+          "passed": true,
+          "test_total_return": 11.964695473735864,
+          "test_sharpe": 5.705344018342742,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 80.75155805583451
+        },
+        {
+          "test_blocks": [
+            0,
+            4
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3215.2357687906724,
+          "passed": true,
+          "test_total_return": 9.610418446696706,
+          "test_sharpe": 5.546871807970374,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 99.55821621802302
+        },
+        {
+          "test_blocks": [
+            0,
+            5
+          ],
+          "train_days": 970,
+          "test_days": 487,
+          "score": 3411.874332369252,
+          "passed": true,
+          "test_total_return": 15.753255934486912,
+          "test_sharpe": 6.167753433150161,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 62.3311539199882
+        },
+        {
+          "test_blocks": [
+            1,
+            2
+          ],
+          "train_days": 969,
+          "test_days": 488,
+          "score": 4296.552832719904,
+          "passed": true,
+          "test_total_return": 4.4026315081181995,
+          "test_sharpe": 4.908131997836105,
+          "test_max_drawdown": -0.033423218293732515,
+          "train_total_return": 200.3582666028447
+        },
+        {
+          "test_blocks": [
+            1,
+            3
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3288.5700970811813,
+          "passed": true,
+          "test_total_return": 8.861260111446047,
+          "test_sharpe": 5.747658908599906,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 109.36449424760931
+        },
+        {
+          "test_blocks": [
+            1,
+            4
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3497.395156585421,
+          "passed": true,
+          "test_total_return": 7.070540214857143,
+          "test_sharpe": 5.626552968559133,
+          "test_max_drawdown": -0.03921319521884381,
+          "train_total_return": 134.7534576621053
+        },
+        {
+          "test_blocks": [
+            1,
+            5
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3251.3606845121235,
+          "passed": true,
+          "test_total_return": 11.742930585472307,
+          "test_sharpe": 6.247526177771234,
+          "test_max_drawdown": -0.05272940795937597,
+          "train_total_return": 84.4969732530766
+        },
+        {
+          "test_blocks": [
+            2,
+            3
+          ],
+          "train_days": 970,
+          "test_days": 487,
+          "score": 3472.749216013811,
+          "passed": true,
+          "test_total_return": 7.041041935523658,
+          "test_sharpe": 4.948738120427748,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 134.30273115623356
+        },
+        {
+          "test_blocks": [
+            2,
+            4
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3830.616173681813,
+          "passed": true,
+          "test_total_return": 5.580857981291004,
+          "test_sharpe": 4.761813084519834,
+          "test_max_drawdown": -0.03921319521884381,
+          "train_total_return": 165.42864818802724
+        },
+        {
+          "test_blocks": [
+            2,
+            5
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3260.116313469103,
+          "passed": true,
+          "test_total_return": 9.390805846437006,
+          "test_sharpe": 5.437754124773324,
+          "test_max_drawdown": -0.052729407959376084,
+          "train_total_return": 103.81608297664319
+        },
+        {
+          "test_blocks": [
+            3,
+            4
+          ],
+          "train_days": 971,
+          "test_days": 486,
+          "score": 3231.0764619101205,
+          "passed": true,
+          "test_total_return": 11.011841305941697,
+          "test_sharpe": 5.61265569633931,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 89.51166837522729
+        },
+        {
+          "test_blocks": [
+            3,
+            5
+          ],
+          "train_days": 969,
+          "test_days": 486,
+          "score": 3615.127123036065,
+          "passed": true,
+          "test_total_return": 17.966024069063316,
+          "test_sharpe": 6.226678776372571,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 56.39967988584551
+        },
+        {
+          "test_blocks": [
+            4,
+            5
+          ],
+          "train_days": 973,
+          "test_days": 486,
+          "score": 3368.749100272474,
+          "passed": true,
+          "test_total_return": 14.521957461365282,
+          "test_sharpe": 6.080321819684029,
+          "test_max_drawdown": -0.052729407959376084,
+          "train_total_return": 69.52060901053962
+        }
+      ]
+    },
+    "candidate_selection_pbo": {
+      "n_splits": 15,
+      "pbo": 0.26666666666666666,
+      "avg_selected_test_percentile": 0.6,
+      "worst_selected_test_percentile": 0.0
+    },
+    "pbo_profile": {
+      "selected_count": 9,
+      "selection_share": 0.6,
+      "selected_below_median_rate": 0.0,
+      "avg_selected_test_percentile": 0.8235294117647058,
+      "worst_selected_test_percentile": 0.5882352941176471,
+      "avg_selected_test_score": 1198.3818039080647,
+      "avg_selected_test_return": 8.11633031116325
+    },
+    "profile": {
+      "false_positive_risk": 0.078,
+      "validation_quality_score": 0.922,
+      "cpcv_overfit_rate": 0.43333333333333335,
+      "pbo_selected_below_median_rate": 0.0,
+      "pbo_avg_selected_test_percentile": 0.8235294117647058,
+      "pbo_selection_share": 0.6,
+      "risk_components": {
+        "dsr_shortfall": 0.0,
+        "cpcv_pass_shortfall": 0.0,
+        "cpcv_positive_shortfall": 0.0,
+        "cpcv_tail_loss_shortfall": 0.0,
+        "cpcv_overfit_rate": 0.43333333333333335,
+        "pbo_selected_below_median_rate": 0.0,
+        "pbo_avg_selected_test_percentile": 0.0,
+        "pbo_selection_share": 0.0
+      }
+    },
+    "market_operating_system": {
+      "stages": {
+        "structure_train": {
+          "days": 1279,
+          "total_return": 256.4845480651583,
+          "max_drawdown": -0.06478861179415096,
+          "sharpe": 5.28945013214963,
+          "avg_daily_return": 0.004475867893093043,
+          "daily_target_hit_rate": 0.22673964034401878,
+          "cvar_95": -0.019944275368756294,
+          "calmar": 59.892209268929136,
+          "dsr_proxy": 1.0
+        },
+        "recent_adaptation": {
+          "days": 121,
+          "total_return": 1.545747411979224,
+          "max_drawdown": -0.05272940795937642,
+          "sharpe": 6.939404184683558,
+          "avg_daily_return": 0.007984449092252332,
+          "daily_target_hit_rate": 0.3140495867768595,
+          "cvar_95": -0.02343308949276074,
+          "calmar": 299.41042094596344,
+          "dsr_proxy": 0.999999999999895
+        },
+        "final_oos": {
+          "days": 61,
+          "total_return": 0.6586229620977608,
+          "max_drawdown": -0.041726587085608835,
+          "sharpe": 8.185917446132844,
+          "avg_daily_return": 0.008520134497357968,
+          "daily_target_hit_rate": 0.32786885245901637,
+          "cvar_95": -0.021754874036885405,
+          "calmar": 471.90849133866925,
+          "dsr_proxy": 0.9999999999999691
+        }
+      },
+      "state_summary": {
+        "route_state_mean_returns": {
+          "equity_mixed:bull_narrow": 0.001102419114917158,
+          "equity_mixed:bull_broad": -8.480220414328282e-05,
+          "equity_mixed:bear_narrow": 0.0177686343202594,
+          "equity_aligned:bear_narrow": 0.016788929911381784,
+          "equity_aligned:bear_broad": 0.0007489364130312772,
+          "equity_aligned:bull_broad": -0.0001748539685011706,
+          "equity_aligned:bull_narrow": -0.00011860858203994134,
+          "equity_mixed:bear_broad": 1.967241644480319e-05,
+          "equity_inverse:bear_narrow": 0.008881817141590146,
+          "equity_inverse:bull_broad": -0.00011651104209327004,
+          "equity_inverse:bull_narrow": -0.0001858753460430851,
+          "equity_inverse:bear_broad": 0.0012110692451260119
+        },
+        "corr_bucket_mean_returns": {
+          "equity_mixed": 0.0043955340682525715,
+          "equity_aligned": 0.005382438232634412,
+          "equity_inverse": 0.0011472976474142848
+        },
+        "observed_state_count": 12,
+        "positive_state_count": 7,
+        "state_coverage_share": 1.0,
+        "regime_coverage": 0.8125,
+        "corr_state_robustness": 0.8895168957435382,
+        "corr_worst_bucket_return": 0.0011472976474142848,
+        "corr_bucket_dispersion": 0.0018092796433913578
+      },
+      "cost_summary": {
+        "mean_cost_ratio": 0.06947111218054476,
+        "max_cost_ratio": 0.09593864066825265,
+        "mean_n_trades": 58160.5
+      },
+      "fitness": {
+        "score": 0.6796104288749842,
+        "weights": {
+          "dsr_oos": 0.25,
+          "calmar_oos": 0.2,
+          "median_fold_expectancy": 0.15,
+          "regime_coverage": 0.1,
+          "corr_state_robustness": 0.1,
+          "max_drawdown": -0.1,
+          "cvar_95": -0.05,
+          "turnover_cost": -0.03,
+          "parameter_instability": -0.02
+        },
+        "normalized": {
+          "dsr_oos": 0.999999999999895,
+          "calmar_oos": 1.0,
+          "median_fold_expectancy": 1.0,
+          "regime_coverage": 0.8125,
+          "corr_state_robustness": 0.8895168957435382,
+          "max_drawdown": 0.25915444717660385,
+          "cvar_95": 0.7811029830920246,
+          "turnover_cost": 0.3473555609027238,
+          "parameter_instability": 0.76
+        },
+        "raw": {
+          "dsr_oos": 0.999999999999895,
+          "calmar_oos": 299.41042094596344,
+          "median_fold_expectancy": 0.019282968883854223,
+          "regime_coverage": 0.8125,
+          "corr_state_robustness": 0.8895168957435382,
+          "max_drawdown": -0.06478861179415096,
+          "cvar_95": -0.02343308949276074,
+          "turnover_cost": 0.06947111218054476,
+          "parameter_instability": 0.76
+        }
+      },
+      "gate": {
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "audit": {
+        "passes_final_oos_total_return": true,
+        "passes_final_oos_max_drawdown": true,
+        "failed_checks": [],
+        "passed": true
+      }
+    },
+    "gate": {
+      "passes_dsr_proxy": true,
+      "passes_cpcv_positive_rate": true,
+      "passes_cpcv_pass_rate": true,
+      "passes_cpcv_tail_loss": true,
+      "passes_cpcv_overfit_rate": true,
+      "passes_pbo_selected_below_median_rate": true,
+      "passes_pbo_avg_selected_test_percentile": true,
+      "passes_pbo_selection_share": true,
+      "passes_false_positive_risk": true,
+      "passes_validation_quality": true,
+      "passes_market_os_fitness": true,
+      "passes_corr_state_robustness": true,
+      "passes_regime_coverage": true,
+      "passes_parameter_instability": true,
+      "failed_checks": [],
+      "passed": true
+    }
+  },
+  "validation_gate": {
+    "passes_dsr_proxy": true,
+    "passes_cpcv_positive_rate": true,
+    "passes_cpcv_pass_rate": true,
+    "passes_cpcv_tail_loss": true,
+    "passes_cpcv_overfit_rate": true,
+    "passes_pbo_selected_below_median_rate": true,
+    "passes_pbo_avg_selected_test_percentile": true,
+    "passes_pbo_selection_share": true,
+    "passes_false_positive_risk": true,
+    "passes_validation_quality": true,
+    "passes_market_os_fitness": true,
+    "passes_corr_state_robustness": true,
+    "passes_regime_coverage": true,
+    "passes_parameter_instability": true,
+    "failed_checks": [],
+    "passed": true
+  },
+  "market_os_gate": {
+    "passes_market_os_fitness": true,
+    "passes_corr_state_robustness": true,
+    "passes_regime_coverage": true,
+    "passes_parameter_instability": true,
+    "failed_checks": [],
+    "passed": true
+  },
+  "market_os_audit": {
+    "passes_final_oos_total_return": true,
+    "passes_final_oos_max_drawdown": true,
+    "failed_checks": [],
+    "passed": true
+  },
+  "final_oos_audit": {
+    "checks": [
+      {
+        "name": "recent_2m_worst_pair_positive",
+        "passed": true,
+        "actual": 0.006432872049878131,
+        "target": 0.0,
+        "comparator": ">=",
+        "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+      },
+      {
+        "name": "recent_2m_worst_pair_vs_baseline",
+        "passed": true,
+        "actual": 0.006432872049878131,
+        "target": 0.005458408080128212,
+        "comparator": ">=",
+        "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+      },
+      {
+        "name": "recent_2m_worst_mdd_cap",
+        "passed": true,
+        "actual": 0.10106613140556708,
+        "target": 0.18,
+        "comparator": "<=",
+        "note": "최근 2개월 최악 MDD 18% 이내"
+      }
+    ],
+    "passed": true
+  },
+  "selection": {
+    "reason": "progressive_plus_validation",
+    "validation_pass_count": 1,
+    "final_oos_audit_pass_count": 1,
+    "progressive_validation_pass_count": 1,
+    "target_060_validation_pass_count": 0,
+    "selected_final_oos_passed": true
+  }
+}

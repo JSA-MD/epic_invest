@@ -17,7 +17,20 @@ import pandas as pd
 from deap import algorithms, base, creator, tools
 
 import gp_crypto_evolution as gp
+from pairwise_validation_engine import build_candidate_validation_bundle, build_return_frame
 from replay_regime_mixture_realistic import resolve_candidate, load_model
+from repair_pair_subset_pairwise_candidate import (
+    TARGET_060_DAILY_RETURN,
+    aggregate_target_shortfall,
+    bnb_full_4y_target_shortfall,
+    build_candidate_cost_reference,
+    build_candidate_validation_input,
+    build_ultra_conservative_stress_proxy,
+    candidate_id,
+    pair_metric_or_default,
+    target_shortfall,
+    unwrap_window_aggregate,
+)
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
     DEFAULT_WINDOWS,
@@ -89,6 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mutpb", type=float, default=0.35)
     parser.add_argument("--gene-mutpb", type=float, default=0.25)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--stress-proxy-candidate-count", type=int, default=6)
     parser.add_argument(
         "--fast-engine",
         choices=("auto", "python", "numba"),
@@ -98,20 +112,90 @@ def parse_args() -> argparse.Namespace:
 
 
 def fast_scalar_score(windows: dict[str, Any]) -> float:
-    recent_2m = windows["recent_2m"]
-    recent_6m = windows["recent_6m"]
-    full_4y = windows["full_4y"]
+    recent_2m = unwrap_window_aggregate(windows["recent_2m"])
+    recent_6m = unwrap_window_aggregate(windows["recent_6m"])
+    full_4y = unwrap_window_aggregate(windows["full_4y"])
+    reserve = fast_stress_proxy_reserve(windows)
+    bnb_full_4y = pair_metric_or_default(
+        windows,
+        label="full_4y",
+        pair="BNBUSDT",
+        metric="avg_daily_return",
+        default_metric="worst_pair_avg_daily_return",
+    )
     score = 0.0
+    score += reserve * 520000.0
     score += float(recent_2m["worst_pair_avg_daily_return"]) * 460000.0
     score += float(recent_6m["worst_pair_avg_daily_return"]) * 340000.0
     score += float(full_4y["worst_pair_avg_daily_return"]) * 280000.0
+    score += float(bnb_full_4y) * 240000.0
     score += float(full_4y["mean_avg_daily_return"]) * 220000.0
+    score -= target_shortfall(float(full_4y["worst_pair_avg_daily_return"]), TARGET_060_DAILY_RETURN) * 420000.0
+    score -= target_shortfall(float(bnb_full_4y), TARGET_060_DAILY_RETURN) * 520000.0
     score -= abs(float(recent_2m["worst_max_drawdown"])) * 22000.0
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 17000.0
     score -= abs(float(full_4y["worst_max_drawdown"])) * 12000.0
     score -= float(recent_2m["pair_return_dispersion"]) * 140000.0
     score -= float(recent_6m["pair_return_dispersion"]) * 100000.0
     score -= float(full_4y["pair_return_dispersion"]) * 80000.0
+    return float(score)
+
+
+def fast_stress_proxy_reserve(windows: dict[str, Any]) -> float:
+    recent_2m = float(unwrap_window_aggregate(windows["recent_2m"])["worst_pair_avg_daily_return"])
+    recent_6m = float(unwrap_window_aggregate(windows["recent_6m"])["worst_pair_avg_daily_return"])
+    full_4y = float(unwrap_window_aggregate(windows["full_4y"])["worst_pair_avg_daily_return"])
+    bnb_full_4y = pair_metric_or_default(
+        windows,
+        label="full_4y",
+        pair="BNBUSDT",
+        metric="avg_daily_return",
+        default_metric="worst_pair_avg_daily_return",
+    )
+    return float(min(recent_2m, recent_6m, full_4y, bnb_full_4y) - TARGET_060_DAILY_RETURN)
+
+
+def realistic_stress_aware_score(item: dict[str, Any]) -> float:
+    score = score_realistic_candidate(item)
+    windows = item["windows"]
+    validation = item.get("validation") or {}
+    validation_engine = item.get("validation_engine") or {}
+    stress_proxy = item.get("stress_proxy") or {}
+    target_profile = (validation.get("profiles") or {}).get("target_060") or {}
+    progressive_profile = (validation.get("profiles") or {}).get("progressive_improvement") or {}
+    final_oos_profile = (validation.get("profiles") or {}).get("final_oos") or {}
+    validation_gate = validation_engine.get("gate") or {}
+    market_os_gate = ((validation_engine.get("market_operating_system") or {}).get("gate") or {})
+
+    score += fast_stress_proxy_reserve(windows) * 380000.0
+    score -= aggregate_target_shortfall(windows, target_daily_return=TARGET_060_DAILY_RETURN) * 220000.0
+    score -= bnb_full_4y_target_shortfall(windows, target_daily_return=TARGET_060_DAILY_RETURN) * 320000.0
+    if bool(validation_gate.get("passed", False)):
+        score += 1800.0
+    else:
+        score -= 2400.0
+    if bool(market_os_gate.get("passed", False)):
+        score += 900.0
+    if bool(target_profile.get("passed", False)):
+        score += 1200.0
+    if bool(progressive_profile.get("passed", False)):
+        score += 600.0
+    if bool(final_oos_profile.get("passed", False)):
+        score += 500.0
+    if stress_proxy.get("evaluated"):
+        score += float(stress_proxy.get("reserve", 0.0)) * 480000.0
+        score -= target_shortfall(
+            float(stress_proxy.get("bnb_full_4y_avg_daily_return", 0.0)),
+            TARGET_060_DAILY_RETURN,
+        ) * 720000.0
+        score -= target_shortfall(
+            float(stress_proxy.get("full_4y_worst_pair_avg_daily_return", 0.0)),
+            TARGET_060_DAILY_RETURN,
+        ) * 560000.0
+        if bool(stress_proxy.get("passed", False)):
+            score += 3000.0
+    else:
+        score -= 4000.0
     return float(score)
 
 
@@ -151,17 +235,17 @@ def build_deap_toolbox(
     rng: random.Random,
     ref_points: Any,
 ) -> base.Toolbox:
-    if not hasattr(creator, "FitnessPairSubsetPairwiseNSGA3"):
+    if not hasattr(creator, "FitnessPairSubsetPairwiseNSGA3StressAware"):
         creator.create(
-            "FitnessPairSubsetPairwiseNSGA3",
+            "FitnessPairSubsetPairwiseNSGA3StressAware",
             base.Fitness,
-            weights=(1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0),
+            weights=(1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0),
         )
-    if not hasattr(creator, "IndividualPairSubsetPairwiseNSGA3"):
+    if not hasattr(creator, "IndividualPairSubsetPairwiseNSGA3StressAware"):
         creator.create(
-            "IndividualPairSubsetPairwiseNSGA3",
+            "IndividualPairSubsetPairwiseNSGA3StressAware",
             list,
-            fitness=creator.FitnessPairSubsetPairwiseNSGA3,
+            fitness=creator.FitnessPairSubsetPairwiseNSGA3StressAware,
         )
 
     gene_len = len(pairs) * 5
@@ -173,12 +257,12 @@ def build_deap_toolbox(
     def random_mapping_gene() -> int:
         return int(rng.choice(subset_indices))
 
-    def init_individual() -> creator.IndividualPairSubsetPairwiseNSGA3:
+    def init_individual() -> creator.IndividualPairSubsetPairwiseNSGA3StressAware:
         genes: list[int] = []
         for _ in pairs:
             genes.append(random_threshold_gene())
             genes.extend(random_mapping_gene() for _ in range(4))
-        return creator.IndividualPairSubsetPairwiseNSGA3(genes)
+        return creator.IndividualPairSubsetPairwiseNSGA3StressAware(genes)
 
     def mate(ind1: list[int], ind2: list[int]) -> tuple[list[int], list[int]]:
         tools.cxUniform(ind1, ind2, indpb=0.5)
@@ -339,6 +423,15 @@ def main() -> None:
             "aggregate": aggregate_metrics(per_pair_realistic),
         }
     baseline_seconds = perf_counter() - baseline_started
+    baseline_stress_proxy_reserve = fast_stress_proxy_reserve(
+        {
+            label: {
+                "per_pair": baseline_realistic[label]["per_pair"],
+                "aggregate": baseline_fast[label],
+            }
+            for label, _, _ in DEFAULT_WINDOWS
+        }
+    )
 
     fast_cache: dict[tuple[int, ...], dict[str, Any]] = {}
 
@@ -364,31 +457,47 @@ def main() -> None:
                             fast_engine,
                         )
                     )
-                windows[label] = aggregate_metrics(per_pair)
+                windows[label] = {
+                    "per_pair": per_pair,
+                    "aggregate": aggregate_metrics(per_pair),
+                }
+            recent_2m = unwrap_window_aggregate(windows["recent_2m"])
+            recent_6m = unwrap_window_aggregate(windows["recent_6m"])
+            full_4y = unwrap_window_aggregate(windows["full_4y"])
+            bnb_full_4y = pair_metric_or_default(
+                windows,
+                label="full_4y",
+                pair="BNBUSDT",
+                metric="avg_daily_return",
+                default_metric="worst_pair_avg_daily_return",
+            )
+            reserve = fast_stress_proxy_reserve(windows)
             objectives = (
-                float(windows["recent_2m"]["worst_pair_avg_daily_return"]),
-                float(windows["recent_6m"]["worst_pair_avg_daily_return"]),
-                float(windows["full_4y"]["worst_pair_avg_daily_return"]),
-                float(windows["full_4y"]["mean_avg_daily_return"]),
-                float(abs(windows["recent_2m"]["worst_max_drawdown"])),
-                float(abs(windows["recent_6m"]["worst_max_drawdown"])),
-                float(abs(windows["full_4y"]["worst_max_drawdown"])),
+                float(reserve),
+                float(recent_2m["worst_pair_avg_daily_return"]),
+                float(recent_6m["worst_pair_avg_daily_return"]),
+                float(full_4y["worst_pair_avg_daily_return"]),
+                float(bnb_full_4y),
+                float(abs(recent_2m["worst_max_drawdown"])),
+                float(abs(recent_6m["worst_max_drawdown"])),
+                float(abs(full_4y["worst_max_drawdown"])),
             )
             cached = {
                 "candidate": candidate,
                 "windows": windows,
                 "objectives": objectives,
                 "scalar_score": fast_scalar_score(windows),
+                "stress_proxy_reserve": reserve,
             }
             fast_cache[key] = cached
         return cached["objectives"]
 
-    ref_points = tools.uniform_reference_points(nobj=7, p=args.ref_p)
+    ref_points = tools.uniform_reference_points(nobj=8, p=args.ref_p)
     toolbox = build_deap_toolbox(pairs, route_thresholds, subset_indices, rng, ref_points)
     toolbox.register("evaluate", evaluate_fast)
 
     population = toolbox.population(n=max(1, args.population - 1))
-    baseline_individual = creator.IndividualPairSubsetPairwiseNSGA3(
+    baseline_individual = creator.IndividualPairSubsetPairwiseNSGA3StressAware(
         individual_from_pair_configs(baseline_pair_configs, pairs, route_thresholds)
     )
     population.append(baseline_individual)
@@ -423,9 +532,10 @@ def main() -> None:
     feasible_fast = [
         item
         for item in fast_candidates
-        if item["windows"]["recent_2m"]["positive_pair_count"] == len(pairs)
-        and item["windows"]["recent_6m"]["positive_pair_count"] == len(pairs)
-        and item["windows"]["full_4y"]["positive_pair_count"] == len(pairs)
+        if item["windows"]["recent_2m"]["aggregate"]["positive_pair_count"] == len(pairs)
+        and item["windows"]["recent_6m"]["aggregate"]["positive_pair_count"] == len(pairs)
+        and item["windows"]["full_4y"]["aggregate"]["positive_pair_count"] == len(pairs)
+        and float(item.get("stress_proxy_reserve", float("-inf"))) >= baseline_stress_proxy_reserve * 0.95
     ]
     if not feasible_fast:
         feasible_fast = fast_candidates
@@ -435,6 +545,7 @@ def main() -> None:
             "pair_configs": item["candidate"]["pair_configs"],
             "objectives": item["objectives"],
             "scalar_score": item["scalar_score"],
+            "stress_proxy_reserve": item.get("stress_proxy_reserve"),
             "windows": item["windows"],
         }
         for item in feasible_fast[: args.top_k_realistic]
@@ -442,6 +553,9 @@ def main() -> None:
 
     realistic_top = []
     realistic_started = perf_counter()
+    validation_frames_by_key: dict[str, Any] = {}
+    validation_state_payloads: dict[str, Any] = {}
+    validation_inputs_by_key: dict[str, Any] = {}
     for item in top_fast:
         pair_configs = item["pair_configs"]
         windows = {}
@@ -465,33 +579,97 @@ def main() -> None:
                 "per_pair": per_pair,
                 "aggregate": aggregate_metrics(per_pair),
             }
+        candidate = {"pair_configs": pair_configs}
+        key = candidate_id(candidate, pairs)
+        validation_input = build_candidate_validation_input(
+            candidate,
+            pairs=pairs,
+            window_cache=window_cache,
+            library=library,
+            library_lookup=library_lookup,
+        )
+        validation_inputs_by_key[key] = validation_input
+        validation_frames_by_key[key] = build_return_frame(validation_input["daily_returns"], validation_input["daily_index"])
+        validation_state_payloads[key] = validation_input["state_payload"]
         realistic_top.append(
             {
                 "pair_configs": pair_configs,
+                "candidate_id": key,
                 "objectives": item["objectives"],
                 "scalar_score": item["scalar_score"],
+                "score": item["scalar_score"],
+                "stress_proxy_reserve": item.get("stress_proxy_reserve"),
                 "windows": windows,
                 "validation": build_validation_bundle(windows, baseline_realistic),
             }
         )
+    for item in realistic_top:
+        validation_input = validation_inputs_by_key[item["candidate_id"]]
+        item["validation_engine"] = build_candidate_validation_bundle(
+            item["candidate_id"],
+            validation_input["daily_returns"],
+            validation_input["daily_index"],
+            trial_count=max(len(realistic_top), 1),
+            peer_frames_by_key=validation_frames_by_key,
+            state_payload=validation_state_payloads[item["candidate_id"]],
+            cost_reference=build_candidate_cost_reference(item["windows"]),
+        )
     realistic_seconds = perf_counter() - realistic_started
 
+    stress_proxy_candidates = realistic_top[: max(int(args.stress_proxy_candidate_count), 1)]
+    stress_proxy_pass_count = 0
+    for stress_idx, item in enumerate(stress_proxy_candidates):
+        item["stress_proxy"] = build_ultra_conservative_stress_proxy(
+            df_all=df_all,
+            raw_signal_all=raw_signal_all,
+            funding_all=funding_all,
+            library=library,
+            candidate={"pair_configs": item["pair_configs"]},
+            pairs=pairs,
+            target_daily_return=TARGET_060_DAILY_RETURN,
+            seed_offset=700000 + stress_idx * 1000,
+        )
+        if item["stress_proxy"]["passed"]:
+            stress_proxy_pass_count += 1
+    for item in realistic_top:
+        if "stress_proxy" not in item:
+            item["stress_proxy"] = {
+                "scenario": "ultra_conservative",
+                "evaluated": False,
+                "reserve": None,
+                "passed": False,
+            }
+        item["stress_aware_score"] = realistic_stress_aware_score(item)
+    realistic_top.sort(key=realistic_stress_aware_score, reverse=True)
+
+    validation_pass_candidates = [
+        item for item in realistic_top if bool((item.get("validation_engine") or {}).get("gate", {}).get("passed", False))
+    ]
+    stress_proxy_validation_candidates = [
+        item for item in validation_pass_candidates if bool((item.get("stress_proxy") or {}).get("passed", False))
+    ]
     progressive_candidates = [
         item
-        for item in realistic_top
+        for item in validation_pass_candidates
         if item["validation"]["profiles"]["progressive_improvement"]["passed"]
     ]
     target_060_candidates = [
         item
-        for item in realistic_top
+        for item in validation_pass_candidates
         if item["validation"]["profiles"]["target_060"]["passed"]
     ]
-    fallback_best = max(realistic_top, key=score_realistic_candidate) if realistic_top else None
-    selected = max(target_060_candidates, key=score_realistic_candidate) if target_060_candidates else None
-    selection_reason = "target_060_pass"
+    fallback_best = max(realistic_top, key=realistic_stress_aware_score) if realistic_top else None
+    selected = max(stress_proxy_validation_candidates, key=realistic_stress_aware_score) if stress_proxy_validation_candidates else None
+    selection_reason = "stress_proxy_plus_validation"
+    if selected is None and target_060_candidates:
+        selected = max(target_060_candidates, key=realistic_stress_aware_score)
+        selection_reason = "target_060_plus_validation"
     if selected is None and progressive_candidates:
-        selected = max(progressive_candidates, key=score_realistic_candidate)
-        selection_reason = "progressive_pass"
+        selected = max(progressive_candidates, key=realistic_stress_aware_score)
+        selection_reason = "progressive_plus_validation"
+    if selected is None and validation_pass_candidates:
+        selected = max(validation_pass_candidates, key=realistic_stress_aware_score)
+        selection_reason = "validation_only"
     if selected is None:
         selection_reason = "no_gate_pass"
 
@@ -521,6 +699,7 @@ def main() -> None:
                 "candidate": fast_cache[tuple(int(v) for v in ind)]["candidate"],
                 "objectives": list(fast_cache[tuple(int(v) for v in ind)]["objectives"]),
                 "scalar_score": float(fast_cache[tuple(int(v) for v in ind)]["scalar_score"]),
+                "stress_proxy_reserve": float(fast_cache[tuple(int(v) for v in ind)]["stress_proxy_reserve"]),
                 "windows": fast_cache[tuple(int(v) for v in ind)]["windows"],
             }
             for ind in pareto_front
@@ -528,11 +707,15 @@ def main() -> None:
         "top_fast_candidates": top_fast,
         "realistic_top_candidates": realistic_top,
         "promotion_candidates": {
+            "stress_proxy_validation": [{"pair_configs": item["pair_configs"]} for item in stress_proxy_validation_candidates],
             "target_060": [{"pair_configs": item["pair_configs"]} for item in target_060_candidates],
             "progressive_improvement": [{"pair_configs": item["pair_configs"]} for item in progressive_candidates],
         },
         "selection": {
             "reason": selection_reason,
+            "validation_pass_count": len(validation_pass_candidates),
+            "stress_proxy_pass_count": stress_proxy_pass_count,
+            "stress_proxy_validation_pass_count": len(stress_proxy_validation_candidates),
             "target_060_pass_count": len(target_060_candidates),
             "progressive_pass_count": len(progressive_candidates),
             "realistic_top_count": len(realistic_top),

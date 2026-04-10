@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pairs", default="BTCUSDT,BNBUSDT")
     parser.add_argument(
         "--summary",
-        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_nsga3_summary.json"),
+        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"),
     )
     parser.add_argument(
         "--base-summary",
@@ -53,9 +53,86 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--report-out",
-        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_stress_report.json"),
+        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_validated_stress_report.json"),
     )
     return parser.parse_args()
+
+
+def _failed_check_names(block: dict[str, Any] | None, prefix: str) -> list[str]:
+    if not block:
+        return [f"{prefix}_missing"]
+    failed_checks = list(block.get("failed_checks") or [])
+    if failed_checks:
+        return [f"{prefix}.{name}" for name in failed_checks]
+    checks = block.get("checks")
+    if isinstance(checks, list):
+        named_failures = [item.get("name") for item in checks if isinstance(item, dict) and not bool(item.get("passed", False)) and item.get("name")]
+        if named_failures:
+            return [f"{prefix}.{name}" for name in named_failures]
+    if not bool(block.get("passed", False)):
+        return [prefix]
+    return []
+
+
+def build_promotion_decision(summary: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    selected_candidate = summary.get("selected_candidate") or {}
+    validation_engine = selected_candidate.get("validation_engine") or {}
+    validation_gate = validation_engine.get("gate") or {}
+    market_operating_system = validation_engine.get("market_operating_system") or {}
+    market_os_gate = market_operating_system.get("gate") or {}
+    final_oos_audit = market_operating_system.get("audit") or {}
+
+    target_060_stress = report.get("profiles", {}).get("target_060_stress", {}).get("selected") or {}
+    progressive_stress = report.get("profiles", {}).get("progressive_stress", {}).get("selected") or {}
+
+    validation_gate_passed = bool(validation_gate.get("passed", False))
+    market_os_gate_passed = bool(market_os_gate.get("passed", False))
+    final_oos_audit_passed = bool(final_oos_audit.get("passed", False))
+    target_060_passed = bool(target_060_stress.get("passed", False))
+    progressive_passed = bool(progressive_stress.get("passed", False))
+
+    ready_for_merge = validation_gate_passed and market_os_gate_passed and final_oos_audit_passed and target_060_passed
+    ready_for_live = validation_gate_passed and market_os_gate_passed and final_oos_audit_passed and progressive_passed
+
+    if not validation_gate_passed:
+        status = "validation_fail"
+    elif not market_os_gate_passed:
+        status = "market_os_fail"
+    elif not final_oos_audit_passed:
+        status = "final_oos_audit_fail"
+    elif ready_for_merge:
+        status = "ready_for_merge"
+    elif ready_for_live:
+        status = "ready_for_live"
+    else:
+        status = "stress_fail"
+
+    if status == "validation_fail":
+        failed_checks = _failed_check_names(validation_gate, "validation_gate")
+    elif status == "market_os_fail":
+        failed_checks = _failed_check_names(market_os_gate, "market_os_gate")
+    elif status == "final_oos_audit_fail":
+        failed_checks = _failed_check_names(final_oos_audit, "final_oos_audit")
+    elif status == "ready_for_live":
+        failed_checks = _failed_check_names(target_060_stress, "target_060_stress")
+    elif status == "stress_fail":
+        failed_checks = []
+        failed_checks.extend(_failed_check_names(target_060_stress, "target_060_stress"))
+        failed_checks.extend(_failed_check_names(progressive_stress, "progressive_stress"))
+    else:
+        failed_checks = []
+
+    return {
+        "validation_gate": validation_gate,
+        "market_os_gate": market_os_gate,
+        "final_oos_audit": final_oos_audit,
+        "target_060_stress": target_060_stress,
+        "progressive_stress": progressive_stress,
+        "ready_for_live": ready_for_live,
+        "ready_for_merge": ready_for_merge,
+        "status": status,
+        "failed_checks": failed_checks,
+    }
 
 
 def stress_overlay_replay_pairwise(
@@ -352,20 +429,7 @@ def main() -> None:
             "selected": build_target_060_stress_profile(report, "selected_candidate"),
         },
     }
-    report["promotion_decision"] = {
-        "selected_passes_target_060_stress": report["profiles"]["target_060_stress"]["selected"]["passed"],
-        "selected_passes_progressive_stress": report["profiles"]["progressive_stress"]["selected"]["passed"],
-        "selected_candidate_ready_for_merge": report["profiles"]["target_060_stress"]["selected"]["passed"],
-        "status": (
-            "target_060_stress_pass"
-            if report["profiles"]["target_060_stress"]["selected"]["passed"]
-            else (
-                "progressive_stress_pass"
-                if report["profiles"]["progressive_stress"]["selected"]["passed"]
-                else "stress_fail"
-            )
-        ),
-    }
+    report["promotion_decision"] = build_promotion_decision(summary, report)
 
     out_path = Path(args.report_out)
     out_path.write_text(json.dumps(json_safe(report), ensure_ascii=False, indent=2) + "\n")

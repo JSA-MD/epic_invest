@@ -17,6 +17,8 @@ import pandas as pd
 import gp_crypto_evolution as gp
 from pairwise_validation_engine import build_candidate_validation_bundle, build_return_frame
 from replay_regime_mixture_realistic import load_model
+from run_pair_subset_pairwise_stress import build_candidate_metrics as build_stress_candidate_metrics
+from run_pair_subset_stress_matrix import SCENARIOS
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
     DEFAULT_WINDOWS,
@@ -38,12 +40,17 @@ from validate_pair_subset_summary import build_validation_bundle
 
 
 UTC = timezone.utc
+TARGET_060_DAILY_RETURN = 0.006
 PAIRWISE_PARETO_OBJECTIVES: tuple[tuple[str, bool], ...] = (
     ("market_os_fitness", True),
     ("validation_quality_score", True),
+    ("recent_2m_worst_pair_avg_daily_return", True),
     ("recent_6m_worst_pair_avg_daily_return", True),
     ("full_4y_worst_pair_avg_daily_return", True),
+    ("bnb_full_4y_avg_daily_return", True),
     ("corr_state_robustness", True),
+    ("target_060_shortfall", False),
+    ("bnb_full_4y_target_shortfall", False),
     ("full_4y_worst_max_drawdown_abs", False),
     ("false_positive_risk", False),
     ("turnover_cost", False),
@@ -70,20 +77,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--summary-out",
-        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"),
+        default=str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_candidate_summary.json"),
     )
     parser.add_argument("--random-mutations", type=int, default=6000)
     parser.add_argument("--top-realistic", type=int, default=25)
     parser.add_argument("--seed", type=int, default=20260409)
+    parser.add_argument("--start-candidate-count", type=int, default=6)
     parser.add_argument(
         "--route-state-mode",
         choices=("base", "equity_corr"),
-        default="base",
+        default="equity_corr",
     )
     parser.add_argument("--cpcv-blocks", type=int, default=6)
     parser.add_argument("--cpcv-test-blocks", type=int, default=2)
     parser.add_argument("--cpcv-embargo-days", type=int, default=2)
     parser.add_argument("--validation-candidate-count", type=int, default=18)
+    parser.add_argument("--stress-proxy-candidate-count", type=int, default=6)
+    parser.add_argument("--target-daily-return", type=float, default=TARGET_060_DAILY_RETURN)
     return parser.parse_args()
 
 
@@ -146,18 +156,145 @@ def replace_base_state_across_blocks(mapping: list[int], base_slot: int, value: 
     return updated
 
 
+def target_shortfall(value: float, target_daily_return: float) -> float:
+    return max(0.0, float(target_daily_return) - float(value))
+
+
+def unwrap_window_aggregate(window_block: dict[str, Any]) -> dict[str, Any]:
+    aggregate = window_block.get("aggregate") if isinstance(window_block, dict) else None
+    return aggregate if isinstance(aggregate, dict) else window_block
+
+
+def pair_metric_or_default(
+    windows: dict[str, Any],
+    *,
+    label: str,
+    pair: str,
+    metric: str,
+    default_metric: str,
+) -> float:
+    window_block = windows[label]
+    per_pair = window_block.get("per_pair") if isinstance(window_block, dict) else None
+    if isinstance(per_pair, dict) and pair in per_pair and metric in per_pair[pair]:
+        return float(per_pair[pair][metric])
+    aggregate = unwrap_window_aggregate(window_block)
+    return float(aggregate[default_metric])
+
+
+def aggregate_target_shortfall(
+    windows: dict[str, Any],
+    *,
+    target_daily_return: float,
+) -> float:
+    recent_2m = target_shortfall(
+        float(unwrap_window_aggregate(windows["recent_2m"])["worst_pair_avg_daily_return"]),
+        target_daily_return,
+    )
+    recent_6m = target_shortfall(
+        float(unwrap_window_aggregate(windows["recent_6m"])["worst_pair_avg_daily_return"]),
+        target_daily_return,
+    )
+    full_4y = target_shortfall(
+        float(unwrap_window_aggregate(windows["full_4y"])["worst_pair_avg_daily_return"]),
+        target_daily_return,
+    )
+    return float(recent_2m * 1.0 + recent_6m * 1.3 + full_4y * 1.7)
+
+
+def bnb_full_4y_target_shortfall(
+    windows: dict[str, Any],
+    *,
+    target_daily_return: float,
+) -> float:
+    bnb_full_4y = pair_metric_or_default(
+        windows,
+        label="full_4y",
+        pair="BNBUSDT",
+        metric="avg_daily_return",
+        default_metric="worst_pair_avg_daily_return",
+    )
+    return target_shortfall(bnb_full_4y, target_daily_return)
+
+
+def build_ultra_conservative_stress_proxy(
+    *,
+    df_all: pd.DataFrame,
+    raw_signal_all: dict[str, pd.Series],
+    funding_all: dict[str, pd.DataFrame],
+    library: list[Any],
+    candidate: dict[str, Any],
+    pairs: tuple[str, ...],
+    target_daily_return: float,
+    seed_offset: int,
+) -> dict[str, Any]:
+    scenario = next(item for item in SCENARIOS if item.name == "ultra_conservative")
+    windows = build_stress_candidate_metrics(
+        df_all,
+        raw_signal_all,
+        funding_all,
+        library,
+        candidate,
+        pairs,
+        scenario,
+        seed_offset=seed_offset,
+    )
+    bnb_metrics = (windows["full_4y"]["per_pair"] or {}).get("BNBUSDT") or {}
+    recent_2m_worst = float(windows["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
+    recent_6m_worst = float(windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
+    full_4y_worst = float(windows["full_4y"]["aggregate"]["worst_pair_avg_daily_return"])
+    bnb_full_4y = float(bnb_metrics.get("avg_daily_return", full_4y_worst))
+    recent_6m_mdd = abs(float(windows["recent_6m"]["aggregate"]["worst_max_drawdown"]))
+    full_4y_mdd = abs(float(windows["full_4y"]["aggregate"]["worst_max_drawdown"]))
+    reserve = min(recent_2m_worst, recent_6m_worst, full_4y_worst, bnb_full_4y) - float(target_daily_return)
+    passed = bool(
+        reserve >= 0.0
+        and recent_6m_mdd <= 0.17
+        and full_4y_mdd <= 0.20
+    )
+    return {
+        "scenario": scenario.name,
+        "evaluated": True,
+        "recent_2m_worst_pair_avg_daily_return": recent_2m_worst,
+        "recent_6m_worst_pair_avg_daily_return": recent_6m_worst,
+        "full_4y_worst_pair_avg_daily_return": full_4y_worst,
+        "bnb_full_4y_avg_daily_return": bnb_full_4y,
+        "recent_6m_worst_mdd_abs": recent_6m_mdd,
+        "full_4y_worst_mdd_abs": full_4y_mdd,
+        "reserve": float(reserve),
+        "passed": passed,
+    }
+
+
 def candidate_score(
     windows: dict[str, Any],
+    base_2m: float,
     base_6m: float,
     base_4y: float,
     base_4y_mean: float,
+    base_bnb_4y: float,
+    target_daily_return: float,
 ) -> float:
-    recent_6m = windows["recent_6m"]
-    full_4y = windows["full_4y"]
+    recent_2m = unwrap_window_aggregate(windows["recent_2m"])
+    recent_6m = unwrap_window_aggregate(windows["recent_6m"])
+    full_4y = unwrap_window_aggregate(windows["full_4y"])
+    bnb_full_4y = pair_metric_or_default(
+        windows,
+        label="full_4y",
+        pair="BNBUSDT",
+        metric="avg_daily_return",
+        default_metric="worst_pair_avg_daily_return",
+    )
     score = 0.0
+    score += (float(recent_2m["worst_pair_avg_daily_return"]) - base_2m) * 18.0
     score += (float(recent_6m["worst_pair_avg_daily_return"]) - base_6m) * 14.0
     score += (float(full_4y["worst_pair_avg_daily_return"]) - base_4y) * 10.0
     score += (float(full_4y["mean_avg_daily_return"]) - base_4y_mean) * 8.0
+    score += (bnb_full_4y - base_bnb_4y) * 18.0
+    score -= target_shortfall(float(recent_2m["worst_pair_avg_daily_return"]), target_daily_return) * 28.0
+    score -= target_shortfall(float(recent_6m["worst_pair_avg_daily_return"]), target_daily_return) * 32.0
+    score -= target_shortfall(float(full_4y["worst_pair_avg_daily_return"]), target_daily_return) * 44.0
+    score -= target_shortfall(bnb_full_4y, target_daily_return) * 64.0
+    score -= target_shortfall(float(full_4y["mean_avg_daily_return"]), target_daily_return) * 18.0
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 0.45
     score -= abs(float(full_4y["worst_max_drawdown"])) * 0.40
     return float(score)
@@ -165,22 +302,84 @@ def candidate_score(
 
 def candidate_score_with_validation(item: dict[str, Any]) -> float:
     score = float(item["score"])
+    validation = item.get("validation") or {}
     validation_engine = item.get("validation_engine") or {}
     profile = validation_engine.get("profile") or {}
     market_os = validation_engine.get("market_operating_system") or {}
     market_fitness = (market_os.get("fitness") or {}).get("score", 0.0)
     gate = validation_engine.get("gate") or {}
     pareto = item.get("pareto") or {}
+    target_profile = (validation.get("profiles") or {}).get("target_060") or {}
+    final_oos_profile = (validation.get("profiles") or {}).get("final_oos") or {}
+    stress_proxy = item.get("stress_proxy") or {}
+    aggregate_windows = {
+        label: item["windows"][label]["aggregate"]
+        for label in ("recent_2m", "recent_6m", "full_4y")
+    }
     score += float(market_fitness) * 1.35
     score += float(profile.get("validation_quality_score", 0.0)) * 0.35
     score -= float(profile.get("false_positive_risk", 1.0)) * 0.45
+    score -= aggregate_target_shortfall(aggregate_windows, target_daily_return=TARGET_060_DAILY_RETURN) * 14.0
     if (market_os.get("gate") or {}).get("passed"):
         score += 0.20
     if gate.get("passed"):
         score += 0.25
+    if target_profile.get("passed"):
+        score += 0.45
+    if final_oos_profile.get("passed"):
+        score += 0.15
+    if stress_proxy.get("evaluated"):
+        score += float(stress_proxy.get("reserve", 0.0)) * 24.0
+        if stress_proxy.get("passed"):
+            score += 0.60
     if pareto:
         score += max(0.0, 5.0 - float(pareto.get("rank", 99.0))) * 0.12
         score += min(float(pareto.get("crowding_sort_value", 0.0)), 10.0) * 0.02
+    return float(score)
+
+
+def stress_aware_fitness(item: dict[str, Any]) -> float:
+    score = candidate_score_with_validation(item)
+    windows = item.get("windows") or {}
+    validation_engine = item.get("validation_engine") or {}
+    validation_gate = validation_engine.get("gate") or {}
+    market_os_gate = ((validation_engine.get("market_operating_system") or {}).get("gate") or {})
+    stress_proxy = item.get("stress_proxy") or {}
+    validation = item.get("validation") or {}
+    target_profile = (validation.get("profiles") or {}).get("target_060") or {}
+    final_oos_profile = (validation.get("profiles") or {}).get("final_oos") or {}
+
+    bnb_shortfall = bnb_full_4y_target_shortfall(windows, target_daily_return=TARGET_060_DAILY_RETURN)
+    score -= bnb_shortfall * 120.0
+    if not bool(validation_gate.get("passed", False)):
+        score -= 1000.0
+    if not bool(market_os_gate.get("passed", False)):
+        score -= 500.0
+    if not bool(target_profile.get("passed", False)):
+        score -= 120.0
+    if not bool(final_oos_profile.get("passed", False)):
+        score -= 80.0
+
+    if stress_proxy.get("evaluated"):
+        score -= target_shortfall(
+            float(stress_proxy.get("recent_2m_worst_pair_avg_daily_return", 0.0)),
+            TARGET_060_DAILY_RETURN,
+        ) * 140.0
+        score -= target_shortfall(
+            float(stress_proxy.get("full_4y_worst_pair_avg_daily_return", 0.0)),
+            TARGET_060_DAILY_RETURN,
+        ) * 180.0
+        score -= target_shortfall(
+            float(stress_proxy.get("bnb_full_4y_avg_daily_return", 0.0)),
+            TARGET_060_DAILY_RETURN,
+        ) * 220.0
+        score -= max(0.0, float(stress_proxy.get("full_4y_worst_mdd_abs", 0.0)) - 0.20) * 90.0
+        score -= max(0.0, float(stress_proxy.get("recent_6m_worst_mdd_abs", 0.0)) - 0.17) * 70.0
+        if bool(stress_proxy.get("passed", False)):
+            score += 200.0
+    else:
+        score -= 400.0
+
     return float(score)
 
 
@@ -192,9 +391,25 @@ def build_pairwise_pareto_vector(item: dict[str, Any]) -> dict[str, float]:
     return {
         "market_os_fitness": float((market_os.get("fitness") or {}).get("score", 0.0)),
         "validation_quality_score": float(profile.get("validation_quality_score", 0.0)),
+        "recent_2m_worst_pair_avg_daily_return": float(windows["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"]),
         "recent_6m_worst_pair_avg_daily_return": float(windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"]),
         "full_4y_worst_pair_avg_daily_return": float(windows["full_4y"]["aggregate"]["worst_pair_avg_daily_return"]),
+        "bnb_full_4y_avg_daily_return": pair_metric_or_default(
+            windows,
+            label="full_4y",
+            pair="BNBUSDT",
+            metric="avg_daily_return",
+            default_metric="worst_pair_avg_daily_return",
+        ),
         "corr_state_robustness": float((market_os.get("state_summary") or {}).get("corr_state_robustness", 0.0)),
+        "target_060_shortfall": aggregate_target_shortfall(
+            windows,
+            target_daily_return=TARGET_060_DAILY_RETURN,
+        ),
+        "bnb_full_4y_target_shortfall": bnb_full_4y_target_shortfall(
+            windows,
+            target_daily_return=TARGET_060_DAILY_RETURN,
+        ),
         "full_4y_worst_max_drawdown_abs": float(abs(windows["full_4y"]["aggregate"]["worst_max_drawdown"])),
         "false_positive_risk": float(profile.get("false_positive_risk", 1.0)),
         "turnover_cost": float((market_os.get("fitness") or {}).get("raw", {}).get("turnover_cost", 0.0)),
@@ -402,9 +617,12 @@ def main() -> None:
     baseline_summary = json.loads(Path(args.baseline_summary).read_text())
     baseline_configs = baseline_pair_configs(pairs, baseline_summary, route_state_mode)
     base_windows = baseline_summary["selected_candidate"]["windows"]
+    base_2m = float(base_windows["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
     base_6m = float(base_windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
     base_4y = float(base_windows["full_4y"]["aggregate"]["worst_pair_avg_daily_return"])
     base_4y_mean = float(base_windows["full_4y"]["aggregate"]["mean_avg_daily_return"])
+    base_bnb_4y = float(base_windows["full_4y"]["per_pair"]["BNBUSDT"]["avg_daily_return"])
+    target_daily_return = float(args.target_daily_return)
 
     model, _ = load_model(Path(args.model))
     compiled = gp.toolbox.compile(expr=model)
@@ -469,7 +687,10 @@ def main() -> None:
                         "numba",
                     )
                 )
-            windows[label] = aggregate_metrics(per_pair)
+            windows[label] = {
+                "per_pair": per_pair,
+                "aggregate": aggregate_metrics(per_pair),
+            }
         return windows
 
     def eval_realistic(candidate: dict[str, Any]) -> dict[str, Any]:
@@ -494,8 +715,16 @@ def main() -> None:
         return windows
 
     start_candidates: list[dict[str, Any]] = [{"pair_configs": baseline_configs}]
-    top_pair_configs: list[dict[str, Any]] = []
+    existing_candidate_summary_paths: list[str] = []
+    missing_candidate_summary_paths: list[str] = []
     for raw_path in candidate_summary_paths:
+        if Path(raw_path).exists():
+            existing_candidate_summary_paths.append(raw_path)
+        else:
+            missing_candidate_summary_paths.append(raw_path)
+
+    top_pair_configs: list[dict[str, Any]] = []
+    for raw_path in existing_candidate_summary_paths:
         obj = json.loads(Path(raw_path).read_text())
         for item in obj.get("realistic_top_candidates", []):
             pair_configs = item.get("pair_configs")
@@ -539,15 +768,19 @@ def main() -> None:
                 "pair_configs": candidate["pair_configs"],
                 "windows": windows,
                 "score": candidate_score(
-                    {k: v["aggregate"] for k, v in windows.items()},
+                    windows,
+                    base_2m,
                     base_6m,
                     base_4y,
                     base_4y_mean,
+                    base_bnb_4y,
+                    target_daily_return,
                 ),
             }
         )
     start_eval.sort(key=lambda item: item["score"], reverse=True)
-    chosen_start = start_eval[0]
+    chosen_starts = start_eval[: max(int(args.start_candidate_count), 1)]
+    chosen_start = chosen_starts[0]
 
     gene_pool = {
         pair: {
@@ -579,42 +812,46 @@ def main() -> None:
         for pair in pairs
     }
 
-    candidates = [clone_candidate(chosen_start)]
-    for pair in pairs:
-        for gene in range(route_gene_count + 1):
-            if gene == 0:
-                for value in gene_pool[pair]["thresholds"]:
-                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
-                    candidate["pair_configs"][pair]["route_breadth_threshold"] = float(value)
-                    candidates.append(candidate)
-            else:
-                for value in gene_pool[pair]["mappings"][gene - 1]:
-                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
-                    candidate["pair_configs"][pair]["mapping_indices"][gene - 1] = int(value)
-                    candidates.append(candidate)
-        if route_gene_count >= 8:
-            for block_index, block_patterns in enumerate(gene_pool[pair]["corr_blocks"]):
-                for block_values in block_patterns:
-                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
-                    candidate["pair_configs"][pair]["mapping_indices"] = replace_corr_block(
-                        candidate["pair_configs"][pair]["mapping_indices"],
-                        block_index,
-                        block_values,
-                    )
-                    candidates.append(candidate)
-            for base_slot, values in enumerate(gene_pool[pair]["base_state_values"]):
-                for value in values:
-                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
-                    candidate["pair_configs"][pair]["mapping_indices"] = replace_base_state_across_blocks(
-                        candidate["pair_configs"][pair]["mapping_indices"],
-                        base_slot,
-                        int(value),
-                        route_gene_count,
-                    )
-                    candidates.append(candidate)
+    candidates: list[dict[str, Any]] = []
+    for start_candidate in chosen_starts:
+        seed_pair_configs = clone_candidate({"pair_configs": start_candidate["pair_configs"]})["pair_configs"]
+        candidates.append({"pair_configs": clone_candidate({"pair_configs": seed_pair_configs})["pair_configs"]})
+        for pair in pairs:
+            for gene in range(route_gene_count + 1):
+                if gene == 0:
+                    for value in gene_pool[pair]["thresholds"]:
+                        candidate = {"pair_configs": clone_candidate({"pair_configs": seed_pair_configs})["pair_configs"]}
+                        candidate["pair_configs"][pair]["route_breadth_threshold"] = float(value)
+                        candidates.append(candidate)
+                else:
+                    for value in gene_pool[pair]["mappings"][gene - 1]:
+                        candidate = {"pair_configs": clone_candidate({"pair_configs": seed_pair_configs})["pair_configs"]}
+                        candidate["pair_configs"][pair]["mapping_indices"][gene - 1] = int(value)
+                        candidates.append(candidate)
+            if route_gene_count >= 8:
+                for block_index, block_patterns in enumerate(gene_pool[pair]["corr_blocks"]):
+                    for block_values in block_patterns:
+                        candidate = {"pair_configs": clone_candidate({"pair_configs": seed_pair_configs})["pair_configs"]}
+                        candidate["pair_configs"][pair]["mapping_indices"] = replace_corr_block(
+                            candidate["pair_configs"][pair]["mapping_indices"],
+                            block_index,
+                            block_values,
+                        )
+                        candidates.append(candidate)
+                for base_slot, values in enumerate(gene_pool[pair]["base_state_values"]):
+                    for value in values:
+                        candidate = {"pair_configs": clone_candidate({"pair_configs": seed_pair_configs})["pair_configs"]}
+                        candidate["pair_configs"][pair]["mapping_indices"] = replace_base_state_across_blocks(
+                            candidate["pair_configs"][pair]["mapping_indices"],
+                            base_slot,
+                            int(value),
+                            route_gene_count,
+                        )
+                        candidates.append(candidate)
 
     for _ in range(args.random_mutations):
-        candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
+        seed_candidate = random.choice(chosen_starts)
+        candidate = {"pair_configs": clone_candidate({"pair_configs": seed_candidate["pair_configs"]})["pair_configs"]}
         steps = random.choice((1, 1, 1, 2, 2, 3))
         for _ in range(steps):
             pair = random.choice(pairs)
@@ -670,16 +907,49 @@ def main() -> None:
 
     fast_ranked = []
     seen: set[tuple[Any, ...]] = set()
+    baseline_target_shortfall = aggregate_target_shortfall(
+        base_windows,
+        target_daily_return=target_daily_return,
+    )
+    baseline_bnb_target_shortfall = bnb_full_4y_target_shortfall(
+        base_windows,
+        target_daily_return=target_daily_return,
+    )
+
     for candidate in candidates:
         key = candidate_key(candidate, pairs)
         if key in seen:
             continue
         seen.add(key)
         windows = eval_fast(candidate)
-        score = candidate_score(windows, base_6m, base_4y, base_4y_mean)
+        score = candidate_score(
+            windows,
+            base_2m,
+            base_6m,
+            base_4y,
+            base_4y_mean,
+            base_bnb_4y,
+            target_daily_return,
+        )
+        recent_2m_aggregate = unwrap_window_aggregate(windows["recent_2m"])
+        recent_6m_aggregate = unwrap_window_aggregate(windows["recent_6m"])
+        full_4y_aggregate = unwrap_window_aggregate(windows["full_4y"])
+        bnb_full_4y = pair_metric_or_default(
+            windows,
+            label="full_4y",
+            pair="BNBUSDT",
+            metric="avg_daily_return",
+            default_metric="worst_pair_avg_daily_return",
+        )
         if (
-            windows["recent_6m"]["worst_pair_avg_daily_return"] >= base_6m * 0.97
-            and windows["full_4y"]["mean_avg_daily_return"] >= base_4y_mean * 0.995
+            recent_2m_aggregate["worst_pair_avg_daily_return"] >= base_2m * 0.97
+            and aggregate_target_shortfall(windows, target_daily_return=target_daily_return)
+            <= baseline_target_shortfall
+            and bnb_full_4y_target_shortfall(windows, target_daily_return=target_daily_return)
+            <= baseline_bnb_target_shortfall
+            and recent_6m_aggregate["worst_pair_avg_daily_return"] >= base_6m * 0.97
+            and full_4y_aggregate["mean_avg_daily_return"] >= base_4y_mean * 0.995
+            and bnb_full_4y >= base_bnb_4y * 0.97
         ):
             fast_ranked.append(
                 {
@@ -688,7 +958,14 @@ def main() -> None:
                     "score": score,
                 }
             )
-    fast_ranked.sort(key=lambda item: item["score"], reverse=True)
+    fast_ranked.sort(
+        key=lambda item: (
+            -bnb_full_4y_target_shortfall(item["windows"], target_daily_return=target_daily_return),
+            -aggregate_target_shortfall(item["windows"], target_daily_return=target_daily_return),
+            item["score"],
+        ),
+        reverse=True,
+    )
 
     validation_candidates = fast_ranked[: max(int(args.validation_candidate_count), args.top_realistic)]
     validation_frames_by_key = {}
@@ -723,10 +1000,13 @@ def main() -> None:
                 "pair_configs": item["pair_configs"],
                 "windows": windows,
                 "score": candidate_score(
-                    {k: v["aggregate"] for k, v in windows.items()},
+                    windows,
+                    base_2m,
                     base_6m,
                     base_4y,
                     base_4y_mean,
+                    base_bnb_4y,
+                    target_daily_return,
                 ),
                 "validation": build_validation_bundle(windows, baseline_summary["selected_candidate"]["windows"]),
                 "validation_engine": build_candidate_validation_bundle(
@@ -749,7 +1029,32 @@ def main() -> None:
     pareto_metadata = assign_pairwise_pareto_metadata(realistic_top)
     for item in realistic_top:
         item["pareto"] = pareto_metadata[item["candidate_id"]]
-    realistic_top.sort(key=candidate_score_with_validation, reverse=True)
+    realistic_top.sort(key=stress_aware_fitness, reverse=True)
+
+    stress_proxy_candidates = realistic_top[: max(int(args.stress_proxy_candidate_count), 1)]
+    stress_proxy_pass_count = 0
+    for stress_idx, item in enumerate(stress_proxy_candidates):
+        item["stress_proxy"] = build_ultra_conservative_stress_proxy(
+            df_all=df_all,
+            raw_signal_all=raw_signal_all,
+            funding_all=funding_all,
+            library=library,
+            candidate={"pair_configs": item["pair_configs"]},
+            pairs=pairs,
+            target_daily_return=target_daily_return,
+            seed_offset=900000 + stress_idx * 1000,
+        )
+        if item["stress_proxy"]["passed"]:
+            stress_proxy_pass_count += 1
+    for item in realistic_top:
+        if "stress_proxy" not in item:
+            item["stress_proxy"] = {
+                "scenario": "ultra_conservative",
+                "evaluated": False,
+                "reserve": None,
+                "passed": False,
+            }
+    realistic_top.sort(key=stress_aware_fitness, reverse=True)
     selected = None
     selection_reason = "no_candidates"
     validation_pass_candidates = [
@@ -768,13 +1073,28 @@ def main() -> None:
     final_oos_audit_pass_count = sum(
         1 for item in validation_pass_candidates if item["validation"]["profiles"]["final_oos"]["passed"]
     )
-    selected = max(target_060_candidates, key=candidate_score_with_validation) if target_060_candidates else None
-    selection_reason = "target_060_plus_validation"
+    stress_proxy_validation_candidates = [
+        item
+        for item in validation_pass_candidates
+        if bool((item.get("stress_proxy") or {}).get("passed", False))
+    ]
+    if stress_proxy_validation_candidates:
+        selected = max(
+            stress_proxy_validation_candidates,
+            key=lambda item: (
+                float((item.get("stress_proxy") or {}).get("reserve", float("-inf"))),
+                stress_aware_fitness(item),
+            ),
+        )
+        selection_reason = "stress_proxy_plus_validation"
+    else:
+        selected = max(target_060_candidates, key=stress_aware_fitness) if target_060_candidates else None
+        selection_reason = "target_060_plus_validation"
     if selected is None and progressive_candidates:
-        selected = max(progressive_candidates, key=candidate_score_with_validation)
+        selected = max(progressive_candidates, key=stress_aware_fitness)
         selection_reason = "progressive_plus_validation"
     if selected is None and validation_pass_candidates:
-        selected = max(validation_pass_candidates, key=candidate_score_with_validation)
+        selected = max(validation_pass_candidates, key=stress_aware_fitness)
         selection_reason = "validation_only"
     if selected is None and realistic_top:
         selected = realistic_top[0]
@@ -787,6 +1107,8 @@ def main() -> None:
             "random_mutations": args.random_mutations,
             "top_realistic": args.top_realistic,
             "candidate_summary_paths": list(candidate_summary_paths),
+            "existing_candidate_summary_paths": list(existing_candidate_summary_paths),
+            "missing_candidate_summary_paths": list(missing_candidate_summary_paths),
             "library_source": "full-grid",
             "library_size": len(library),
             "route_state_mode": route_state_mode,
@@ -794,16 +1116,19 @@ def main() -> None:
             "cpcv_blocks": int(args.cpcv_blocks),
             "cpcv_test_blocks": int(args.cpcv_test_blocks),
             "cpcv_embargo_days": int(args.cpcv_embargo_days),
+            "target_daily_return": target_daily_return,
         },
         "pairs": list(pairs),
         "baseline_summary_path": str(args.baseline_summary),
         "baseline_candidate": {"pair_configs": baseline_configs},
         "baseline_realistic": baseline_summary["selected_candidate"]["windows"],
         "chosen_start_candidate": chosen_start,
+        "chosen_start_candidates": chosen_starts,
         "runtime": {
             "prepare_context_seconds": prepare_seconds,
             "total_seconds": perf_counter() - started,
             "start_candidate_count": len(start_candidates),
+            "chosen_start_count": len(chosen_starts),
             "repair_candidate_count": len(seen),
             "fast_ranked_count": len(fast_ranked),
         },
@@ -813,6 +1138,7 @@ def main() -> None:
             "final_oos_audit_pass_count": final_oos_audit_pass_count,
             "progressive_validation_pass_count": len(progressive_candidates),
             "target_060_validation_pass_count": len(target_060_candidates),
+            "stress_proxy_pass_count": stress_proxy_pass_count,
             "selected_final_oos_passed": bool(
                 selected and selected["validation"]["profiles"]["final_oos"]["passed"]
             ),

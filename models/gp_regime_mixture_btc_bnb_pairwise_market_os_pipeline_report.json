@@ -1,0 +1,3969 @@
+{
+  "pipeline_mode": "pairwise_market_os",
+  "pairs": [
+    "BTCUSDT",
+    "BNBUSDT"
+  ],
+  "executed_steps": [
+    {
+      "step": "search",
+      "status": "skipped"
+    },
+    {
+      "step": "validation",
+      "status": "embedded"
+    },
+    {
+      "step": "stress",
+      "status": "executed"
+    }
+  ],
+  "artifacts": {
+    "search_summary": "models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+    "validation_report": "models/gp_regime_mixture_btc_bnb_pairwise_market_os_validation_report.json",
+    "stress_report": "models/gp_regime_mixture_btc_bnb_pairwise_validated_stress_report.json"
+  },
+  "selected_candidate": {
+    "route_breadth_threshold": null,
+    "mapping_indices": null,
+    "pair_configs": {
+      "BTCUSDT": {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          3018,
+          2140,
+          3769,
+          4028,
+          3018,
+          2140,
+          3769,
+          4028,
+          3018,
+          2140,
+          3769,
+          4028
+        ],
+        "route_state_mode": "equity_corr"
+      },
+      "BNBUSDT": {
+        "route_breadth_threshold": 0.5,
+        "mapping_indices": [
+          3560,
+          3090,
+          2043,
+          2892,
+          3560,
+          3090,
+          2043,
+          2892,
+          3560,
+          3090,
+          2043,
+          2892
+        ],
+        "route_state_mode": "equity_corr"
+      }
+    },
+    "candidate_id": "0.5|equity_corr|3018|2140|3769|4028|3018|2140|3769|4028|3018|2140|3769|4028|0.5|equity_corr|3560|3090|2043|2892|3560|3090|2043|2892|3560|3090|2043|2892"
+  },
+  "selection": {
+    "reason": "progressive_plus_validation",
+    "validation_pass_count": 1,
+    "final_oos_audit_pass_count": 1,
+    "progressive_validation_pass_count": 1,
+    "target_060_validation_pass_count": 0,
+    "selected_final_oos_passed": true
+  },
+  "validation_engine": {
+    "metrics": {
+      "total_return": 1086.2117968592534,
+      "max_drawdown": -0.06478861179415096,
+      "sharpe": 5.5731771434387,
+      "avg_daily_return": 0.0049353056671919025,
+      "daily_target_hit_rate": 0.23819301848049282,
+      "worst_day": -0.06320840407656003,
+      "best_day": 0.16623529345177956
+    },
+    "dsr_proxy": 1.0,
+    "cpcv": {
+      "n_splits": 15,
+      "pass_rate": 1.0,
+      "test_positive_rate": 1.0,
+      "avg_test_return": 9.915459956885808,
+      "min_test_return": 4.4026315081181995,
+      "avg_test_mdd": -0.05645430052576948,
+      "splits": [
+        {
+          "test_blocks": [
+            0,
+            1
+          ],
+          "train_days": 971,
+          "test_days": 488,
+          "score": 3388.648051943712,
+          "passed": true,
+          "test_total_return": 7.710745799014594,
+          "test_sharpe": 5.717613079202002,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 123.85016591802805
+        },
+        {
+          "test_blocks": [
+            0,
+            2
+          ],
+          "train_days": 967,
+          "test_days": 488,
+          "score": 3592.891026147336,
+          "passed": true,
+          "test_total_return": 6.102892679837395,
+          "test_sharpe": 4.8671750300122225,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 148.28442300883373
+        },
+        {
+          "test_blocks": [
+            0,
+            3
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3208.544338851079,
+          "passed": true,
+          "test_total_return": 11.964695473735864,
+          "test_sharpe": 5.705344018342742,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 80.75155805583451
+        },
+        {
+          "test_blocks": [
+            0,
+            4
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3215.2357687906724,
+          "passed": true,
+          "test_total_return": 9.610418446696706,
+          "test_sharpe": 5.546871807970374,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 99.55821621802302
+        },
+        {
+          "test_blocks": [
+            0,
+            5
+          ],
+          "train_days": 970,
+          "test_days": 487,
+          "score": 3411.874332369252,
+          "passed": true,
+          "test_total_return": 15.753255934486912,
+          "test_sharpe": 6.167753433150161,
+          "test_max_drawdown": -0.06320840407655992,
+          "train_total_return": 62.3311539199882
+        },
+        {
+          "test_blocks": [
+            1,
+            2
+          ],
+          "train_days": 969,
+          "test_days": 488,
+          "score": 4296.552832719904,
+          "passed": true,
+          "test_total_return": 4.4026315081181995,
+          "test_sharpe": 4.908131997836105,
+          "test_max_drawdown": -0.033423218293732515,
+          "train_total_return": 200.3582666028447
+        },
+        {
+          "test_blocks": [
+            1,
+            3
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3288.5700970811813,
+          "passed": true,
+          "test_total_return": 8.861260111446047,
+          "test_sharpe": 5.747658908599906,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 109.36449424760931
+        },
+        {
+          "test_blocks": [
+            1,
+            4
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3497.395156585421,
+          "passed": true,
+          "test_total_return": 7.070540214857143,
+          "test_sharpe": 5.626552968559133,
+          "test_max_drawdown": -0.03921319521884381,
+          "train_total_return": 134.7534576621053
+        },
+        {
+          "test_blocks": [
+            1,
+            5
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3251.3606845121235,
+          "passed": true,
+          "test_total_return": 11.742930585472307,
+          "test_sharpe": 6.247526177771234,
+          "test_max_drawdown": -0.05272940795937597,
+          "train_total_return": 84.4969732530766
+        },
+        {
+          "test_blocks": [
+            2,
+            3
+          ],
+          "train_days": 970,
+          "test_days": 487,
+          "score": 3472.749216013811,
+          "passed": true,
+          "test_total_return": 7.041041935523658,
+          "test_sharpe": 4.948738120427748,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 134.30273115623356
+        },
+        {
+          "test_blocks": [
+            2,
+            4
+          ],
+          "train_days": 966,
+          "test_days": 487,
+          "score": 3830.616173681813,
+          "passed": true,
+          "test_total_return": 5.580857981291004,
+          "test_sharpe": 4.761813084519834,
+          "test_max_drawdown": -0.03921319521884381,
+          "train_total_return": 165.42864818802724
+        },
+        {
+          "test_blocks": [
+            2,
+            5
+          ],
+          "train_days": 968,
+          "test_days": 487,
+          "score": 3260.116313469103,
+          "passed": true,
+          "test_total_return": 9.390805846437006,
+          "test_sharpe": 5.437754124773324,
+          "test_max_drawdown": -0.052729407959376084,
+          "train_total_return": 103.81608297664319
+        },
+        {
+          "test_blocks": [
+            3,
+            4
+          ],
+          "train_days": 971,
+          "test_days": 486,
+          "score": 3231.0764619101205,
+          "passed": true,
+          "test_total_return": 11.011841305941697,
+          "test_sharpe": 5.61265569633931,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 89.51166837522729
+        },
+        {
+          "test_blocks": [
+            3,
+            5
+          ],
+          "train_days": 969,
+          "test_days": 486,
+          "score": 3615.127123036065,
+          "passed": true,
+          "test_total_return": 17.966024069063316,
+          "test_sharpe": 6.226678776372571,
+          "test_max_drawdown": -0.06478861179415085,
+          "train_total_return": 56.39967988584551
+        },
+        {
+          "test_blocks": [
+            4,
+            5
+          ],
+          "train_days": 973,
+          "test_days": 486,
+          "score": 3368.749100272474,
+          "passed": true,
+          "test_total_return": 14.521957461365282,
+          "test_sharpe": 6.080321819684029,
+          "test_max_drawdown": -0.052729407959376084,
+          "train_total_return": 69.52060901053962
+        }
+      ]
+    },
+    "candidate_selection_pbo": {
+      "n_splits": 15,
+      "pbo": 0.26666666666666666,
+      "avg_selected_test_percentile": 0.6,
+      "worst_selected_test_percentile": 0.0
+    },
+    "pbo_profile": {
+      "selected_count": 9,
+      "selection_share": 0.6,
+      "selected_below_median_rate": 0.0,
+      "avg_selected_test_percentile": 0.8235294117647058,
+      "worst_selected_test_percentile": 0.5882352941176471,
+      "avg_selected_test_score": 1198.3818039080647,
+      "avg_selected_test_return": 8.11633031116325
+    },
+    "profile": {
+      "false_positive_risk": 0.078,
+      "validation_quality_score": 0.922,
+      "cpcv_overfit_rate": 0.43333333333333335,
+      "pbo_selected_below_median_rate": 0.0,
+      "pbo_avg_selected_test_percentile": 0.8235294117647058,
+      "pbo_selection_share": 0.6,
+      "risk_components": {
+        "dsr_shortfall": 0.0,
+        "cpcv_pass_shortfall": 0.0,
+        "cpcv_positive_shortfall": 0.0,
+        "cpcv_tail_loss_shortfall": 0.0,
+        "cpcv_overfit_rate": 0.43333333333333335,
+        "pbo_selected_below_median_rate": 0.0,
+        "pbo_avg_selected_test_percentile": 0.0,
+        "pbo_selection_share": 0.0
+      }
+    },
+    "market_operating_system": {
+      "stages": {
+        "structure_train": {
+          "days": 1279,
+          "total_return": 256.4845480651583,
+          "max_drawdown": -0.06478861179415096,
+          "sharpe": 5.28945013214963,
+          "avg_daily_return": 0.004475867893093043,
+          "daily_target_hit_rate": 0.22673964034401878,
+          "cvar_95": -0.019944275368756294,
+          "calmar": 59.892209268929136,
+          "dsr_proxy": 1.0
+        },
+        "recent_adaptation": {
+          "days": 121,
+          "total_return": 1.545747411979224,
+          "max_drawdown": -0.05272940795937642,
+          "sharpe": 6.939404184683558,
+          "avg_daily_return": 0.007984449092252332,
+          "daily_target_hit_rate": 0.3140495867768595,
+          "cvar_95": -0.02343308949276074,
+          "calmar": 299.41042094596344,
+          "dsr_proxy": 0.999999999999895
+        },
+        "final_oos": {
+          "days": 61,
+          "total_return": 0.6586229620977608,
+          "max_drawdown": -0.041726587085608835,
+          "sharpe": 8.185917446132844,
+          "avg_daily_return": 0.008520134497357968,
+          "daily_target_hit_rate": 0.32786885245901637,
+          "cvar_95": -0.021754874036885405,
+          "calmar": 471.90849133866925,
+          "dsr_proxy": 0.9999999999999691
+        }
+      },
+      "state_summary": {
+        "route_state_mean_returns": {
+          "equity_mixed:bull_narrow": 0.001102419114917158,
+          "equity_mixed:bull_broad": -8.480220414328282e-05,
+          "equity_mixed:bear_narrow": 0.0177686343202594,
+          "equity_aligned:bear_narrow": 0.016788929911381784,
+          "equity_aligned:bear_broad": 0.0007489364130312772,
+          "equity_aligned:bull_broad": -0.0001748539685011706,
+          "equity_aligned:bull_narrow": -0.00011860858203994134,
+          "equity_mixed:bear_broad": 1.967241644480319e-05,
+          "equity_inverse:bear_narrow": 0.008881817141590146,
+          "equity_inverse:bull_broad": -0.00011651104209327004,
+          "equity_inverse:bull_narrow": -0.0001858753460430851,
+          "equity_inverse:bear_broad": 0.0012110692451260119
+        },
+        "corr_bucket_mean_returns": {
+          "equity_mixed": 0.0043955340682525715,
+          "equity_aligned": 0.005382438232634412,
+          "equity_inverse": 0.0011472976474142848
+        },
+        "observed_state_count": 12,
+        "positive_state_count": 7,
+        "state_coverage_share": 1.0,
+        "regime_coverage": 0.8125,
+        "corr_state_robustness": 0.8895168957435382,
+        "corr_worst_bucket_return": 0.0011472976474142848,
+        "corr_bucket_dispersion": 0.0018092796433913578
+      },
+      "cost_summary": {
+        "mean_cost_ratio": 0.06947111218054476,
+        "max_cost_ratio": 0.09593864066825265,
+        "mean_n_trades": 58160.5
+      },
+      "fitness": {
+        "score": 0.6796104288749842,
+        "weights": {
+          "dsr_oos": 0.25,
+          "calmar_oos": 0.2,
+          "median_fold_expectancy": 0.15,
+          "regime_coverage": 0.1,
+          "corr_state_robustness": 0.1,
+          "max_drawdown": -0.1,
+          "cvar_95": -0.05,
+          "turnover_cost": -0.03,
+          "parameter_instability": -0.02
+        },
+        "normalized": {
+          "dsr_oos": 0.999999999999895,
+          "calmar_oos": 1.0,
+          "median_fold_expectancy": 1.0,
+          "regime_coverage": 0.8125,
+          "corr_state_robustness": 0.8895168957435382,
+          "max_drawdown": 0.25915444717660385,
+          "cvar_95": 0.7811029830920246,
+          "turnover_cost": 0.3473555609027238,
+          "parameter_instability": 0.76
+        },
+        "raw": {
+          "dsr_oos": 0.999999999999895,
+          "calmar_oos": 299.41042094596344,
+          "median_fold_expectancy": 0.019282968883854223,
+          "regime_coverage": 0.8125,
+          "corr_state_robustness": 0.8895168957435382,
+          "max_drawdown": -0.06478861179415096,
+          "cvar_95": -0.02343308949276074,
+          "turnover_cost": 0.06947111218054476,
+          "parameter_instability": 0.76
+        }
+      },
+      "gate": {
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "audit": {
+        "passes_final_oos_total_return": true,
+        "passes_final_oos_max_drawdown": true,
+        "failed_checks": [],
+        "passed": true
+      }
+    },
+    "gate": {
+      "passes_dsr_proxy": true,
+      "passes_cpcv_positive_rate": true,
+      "passes_cpcv_pass_rate": true,
+      "passes_cpcv_tail_loss": true,
+      "passes_cpcv_overfit_rate": true,
+      "passes_pbo_selected_below_median_rate": true,
+      "passes_pbo_avg_selected_test_percentile": true,
+      "passes_pbo_selection_share": true,
+      "passes_false_positive_risk": true,
+      "passes_validation_quality": true,
+      "passes_market_os_fitness": true,
+      "passes_corr_state_robustness": true,
+      "passes_regime_coverage": true,
+      "passes_parameter_instability": true,
+      "failed_checks": [],
+      "passed": true
+    }
+  },
+  "validation_gate": {
+    "passes_dsr_proxy": true,
+    "passes_cpcv_positive_rate": true,
+    "passes_cpcv_pass_rate": true,
+    "passes_cpcv_tail_loss": true,
+    "passes_cpcv_overfit_rate": true,
+    "passes_pbo_selected_below_median_rate": true,
+    "passes_pbo_avg_selected_test_percentile": true,
+    "passes_pbo_selection_share": true,
+    "passes_false_positive_risk": true,
+    "passes_validation_quality": true,
+    "passes_market_os_fitness": true,
+    "passes_corr_state_robustness": true,
+    "passes_regime_coverage": true,
+    "passes_parameter_instability": true,
+    "failed_checks": [],
+    "passed": true
+  },
+  "market_os_gate": {
+    "passes_market_os_fitness": true,
+    "passes_corr_state_robustness": true,
+    "passes_regime_coverage": true,
+    "passes_parameter_instability": true,
+    "failed_checks": [],
+    "passed": true
+  },
+  "final_oos_audit": {
+    "checks": [
+      {
+        "name": "recent_2m_worst_pair_positive",
+        "passed": true,
+        "actual": 0.006432872049878131,
+        "target": 0.0,
+        "comparator": ">=",
+        "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+      },
+      {
+        "name": "recent_2m_worst_pair_vs_baseline",
+        "passed": true,
+        "actual": 0.006432872049878131,
+        "target": 0.005458408080128212,
+        "comparator": ">=",
+        "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+      },
+      {
+        "name": "recent_2m_worst_mdd_cap",
+        "passed": true,
+        "actual": 0.10106613140556708,
+        "target": 0.18,
+        "comparator": "<=",
+        "note": "최근 2개월 최악 MDD 18% 이내"
+      }
+    ],
+    "passed": true
+  },
+  "stress_gate": {
+    "passed": false,
+    "ready_for_shadow_live": true,
+    "ready_for_merge": false,
+    "status": "ready_for_live",
+    "promotion_decision": {
+      "validation_gate": {
+        "passes_dsr_proxy": true,
+        "passes_cpcv_positive_rate": true,
+        "passes_cpcv_pass_rate": true,
+        "passes_cpcv_tail_loss": true,
+        "passes_cpcv_overfit_rate": true,
+        "passes_pbo_selected_below_median_rate": true,
+        "passes_pbo_avg_selected_test_percentile": true,
+        "passes_pbo_selection_share": true,
+        "passes_false_positive_risk": true,
+        "passes_validation_quality": true,
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "market_os_gate": {
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "final_oos_audit": {
+        "passes_final_oos_total_return": true,
+        "passes_final_oos_max_drawdown": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "target_060_stress": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.005282316665036985,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060_all",
+            "passed": true,
+            "actual": 0.006137107570617752,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.00019214284937130557,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10199178838232292,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.141122967323963,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "progressive_stress": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.005282316665036985,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.003326495116309436,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.006137107570617752,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.004367855053023777,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.00019214284937130557,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline_all",
+            "passed": true,
+            "actual": 0.0011876780182792568,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_vs_baseline_majority",
+            "passed": true,
+            "actual": 4.0,
+            "target": 3.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10275137771098386,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10199178838232292,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.141122967323963,
+            "target": 0.26,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+          }
+        ],
+        "passed": true
+      },
+      "ready_for_live": true,
+      "ready_for_merge": false,
+      "status": "ready_for_live",
+      "failed_checks": [
+        "target_060_stress.recent_2m_worst_pair_target_060_all",
+        "target_060_stress.full_4y_worst_pair_target_060_all"
+      ]
+    }
+  },
+  "ready_for_shadow_live": true,
+  "ready_for_live": false,
+  "ready_for_merge": false,
+  "status": "shadow_ready_only",
+  "created_at": "2026-04-10T15:32:12.311282+00:00",
+  "validation_report": {
+    "pairs": [
+      "BTCUSDT",
+      "BNBUSDT"
+    ],
+    "summary_path": null,
+    "selected_candidate": {
+      "route_breadth_threshold": null,
+      "mapping_indices": null,
+      "pair_configs": {
+        "BTCUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            3018,
+            2140,
+            3769,
+            4028,
+            3018,
+            2140,
+            3769,
+            4028,
+            3018,
+            2140,
+            3769,
+            4028
+          ],
+          "route_state_mode": "equity_corr"
+        },
+        "BNBUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892
+          ],
+          "route_state_mode": "equity_corr"
+        }
+      },
+      "candidate_id": "0.5|equity_corr|3018|2140|3769|4028|3018|2140|3769|4028|3018|2140|3769|4028|0.5|equity_corr|3560|3090|2043|2892|3560|3090|2043|2892|3560|3090|2043|2892"
+    },
+    "validation_engine": {
+      "metrics": {
+        "total_return": 1086.2117968592534,
+        "max_drawdown": -0.06478861179415096,
+        "sharpe": 5.5731771434387,
+        "avg_daily_return": 0.0049353056671919025,
+        "daily_target_hit_rate": 0.23819301848049282,
+        "worst_day": -0.06320840407656003,
+        "best_day": 0.16623529345177956
+      },
+      "dsr_proxy": 1.0,
+      "cpcv": {
+        "n_splits": 15,
+        "pass_rate": 1.0,
+        "test_positive_rate": 1.0,
+        "avg_test_return": 9.915459956885808,
+        "min_test_return": 4.4026315081181995,
+        "avg_test_mdd": -0.05645430052576948,
+        "splits": [
+          {
+            "test_blocks": [
+              0,
+              1
+            ],
+            "train_days": 971,
+            "test_days": 488,
+            "score": 3388.648051943712,
+            "passed": true,
+            "test_total_return": 7.710745799014594,
+            "test_sharpe": 5.717613079202002,
+            "test_max_drawdown": -0.06320840407655992,
+            "train_total_return": 123.85016591802805
+          },
+          {
+            "test_blocks": [
+              0,
+              2
+            ],
+            "train_days": 967,
+            "test_days": 488,
+            "score": 3592.891026147336,
+            "passed": true,
+            "test_total_return": 6.102892679837395,
+            "test_sharpe": 4.8671750300122225,
+            "test_max_drawdown": -0.06320840407655992,
+            "train_total_return": 148.28442300883373
+          },
+          {
+            "test_blocks": [
+              0,
+              3
+            ],
+            "train_days": 968,
+            "test_days": 487,
+            "score": 3208.544338851079,
+            "passed": true,
+            "test_total_return": 11.964695473735864,
+            "test_sharpe": 5.705344018342742,
+            "test_max_drawdown": -0.06478861179415085,
+            "train_total_return": 80.75155805583451
+          },
+          {
+            "test_blocks": [
+              0,
+              4
+            ],
+            "train_days": 968,
+            "test_days": 487,
+            "score": 3215.2357687906724,
+            "passed": true,
+            "test_total_return": 9.610418446696706,
+            "test_sharpe": 5.546871807970374,
+            "test_max_drawdown": -0.06320840407655992,
+            "train_total_return": 99.55821621802302
+          },
+          {
+            "test_blocks": [
+              0,
+              5
+            ],
+            "train_days": 970,
+            "test_days": 487,
+            "score": 3411.874332369252,
+            "passed": true,
+            "test_total_return": 15.753255934486912,
+            "test_sharpe": 6.167753433150161,
+            "test_max_drawdown": -0.06320840407655992,
+            "train_total_return": 62.3311539199882
+          },
+          {
+            "test_blocks": [
+              1,
+              2
+            ],
+            "train_days": 969,
+            "test_days": 488,
+            "score": 4296.552832719904,
+            "passed": true,
+            "test_total_return": 4.4026315081181995,
+            "test_sharpe": 4.908131997836105,
+            "test_max_drawdown": -0.033423218293732515,
+            "train_total_return": 200.3582666028447
+          },
+          {
+            "test_blocks": [
+              1,
+              3
+            ],
+            "train_days": 966,
+            "test_days": 487,
+            "score": 3288.5700970811813,
+            "passed": true,
+            "test_total_return": 8.861260111446047,
+            "test_sharpe": 5.747658908599906,
+            "test_max_drawdown": -0.06478861179415085,
+            "train_total_return": 109.36449424760931
+          },
+          {
+            "test_blocks": [
+              1,
+              4
+            ],
+            "train_days": 966,
+            "test_days": 487,
+            "score": 3497.395156585421,
+            "passed": true,
+            "test_total_return": 7.070540214857143,
+            "test_sharpe": 5.626552968559133,
+            "test_max_drawdown": -0.03921319521884381,
+            "train_total_return": 134.7534576621053
+          },
+          {
+            "test_blocks": [
+              1,
+              5
+            ],
+            "train_days": 968,
+            "test_days": 487,
+            "score": 3251.3606845121235,
+            "passed": true,
+            "test_total_return": 11.742930585472307,
+            "test_sharpe": 6.247526177771234,
+            "test_max_drawdown": -0.05272940795937597,
+            "train_total_return": 84.4969732530766
+          },
+          {
+            "test_blocks": [
+              2,
+              3
+            ],
+            "train_days": 970,
+            "test_days": 487,
+            "score": 3472.749216013811,
+            "passed": true,
+            "test_total_return": 7.041041935523658,
+            "test_sharpe": 4.948738120427748,
+            "test_max_drawdown": -0.06478861179415085,
+            "train_total_return": 134.30273115623356
+          },
+          {
+            "test_blocks": [
+              2,
+              4
+            ],
+            "train_days": 966,
+            "test_days": 487,
+            "score": 3830.616173681813,
+            "passed": true,
+            "test_total_return": 5.580857981291004,
+            "test_sharpe": 4.761813084519834,
+            "test_max_drawdown": -0.03921319521884381,
+            "train_total_return": 165.42864818802724
+          },
+          {
+            "test_blocks": [
+              2,
+              5
+            ],
+            "train_days": 968,
+            "test_days": 487,
+            "score": 3260.116313469103,
+            "passed": true,
+            "test_total_return": 9.390805846437006,
+            "test_sharpe": 5.437754124773324,
+            "test_max_drawdown": -0.052729407959376084,
+            "train_total_return": 103.81608297664319
+          },
+          {
+            "test_blocks": [
+              3,
+              4
+            ],
+            "train_days": 971,
+            "test_days": 486,
+            "score": 3231.0764619101205,
+            "passed": true,
+            "test_total_return": 11.011841305941697,
+            "test_sharpe": 5.61265569633931,
+            "test_max_drawdown": -0.06478861179415085,
+            "train_total_return": 89.51166837522729
+          },
+          {
+            "test_blocks": [
+              3,
+              5
+            ],
+            "train_days": 969,
+            "test_days": 486,
+            "score": 3615.127123036065,
+            "passed": true,
+            "test_total_return": 17.966024069063316,
+            "test_sharpe": 6.226678776372571,
+            "test_max_drawdown": -0.06478861179415085,
+            "train_total_return": 56.39967988584551
+          },
+          {
+            "test_blocks": [
+              4,
+              5
+            ],
+            "train_days": 973,
+            "test_days": 486,
+            "score": 3368.749100272474,
+            "passed": true,
+            "test_total_return": 14.521957461365282,
+            "test_sharpe": 6.080321819684029,
+            "test_max_drawdown": -0.052729407959376084,
+            "train_total_return": 69.52060901053962
+          }
+        ]
+      },
+      "candidate_selection_pbo": {
+        "n_splits": 15,
+        "pbo": 0.26666666666666666,
+        "avg_selected_test_percentile": 0.6,
+        "worst_selected_test_percentile": 0.0
+      },
+      "pbo_profile": {
+        "selected_count": 9,
+        "selection_share": 0.6,
+        "selected_below_median_rate": 0.0,
+        "avg_selected_test_percentile": 0.8235294117647058,
+        "worst_selected_test_percentile": 0.5882352941176471,
+        "avg_selected_test_score": 1198.3818039080647,
+        "avg_selected_test_return": 8.11633031116325
+      },
+      "profile": {
+        "false_positive_risk": 0.078,
+        "validation_quality_score": 0.922,
+        "cpcv_overfit_rate": 0.43333333333333335,
+        "pbo_selected_below_median_rate": 0.0,
+        "pbo_avg_selected_test_percentile": 0.8235294117647058,
+        "pbo_selection_share": 0.6,
+        "risk_components": {
+          "dsr_shortfall": 0.0,
+          "cpcv_pass_shortfall": 0.0,
+          "cpcv_positive_shortfall": 0.0,
+          "cpcv_tail_loss_shortfall": 0.0,
+          "cpcv_overfit_rate": 0.43333333333333335,
+          "pbo_selected_below_median_rate": 0.0,
+          "pbo_avg_selected_test_percentile": 0.0,
+          "pbo_selection_share": 0.0
+        }
+      },
+      "market_operating_system": {
+        "stages": {
+          "structure_train": {
+            "days": 1279,
+            "total_return": 256.4845480651583,
+            "max_drawdown": -0.06478861179415096,
+            "sharpe": 5.28945013214963,
+            "avg_daily_return": 0.004475867893093043,
+            "daily_target_hit_rate": 0.22673964034401878,
+            "cvar_95": -0.019944275368756294,
+            "calmar": 59.892209268929136,
+            "dsr_proxy": 1.0
+          },
+          "recent_adaptation": {
+            "days": 121,
+            "total_return": 1.545747411979224,
+            "max_drawdown": -0.05272940795937642,
+            "sharpe": 6.939404184683558,
+            "avg_daily_return": 0.007984449092252332,
+            "daily_target_hit_rate": 0.3140495867768595,
+            "cvar_95": -0.02343308949276074,
+            "calmar": 299.41042094596344,
+            "dsr_proxy": 0.999999999999895
+          },
+          "final_oos": {
+            "days": 61,
+            "total_return": 0.6586229620977608,
+            "max_drawdown": -0.041726587085608835,
+            "sharpe": 8.185917446132844,
+            "avg_daily_return": 0.008520134497357968,
+            "daily_target_hit_rate": 0.32786885245901637,
+            "cvar_95": -0.021754874036885405,
+            "calmar": 471.90849133866925,
+            "dsr_proxy": 0.9999999999999691
+          }
+        },
+        "state_summary": {
+          "route_state_mean_returns": {
+            "equity_mixed:bull_narrow": 0.001102419114917158,
+            "equity_mixed:bull_broad": -8.480220414328282e-05,
+            "equity_mixed:bear_narrow": 0.0177686343202594,
+            "equity_aligned:bear_narrow": 0.016788929911381784,
+            "equity_aligned:bear_broad": 0.0007489364130312772,
+            "equity_aligned:bull_broad": -0.0001748539685011706,
+            "equity_aligned:bull_narrow": -0.00011860858203994134,
+            "equity_mixed:bear_broad": 1.967241644480319e-05,
+            "equity_inverse:bear_narrow": 0.008881817141590146,
+            "equity_inverse:bull_broad": -0.00011651104209327004,
+            "equity_inverse:bull_narrow": -0.0001858753460430851,
+            "equity_inverse:bear_broad": 0.0012110692451260119
+          },
+          "corr_bucket_mean_returns": {
+            "equity_mixed": 0.0043955340682525715,
+            "equity_aligned": 0.005382438232634412,
+            "equity_inverse": 0.0011472976474142848
+          },
+          "observed_state_count": 12,
+          "positive_state_count": 7,
+          "state_coverage_share": 1.0,
+          "regime_coverage": 0.8125,
+          "corr_state_robustness": 0.8895168957435382,
+          "corr_worst_bucket_return": 0.0011472976474142848,
+          "corr_bucket_dispersion": 0.0018092796433913578
+        },
+        "cost_summary": {
+          "mean_cost_ratio": 0.06947111218054476,
+          "max_cost_ratio": 0.09593864066825265,
+          "mean_n_trades": 58160.5
+        },
+        "fitness": {
+          "score": 0.6796104288749842,
+          "weights": {
+            "dsr_oos": 0.25,
+            "calmar_oos": 0.2,
+            "median_fold_expectancy": 0.15,
+            "regime_coverage": 0.1,
+            "corr_state_robustness": 0.1,
+            "max_drawdown": -0.1,
+            "cvar_95": -0.05,
+            "turnover_cost": -0.03,
+            "parameter_instability": -0.02
+          },
+          "normalized": {
+            "dsr_oos": 0.999999999999895,
+            "calmar_oos": 1.0,
+            "median_fold_expectancy": 1.0,
+            "regime_coverage": 0.8125,
+            "corr_state_robustness": 0.8895168957435382,
+            "max_drawdown": 0.25915444717660385,
+            "cvar_95": 0.7811029830920246,
+            "turnover_cost": 0.3473555609027238,
+            "parameter_instability": 0.76
+          },
+          "raw": {
+            "dsr_oos": 0.999999999999895,
+            "calmar_oos": 299.41042094596344,
+            "median_fold_expectancy": 0.019282968883854223,
+            "regime_coverage": 0.8125,
+            "corr_state_robustness": 0.8895168957435382,
+            "max_drawdown": -0.06478861179415096,
+            "cvar_95": -0.02343308949276074,
+            "turnover_cost": 0.06947111218054476,
+            "parameter_instability": 0.76
+          }
+        },
+        "gate": {
+          "passes_market_os_fitness": true,
+          "passes_corr_state_robustness": true,
+          "passes_regime_coverage": true,
+          "passes_parameter_instability": true,
+          "failed_checks": [],
+          "passed": true
+        },
+        "audit": {
+          "passes_final_oos_total_return": true,
+          "passes_final_oos_max_drawdown": true,
+          "failed_checks": [],
+          "passed": true
+        }
+      },
+      "gate": {
+        "passes_dsr_proxy": true,
+        "passes_cpcv_positive_rate": true,
+        "passes_cpcv_pass_rate": true,
+        "passes_cpcv_tail_loss": true,
+        "passes_cpcv_overfit_rate": true,
+        "passes_pbo_selected_below_median_rate": true,
+        "passes_pbo_avg_selected_test_percentile": true,
+        "passes_pbo_selection_share": true,
+        "passes_false_positive_risk": true,
+        "passes_validation_quality": true,
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      }
+    },
+    "validation_gate": {
+      "passes_dsr_proxy": true,
+      "passes_cpcv_positive_rate": true,
+      "passes_cpcv_pass_rate": true,
+      "passes_cpcv_tail_loss": true,
+      "passes_cpcv_overfit_rate": true,
+      "passes_pbo_selected_below_median_rate": true,
+      "passes_pbo_avg_selected_test_percentile": true,
+      "passes_pbo_selection_share": true,
+      "passes_false_positive_risk": true,
+      "passes_validation_quality": true,
+      "passes_market_os_fitness": true,
+      "passes_corr_state_robustness": true,
+      "passes_regime_coverage": true,
+      "passes_parameter_instability": true,
+      "failed_checks": [],
+      "passed": true
+    },
+    "market_os_gate": {
+      "passes_market_os_fitness": true,
+      "passes_corr_state_robustness": true,
+      "passes_regime_coverage": true,
+      "passes_parameter_instability": true,
+      "failed_checks": [],
+      "passed": true
+    },
+    "market_os_audit": {
+      "passes_final_oos_total_return": true,
+      "passes_final_oos_max_drawdown": true,
+      "failed_checks": [],
+      "passed": true
+    },
+    "final_oos_audit": {
+      "checks": [
+        {
+          "name": "recent_2m_worst_pair_positive",
+          "passed": true,
+          "actual": 0.006432872049878131,
+          "target": 0.0,
+          "comparator": ">=",
+          "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+        },
+        {
+          "name": "recent_2m_worst_pair_vs_baseline",
+          "passed": true,
+          "actual": 0.006432872049878131,
+          "target": 0.005458408080128212,
+          "comparator": ">=",
+          "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+        },
+        {
+          "name": "recent_2m_worst_mdd_cap",
+          "passed": true,
+          "actual": 0.10106613140556708,
+          "target": 0.18,
+          "comparator": "<=",
+          "note": "최근 2개월 최악 MDD 18% 이내"
+        }
+      ],
+      "passed": true
+    },
+    "selection": {
+      "reason": "progressive_plus_validation",
+      "validation_pass_count": 1,
+      "final_oos_audit_pass_count": 1,
+      "progressive_validation_pass_count": 1,
+      "target_060_validation_pass_count": 0,
+      "selected_final_oos_passed": true
+    }
+  },
+  "stress_report": {
+    "pairs": [
+      "BTCUSDT",
+      "BNBUSDT"
+    ],
+    "summary_path": "models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+    "base_summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_search_summary.json",
+    "library_source": "full-grid",
+    "baseline_candidate": {
+      "pair_configs": {
+        "BTCUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            2,
+            7,
+            7,
+            6,
+            2,
+            7,
+            7,
+            6,
+            2,
+            7,
+            7,
+            6
+          ],
+          "route_state_mode": "equity_corr"
+        },
+        "BNBUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            2,
+            7,
+            7,
+            6,
+            2,
+            7,
+            7,
+            6,
+            2,
+            7,
+            7,
+            6
+          ],
+          "route_state_mode": "equity_corr"
+        }
+      }
+    },
+    "selected_candidate": {
+      "pair_configs": {
+        "BTCUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            3018,
+            2140,
+            3769,
+            4028,
+            3018,
+            2140,
+            3769,
+            4028,
+            3018,
+            2140,
+            3769,
+            4028
+          ],
+          "route_state_mode": "equity_corr"
+        },
+        "BNBUSDT": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892
+          ],
+          "route_state_mode": "equity_corr"
+        }
+      },
+      "windows": {
+        "recent_2m": {
+          "start": "2026-02-06",
+          "end": "2026-04-06",
+          "bars": 16993,
+          "per_pair": {
+            "BTCUSDT": {
+              "avg_daily_return": 0.006432872049878131,
+              "total_return": 0.4478322178572056,
+              "max_drawdown": -0.08754519212960143,
+              "sharpe": 6.384474603417383,
+              "daily_target_hit_rate": 0.23728813559322035,
+              "daily_win_rate": 0.3050847457627119,
+              "worst_day": -0.01784955722295145,
+              "best_day": 0.06519147941303238,
+              "n_trades": 63,
+              "fee_paid": 1090.166190715944,
+              "slippage_paid": 545.08495658,
+              "funding_paid": -43.07986698366895,
+              "funding_events": 56,
+              "final_equity": 144783.22178572055
+            },
+            "BNBUSDT": {
+              "avg_daily_return": 0.007037516392887332,
+              "total_return": 0.5002358526294819,
+              "max_drawdown": -0.10106613140556708,
+              "sharpe": 6.441155204714314,
+              "daily_target_hit_rate": 0.3389830508474576,
+              "daily_win_rate": 0.5932203389830508,
+              "worst_day": -0.02179041847561758,
+              "best_day": 0.05083555608408008,
+              "n_trades": 4058,
+              "fee_paid": 2726.3110091183144,
+              "slippage_paid": 1363.1576710619988,
+              "funding_paid": -49.51712686027066,
+              "funding_events": 6,
+              "final_equity": 150023.58526294818
+            }
+          },
+          "aggregate": {
+            "mean_avg_daily_return": 0.0067351942213827315,
+            "worst_pair_avg_daily_return": 0.006432872049878131,
+            "best_pair_avg_daily_return": 0.007037516392887332,
+            "positive_pair_count": 2,
+            "mean_total_return": 0.47403403524334375,
+            "worst_pair_total_return": 0.4478322178572056,
+            "worst_max_drawdown": -0.10106613140556708,
+            "pair_return_dispersion": 0.0003023221715046003
+          }
+        },
+        "recent_6m": {
+          "start": "2025-10-06",
+          "end": "2026-04-06",
+          "bars": 52417,
+          "per_pair": {
+            "BTCUSDT": {
+              "avg_daily_return": 0.007766655669712473,
+              "total_return": 2.9476011848924717,
+              "max_drawdown": -0.08753173310886864,
+              "sharpe": 6.439632296569635,
+              "daily_target_hit_rate": 0.3021978021978022,
+              "daily_win_rate": 0.489010989010989,
+              "worst_day": -0.0619368872066558,
+              "best_day": 0.10755973344474556,
+              "n_trades": 6212,
+              "fee_paid": 7507.84298834298,
+              "slippage_paid": 3753.933721640012,
+              "funding_paid": 335.1825992404153,
+              "funding_events": 213,
+              "final_equity": 394760.11848924716
+            },
+            "BNBUSDT": {
+              "avg_daily_return": 0.007424653703392884,
+              "total_return": 2.6943626148785067,
+              "max_drawdown": -0.10107155614846863,
+              "sharpe": 5.982111937299776,
+              "daily_target_hit_rate": 0.3021978021978022,
+              "daily_win_rate": 0.4835164835164835,
+              "worst_day": -0.04456842622465562,
+              "best_day": 0.12538891683048892,
+              "n_trades": 11578,
+              "fee_paid": 14788.630850693247,
+              "slippage_paid": 7394.327095265995,
+              "funding_paid": -128.7648561671671,
+              "funding_events": 67,
+              "final_equity": 369436.2614878507
+            }
+          },
+          "aggregate": {
+            "mean_avg_daily_return": 0.007595654686552678,
+            "worst_pair_avg_daily_return": 0.007424653703392884,
+            "best_pair_avg_daily_return": 0.007766655669712473,
+            "positive_pair_count": 2,
+            "mean_total_return": 2.8209818998854894,
+            "worst_pair_total_return": 2.6943626148785067,
+            "worst_max_drawdown": -0.10107155614846863,
+            "pair_return_dispersion": 0.0001710009831597946
+          }
+        },
+        "full_4y": {
+          "start": "2022-04-06",
+          "end": "2026-04-06",
+          "bars": 420769,
+          "per_pair": {
+            "BTCUSDT": {
+              "avg_daily_return": 0.005290341077334962,
+              "total_return": 1858.5898896827114,
+              "max_drawdown": -0.11953942795216,
+              "sharpe": 5.491753466292775,
+              "daily_target_hit_rate": 0.20670773442847365,
+              "daily_win_rate": 0.5099247091033539,
+              "worst_day": -0.061423657800173226,
+              "best_day": 0.2003118916377422,
+              "n_trades": 30565,
+              "fee_paid": 4967547.74295107,
+              "slippage_paid": 2483781.582065311,
+              "funding_paid": 545573.6205159932,
+              "funding_events": 2588,
+              "final_equity": 185958988.96827114
+            },
+            "BNBUSDT": {
+              "avg_daily_return": 0.0049276170693737555,
+              "total_return": 979.7283080930619,
+              "max_drawdown": -0.11171162565802417,
+              "sharpe": 5.0120894842583965,
+              "daily_target_hit_rate": 0.22861054072553047,
+              "daily_win_rate": 0.4531143052703628,
+              "worst_day": -0.08864101855039264,
+              "best_day": 0.15673040450610065,
+              "n_trades": 85756,
+              "fee_paid": 6122158.204376059,
+              "slippage_paid": 3061083.397460205,
+              "funding_paid": -225732.4724960989,
+              "funding_events": 1205,
+              "final_equity": 98072830.80930619
+            }
+          },
+          "aggregate": {
+            "mean_avg_daily_return": 0.005108979073354359,
+            "worst_pair_avg_daily_return": 0.0049276170693737555,
+            "best_pair_avg_daily_return": 0.005290341077334962,
+            "positive_pair_count": 2,
+            "mean_total_return": 1419.1590988878866,
+            "worst_pair_total_return": 979.7283080930619,
+            "worst_max_drawdown": -0.11953942795216,
+            "pair_return_dispersion": 0.0001813620039806032
+          }
+        }
+      },
+      "score": -0.07699325613152799,
+      "validation": {
+        "comparison": {
+          "recent_2m": {
+            "baseline_mean_avg_daily_return": 0.005881351649554788,
+            "selected_mean_avg_daily_return": 0.0067351942213827315,
+            "delta_mean_avg_daily_return": 0.0008538425718279431,
+            "baseline_worst_pair_avg_daily_return": 0.005627224824874446,
+            "selected_worst_pair_avg_daily_return": 0.006432872049878131,
+            "delta_worst_pair_avg_daily_return": 0.0008056472250036854,
+            "baseline_worst_max_drawdown": -0.10496191286058987,
+            "selected_worst_max_drawdown": -0.10106613140556708,
+            "delta_worst_max_drawdown": 0.0038957814550227843
+          },
+          "recent_6m": {
+            "baseline_mean_avg_daily_return": 0.008615411189725256,
+            "selected_mean_avg_daily_return": 0.007595654686552678,
+            "delta_mean_avg_daily_return": -0.0010197565031725784,
+            "baseline_worst_pair_avg_daily_return": 0.007199890465284453,
+            "selected_worst_pair_avg_daily_return": 0.007424653703392884,
+            "delta_worst_pair_avg_daily_return": 0.00022476323810843076,
+            "baseline_worst_max_drawdown": -0.1503013161615735,
+            "selected_worst_max_drawdown": -0.10107155614846863,
+            "delta_worst_max_drawdown": 0.04922976001310486
+          },
+          "full_4y": {
+            "baseline_mean_avg_daily_return": 0.004405309109093952,
+            "selected_mean_avg_daily_return": 0.005108979073354359,
+            "delta_mean_avg_daily_return": 0.0007036699642604064,
+            "baseline_worst_pair_avg_daily_return": 0.004174750042519195,
+            "selected_worst_pair_avg_daily_return": 0.0049276170693737555,
+            "delta_worst_pair_avg_daily_return": 0.0007528670268545602,
+            "baseline_worst_max_drawdown": -0.16301004522773743,
+            "selected_worst_max_drawdown": -0.11953942795216,
+            "delta_worst_max_drawdown": 0.04347061727557744
+          }
+        },
+        "profiles": {
+          "progressive_improvement": {
+            "checks": [
+              {
+                "name": "recent_6m_worst_pair_min",
+                "passed": true,
+                "actual": 0.007424653703392884,
+                "target": 0.006,
+                "comparator": ">=",
+                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+              },
+              {
+                "name": "recent_6m_worst_pair_vs_baseline",
+                "passed": true,
+                "actual": 0.007424653703392884,
+                "target": 0.007199890465284453,
+                "comparator": ">=",
+                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+              },
+              {
+                "name": "full_4y_worst_pair_positive",
+                "passed": true,
+                "actual": 0.0049276170693737555,
+                "target": 0.0,
+                "comparator": ">=",
+                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+              },
+              {
+                "name": "full_4y_mean_vs_baseline",
+                "passed": true,
+                "actual": 0.005108979073354359,
+                "target": 0.004405309109093952,
+                "comparator": ">=",
+                "note": "4년 평균 일수익률은 baseline 이상"
+              },
+              {
+                "name": "recent_6m_worst_mdd_cap",
+                "passed": true,
+                "actual": 0.10107155614846863,
+                "target": 0.17,
+                "comparator": "<=",
+                "note": "최근 6개월 최악 MDD 17% 이내"
+              },
+              {
+                "name": "full_4y_worst_mdd_cap",
+                "passed": true,
+                "actual": 0.11953942795216,
+                "target": 0.2,
+                "comparator": "<=",
+                "note": "4년 전체 최악 MDD 20% 이내"
+              }
+            ],
+            "passed": true
+          },
+          "final_oos": {
+            "checks": [
+              {
+                "name": "recent_2m_worst_pair_positive",
+                "passed": true,
+                "actual": 0.006432872049878131,
+                "target": 0.0,
+                "comparator": ">=",
+                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+              },
+              {
+                "name": "recent_2m_worst_pair_vs_baseline",
+                "passed": true,
+                "actual": 0.006432872049878131,
+                "target": 0.005458408080128212,
+                "comparator": ">=",
+                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+              },
+              {
+                "name": "recent_2m_worst_mdd_cap",
+                "passed": true,
+                "actual": 0.10106613140556708,
+                "target": 0.18,
+                "comparator": "<=",
+                "note": "최근 2개월 최악 MDD 18% 이내"
+              }
+            ],
+            "passed": true
+          },
+          "target_060": {
+            "checks": [
+              {
+                "name": "recent_6m_worst_pair_target_060",
+                "passed": true,
+                "actual": 0.007424653703392884,
+                "target": 0.006,
+                "comparator": ">=",
+                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+              },
+              {
+                "name": "full_4y_worst_pair_target_060",
+                "passed": false,
+                "actual": 0.0049276170693737555,
+                "target": 0.006,
+                "comparator": ">=",
+                "note": "4년 전체 최악 코인 0.6%/day 이상"
+              },
+              {
+                "name": "recent_6m_worst_mdd_cap",
+                "passed": true,
+                "actual": 0.10107155614846863,
+                "target": 0.17,
+                "comparator": "<=",
+                "note": "최근 6개월 최악 MDD 17% 이내"
+              },
+              {
+                "name": "full_4y_worst_mdd_cap",
+                "passed": true,
+                "actual": 0.11953942795216,
+                "target": 0.2,
+                "comparator": "<=",
+                "note": "4년 전체 최악 MDD 20% 이내"
+              }
+            ],
+            "passed": false
+          }
+        }
+      },
+      "validation_engine": {
+        "metrics": {
+          "total_return": 1086.2117968592534,
+          "max_drawdown": -0.06478861179415096,
+          "sharpe": 5.5731771434387,
+          "avg_daily_return": 0.0049353056671919025,
+          "daily_target_hit_rate": 0.23819301848049282,
+          "worst_day": -0.06320840407656003,
+          "best_day": 0.16623529345177956
+        },
+        "dsr_proxy": 1.0,
+        "cpcv": {
+          "n_splits": 15,
+          "pass_rate": 1.0,
+          "test_positive_rate": 1.0,
+          "avg_test_return": 9.915459956885808,
+          "min_test_return": 4.4026315081181995,
+          "avg_test_mdd": -0.05645430052576948,
+          "splits": [
+            {
+              "test_blocks": [
+                0,
+                1
+              ],
+              "train_days": 971,
+              "test_days": 488,
+              "score": 3388.648051943712,
+              "passed": true,
+              "test_total_return": 7.710745799014594,
+              "test_sharpe": 5.717613079202002,
+              "test_max_drawdown": -0.06320840407655992,
+              "train_total_return": 123.85016591802805
+            },
+            {
+              "test_blocks": [
+                0,
+                2
+              ],
+              "train_days": 967,
+              "test_days": 488,
+              "score": 3592.891026147336,
+              "passed": true,
+              "test_total_return": 6.102892679837395,
+              "test_sharpe": 4.8671750300122225,
+              "test_max_drawdown": -0.06320840407655992,
+              "train_total_return": 148.28442300883373
+            },
+            {
+              "test_blocks": [
+                0,
+                3
+              ],
+              "train_days": 968,
+              "test_days": 487,
+              "score": 3208.544338851079,
+              "passed": true,
+              "test_total_return": 11.964695473735864,
+              "test_sharpe": 5.705344018342742,
+              "test_max_drawdown": -0.06478861179415085,
+              "train_total_return": 80.75155805583451
+            },
+            {
+              "test_blocks": [
+                0,
+                4
+              ],
+              "train_days": 968,
+              "test_days": 487,
+              "score": 3215.2357687906724,
+              "passed": true,
+              "test_total_return": 9.610418446696706,
+              "test_sharpe": 5.546871807970374,
+              "test_max_drawdown": -0.06320840407655992,
+              "train_total_return": 99.55821621802302
+            },
+            {
+              "test_blocks": [
+                0,
+                5
+              ],
+              "train_days": 970,
+              "test_days": 487,
+              "score": 3411.874332369252,
+              "passed": true,
+              "test_total_return": 15.753255934486912,
+              "test_sharpe": 6.167753433150161,
+              "test_max_drawdown": -0.06320840407655992,
+              "train_total_return": 62.3311539199882
+            },
+            {
+              "test_blocks": [
+                1,
+                2
+              ],
+              "train_days": 969,
+              "test_days": 488,
+              "score": 4296.552832719904,
+              "passed": true,
+              "test_total_return": 4.4026315081181995,
+              "test_sharpe": 4.908131997836105,
+              "test_max_drawdown": -0.033423218293732515,
+              "train_total_return": 200.3582666028447
+            },
+            {
+              "test_blocks": [
+                1,
+                3
+              ],
+              "train_days": 966,
+              "test_days": 487,
+              "score": 3288.5700970811813,
+              "passed": true,
+              "test_total_return": 8.861260111446047,
+              "test_sharpe": 5.747658908599906,
+              "test_max_drawdown": -0.06478861179415085,
+              "train_total_return": 109.36449424760931
+            },
+            {
+              "test_blocks": [
+                1,
+                4
+              ],
+              "train_days": 966,
+              "test_days": 487,
+              "score": 3497.395156585421,
+              "passed": true,
+              "test_total_return": 7.070540214857143,
+              "test_sharpe": 5.626552968559133,
+              "test_max_drawdown": -0.03921319521884381,
+              "train_total_return": 134.7534576621053
+            },
+            {
+              "test_blocks": [
+                1,
+                5
+              ],
+              "train_days": 968,
+              "test_days": 487,
+              "score": 3251.3606845121235,
+              "passed": true,
+              "test_total_return": 11.742930585472307,
+              "test_sharpe": 6.247526177771234,
+              "test_max_drawdown": -0.05272940795937597,
+              "train_total_return": 84.4969732530766
+            },
+            {
+              "test_blocks": [
+                2,
+                3
+              ],
+              "train_days": 970,
+              "test_days": 487,
+              "score": 3472.749216013811,
+              "passed": true,
+              "test_total_return": 7.041041935523658,
+              "test_sharpe": 4.948738120427748,
+              "test_max_drawdown": -0.06478861179415085,
+              "train_total_return": 134.30273115623356
+            },
+            {
+              "test_blocks": [
+                2,
+                4
+              ],
+              "train_days": 966,
+              "test_days": 487,
+              "score": 3830.616173681813,
+              "passed": true,
+              "test_total_return": 5.580857981291004,
+              "test_sharpe": 4.761813084519834,
+              "test_max_drawdown": -0.03921319521884381,
+              "train_total_return": 165.42864818802724
+            },
+            {
+              "test_blocks": [
+                2,
+                5
+              ],
+              "train_days": 968,
+              "test_days": 487,
+              "score": 3260.116313469103,
+              "passed": true,
+              "test_total_return": 9.390805846437006,
+              "test_sharpe": 5.437754124773324,
+              "test_max_drawdown": -0.052729407959376084,
+              "train_total_return": 103.81608297664319
+            },
+            {
+              "test_blocks": [
+                3,
+                4
+              ],
+              "train_days": 971,
+              "test_days": 486,
+              "score": 3231.0764619101205,
+              "passed": true,
+              "test_total_return": 11.011841305941697,
+              "test_sharpe": 5.61265569633931,
+              "test_max_drawdown": -0.06478861179415085,
+              "train_total_return": 89.51166837522729
+            },
+            {
+              "test_blocks": [
+                3,
+                5
+              ],
+              "train_days": 969,
+              "test_days": 486,
+              "score": 3615.127123036065,
+              "passed": true,
+              "test_total_return": 17.966024069063316,
+              "test_sharpe": 6.226678776372571,
+              "test_max_drawdown": -0.06478861179415085,
+              "train_total_return": 56.39967988584551
+            },
+            {
+              "test_blocks": [
+                4,
+                5
+              ],
+              "train_days": 973,
+              "test_days": 486,
+              "score": 3368.749100272474,
+              "passed": true,
+              "test_total_return": 14.521957461365282,
+              "test_sharpe": 6.080321819684029,
+              "test_max_drawdown": -0.052729407959376084,
+              "train_total_return": 69.52060901053962
+            }
+          ]
+        },
+        "candidate_selection_pbo": {
+          "n_splits": 15,
+          "pbo": 0.26666666666666666,
+          "avg_selected_test_percentile": 0.6,
+          "worst_selected_test_percentile": 0.0
+        },
+        "pbo_profile": {
+          "selected_count": 9,
+          "selection_share": 0.6,
+          "selected_below_median_rate": 0.0,
+          "avg_selected_test_percentile": 0.8235294117647058,
+          "worst_selected_test_percentile": 0.5882352941176471,
+          "avg_selected_test_score": 1198.3818039080647,
+          "avg_selected_test_return": 8.11633031116325
+        },
+        "profile": {
+          "false_positive_risk": 0.078,
+          "validation_quality_score": 0.922,
+          "cpcv_overfit_rate": 0.43333333333333335,
+          "pbo_selected_below_median_rate": 0.0,
+          "pbo_avg_selected_test_percentile": 0.8235294117647058,
+          "pbo_selection_share": 0.6,
+          "risk_components": {
+            "dsr_shortfall": 0.0,
+            "cpcv_pass_shortfall": 0.0,
+            "cpcv_positive_shortfall": 0.0,
+            "cpcv_tail_loss_shortfall": 0.0,
+            "cpcv_overfit_rate": 0.43333333333333335,
+            "pbo_selected_below_median_rate": 0.0,
+            "pbo_avg_selected_test_percentile": 0.0,
+            "pbo_selection_share": 0.0
+          }
+        },
+        "market_operating_system": {
+          "stages": {
+            "structure_train": {
+              "days": 1279,
+              "total_return": 256.4845480651583,
+              "max_drawdown": -0.06478861179415096,
+              "sharpe": 5.28945013214963,
+              "avg_daily_return": 0.004475867893093043,
+              "daily_target_hit_rate": 0.22673964034401878,
+              "cvar_95": -0.019944275368756294,
+              "calmar": 59.892209268929136,
+              "dsr_proxy": 1.0
+            },
+            "recent_adaptation": {
+              "days": 121,
+              "total_return": 1.545747411979224,
+              "max_drawdown": -0.05272940795937642,
+              "sharpe": 6.939404184683558,
+              "avg_daily_return": 0.007984449092252332,
+              "daily_target_hit_rate": 0.3140495867768595,
+              "cvar_95": -0.02343308949276074,
+              "calmar": 299.41042094596344,
+              "dsr_proxy": 0.999999999999895
+            },
+            "final_oos": {
+              "days": 61,
+              "total_return": 0.6586229620977608,
+              "max_drawdown": -0.041726587085608835,
+              "sharpe": 8.185917446132844,
+              "avg_daily_return": 0.008520134497357968,
+              "daily_target_hit_rate": 0.32786885245901637,
+              "cvar_95": -0.021754874036885405,
+              "calmar": 471.90849133866925,
+              "dsr_proxy": 0.9999999999999691
+            }
+          },
+          "state_summary": {
+            "route_state_mean_returns": {
+              "equity_mixed:bull_narrow": 0.001102419114917158,
+              "equity_mixed:bull_broad": -8.480220414328282e-05,
+              "equity_mixed:bear_narrow": 0.0177686343202594,
+              "equity_aligned:bear_narrow": 0.016788929911381784,
+              "equity_aligned:bear_broad": 0.0007489364130312772,
+              "equity_aligned:bull_broad": -0.0001748539685011706,
+              "equity_aligned:bull_narrow": -0.00011860858203994134,
+              "equity_mixed:bear_broad": 1.967241644480319e-05,
+              "equity_inverse:bear_narrow": 0.008881817141590146,
+              "equity_inverse:bull_broad": -0.00011651104209327004,
+              "equity_inverse:bull_narrow": -0.0001858753460430851,
+              "equity_inverse:bear_broad": 0.0012110692451260119
+            },
+            "corr_bucket_mean_returns": {
+              "equity_mixed": 0.0043955340682525715,
+              "equity_aligned": 0.005382438232634412,
+              "equity_inverse": 0.0011472976474142848
+            },
+            "observed_state_count": 12,
+            "positive_state_count": 7,
+            "state_coverage_share": 1.0,
+            "regime_coverage": 0.8125,
+            "corr_state_robustness": 0.8895168957435382,
+            "corr_worst_bucket_return": 0.0011472976474142848,
+            "corr_bucket_dispersion": 0.0018092796433913578
+          },
+          "cost_summary": {
+            "mean_cost_ratio": 0.06947111218054476,
+            "max_cost_ratio": 0.09593864066825265,
+            "mean_n_trades": 58160.5
+          },
+          "fitness": {
+            "score": 0.6796104288749842,
+            "weights": {
+              "dsr_oos": 0.25,
+              "calmar_oos": 0.2,
+              "median_fold_expectancy": 0.15,
+              "regime_coverage": 0.1,
+              "corr_state_robustness": 0.1,
+              "max_drawdown": -0.1,
+              "cvar_95": -0.05,
+              "turnover_cost": -0.03,
+              "parameter_instability": -0.02
+            },
+            "normalized": {
+              "dsr_oos": 0.999999999999895,
+              "calmar_oos": 1.0,
+              "median_fold_expectancy": 1.0,
+              "regime_coverage": 0.8125,
+              "corr_state_robustness": 0.8895168957435382,
+              "max_drawdown": 0.25915444717660385,
+              "cvar_95": 0.7811029830920246,
+              "turnover_cost": 0.3473555609027238,
+              "parameter_instability": 0.76
+            },
+            "raw": {
+              "dsr_oos": 0.999999999999895,
+              "calmar_oos": 299.41042094596344,
+              "median_fold_expectancy": 0.019282968883854223,
+              "regime_coverage": 0.8125,
+              "corr_state_robustness": 0.8895168957435382,
+              "max_drawdown": -0.06478861179415096,
+              "cvar_95": -0.02343308949276074,
+              "turnover_cost": 0.06947111218054476,
+              "parameter_instability": 0.76
+            }
+          },
+          "gate": {
+            "passes_market_os_fitness": true,
+            "passes_corr_state_robustness": true,
+            "passes_regime_coverage": true,
+            "passes_parameter_instability": true,
+            "failed_checks": [],
+            "passed": true
+          },
+          "audit": {
+            "passes_final_oos_total_return": true,
+            "passes_final_oos_max_drawdown": true,
+            "failed_checks": [],
+            "passed": true
+          }
+        },
+        "gate": {
+          "passes_dsr_proxy": true,
+          "passes_cpcv_positive_rate": true,
+          "passes_cpcv_pass_rate": true,
+          "passes_cpcv_tail_loss": true,
+          "passes_cpcv_overfit_rate": true,
+          "passes_pbo_selected_below_median_rate": true,
+          "passes_pbo_avg_selected_test_percentile": true,
+          "passes_pbo_selection_share": true,
+          "passes_false_positive_risk": true,
+          "passes_validation_quality": true,
+          "passes_market_os_fitness": true,
+          "passes_corr_state_robustness": true,
+          "passes_regime_coverage": true,
+          "passes_parameter_instability": true,
+          "failed_checks": [],
+          "passed": true
+        }
+      },
+      "candidate_id": "0.5|equity_corr|3018|2140|3769|4028|3018|2140|3769|4028|3018|2140|3769|4028|0.5|equity_corr|3560|3090|2043|2892|3560|3090|2043|2892|3560|3090|2043|2892",
+      "pareto_vector": {
+        "market_os_fitness": 0.6796104288749842,
+        "validation_quality_score": 0.922,
+        "recent_6m_worst_pair_avg_daily_return": 0.007424653703392884,
+        "full_4y_worst_pair_avg_daily_return": 0.0049276170693737555,
+        "corr_state_robustness": 0.8895168957435382,
+        "full_4y_worst_max_drawdown_abs": 0.11953942795216,
+        "false_positive_risk": 0.078,
+        "turnover_cost": 0.06947111218054476
+      },
+      "pareto": {
+        "rank": 1,
+        "is_nondominated": true,
+        "crowding_distance": Infinity,
+        "crowding_sort_value": 1000000000.0
+      }
+    },
+    "scenarios": {
+      "baseline_realistic": {
+        "assumptions": {
+          "name": "baseline_realistic",
+          "fee_rate": 0.0004,
+          "base_slippage": 0.0002,
+          "delay_bars": 1,
+          "partial_fill_ratio": 1.0,
+          "reject_prob": 0.0,
+          "vol_spike_threshold": null,
+          "vol_spike_mult": 1.0
+        },
+        "baseline_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.002780515749256966,
+                "total_return": 0.17112484333434774,
+                "max_drawdown": -0.0931520184741581,
+                "sharpe": 3.4844559134741817,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.3728813559322034,
+                "worst_day": -0.06422404565435957,
+                "best_day": 0.02953291718859119,
+                "n_trades": 176,
+                "fee_paid": 1038.320247442552,
+                "slippage_paid": 519.1608722200001,
+                "funding_paid": -42.50264690274998,
+                "funding_events": 76,
+                "final_equity": 117112.48433343477,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.003151940837983579,
+                "total_return": 0.20101609902524276,
+                "max_drawdown": -0.0495113636754928,
+                "sharpe": 4.9207878954480995,
+                "daily_target_hit_rate": 0.2542372881355932,
+                "daily_win_rate": 0.6610169491525424,
+                "worst_day": -0.021384506733456043,
+                "best_day": 0.024485321631141588,
+                "n_trades": 3673,
+                "fee_paid": 4036.301727203323,
+                "slippage_paid": 2018.151910669997,
+                "funding_paid": -20.64484958790713,
+                "funding_events": 76,
+                "final_equity": 120101.60990252427,
+                "rejected_orders": 0,
+                "partial_fills": 4,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0029662282936202726,
+              "worst_pair_avg_daily_return": 0.002780515749256966,
+              "best_pair_avg_daily_return": 0.003151940837983579,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.18607047117979525,
+              "worst_pair_total_return": 0.17112484333434774,
+              "worst_max_drawdown": -0.0931520184741581,
+              "pair_return_dispersion": 0.0001857125443633066
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.004831255026195203,
+                "total_return": 1.3646222462866984,
+                "max_drawdown": -0.06935369571373295,
+                "sharpe": 6.234303633879537,
+                "daily_target_hit_rate": 0.34065934065934067,
+                "daily_win_rate": 0.46703296703296704,
+                "worst_day": -0.04593003326027045,
+                "best_day": 0.10683937938120414,
+                "n_trades": 3071,
+                "fee_paid": 5382.205956755337,
+                "slippage_paid": 2691.1087502200094,
+                "funding_paid": 239.4812356635885,
+                "funding_events": 213,
+                "final_equity": 236462.22462866982,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0020737075166334384,
+                "total_return": 0.4449654918955721,
+                "max_drawdown": -0.1313995322106848,
+                "sharpe": 3.3021087959244366,
+                "daily_target_hit_rate": 0.22527472527472528,
+                "daily_win_rate": 0.489010989010989,
+                "worst_day": -0.0387433381220178,
+                "best_day": 0.03859770070211632,
+                "n_trades": 8963,
+                "fee_paid": 12286.287940061007,
+                "slippage_paid": 6143.146486411991,
+                "funding_paid": 17.048216028638546,
+                "funding_events": 227,
+                "final_equity": 144496.5491895572,
+                "rejected_orders": 0,
+                "partial_fills": 6,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0034524812714143206,
+              "worst_pair_avg_daily_return": 0.0020737075166334384,
+              "best_pair_avg_daily_return": 0.004831255026195203,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.9047938690911352,
+              "worst_pair_total_return": 0.4449654918955721,
+              "worst_max_drawdown": -0.1313995322106848,
+              "pair_return_dispersion": 0.0013787737547808821
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0029895340054644807,
+                "total_return": 72.66537126317752,
+                "max_drawdown": -0.10317700721264988,
+                "sharpe": 4.835200854195836,
+                "daily_target_hit_rate": 0.20191649555099248,
+                "daily_win_rate": 0.5051334702258727,
+                "worst_day": -0.05741620288421434,
+                "best_day": 0.11023147395717747,
+                "n_trades": 38597,
+                "fee_paid": 386666.20575786923,
+                "slippage_paid": 193333.41503127955,
+                "funding_paid": 42728.1257068661,
+                "funding_events": 2615,
+                "final_equity": 7366537.126317752,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": -6.166181737875836e-05,
+                "total_return": -0.0931275854183885,
+                "max_drawdown": -0.1605645215167235,
+                "sharpe": -0.21937698693964716,
+                "daily_target_hit_rate": 0.03353867214236824,
+                "daily_win_rate": 0.2135523613963039,
+                "worst_day": -0.04219752419747047,
+                "best_day": 0.053824670187236245,
+                "n_trades": 17425,
+                "fee_paid": 37038.02658588855,
+                "slippage_paid": 18519.015127913866,
+                "funding_paid": 370.041661959935,
+                "funding_events": 2601,
+                "final_equity": 90687.24145816115,
+                "rejected_orders": 0,
+                "partial_fills": 42,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0014639360940428613,
+              "worst_pair_avg_daily_return": -6.166181737875836e-05,
+              "best_pair_avg_daily_return": 0.0029895340054644807,
+              "positive_pair_count": 1,
+              "mean_total_return": 36.286121838879566,
+              "worst_pair_total_return": -0.0931275854183885,
+              "worst_max_drawdown": -0.1605645215167235,
+              "pair_return_dispersion": 0.0015255979114216197
+            }
+          }
+        },
+        "selected_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.006432872049878131,
+                "total_return": 0.4478322178572056,
+                "max_drawdown": -0.08754519212960143,
+                "sharpe": 6.384474603417371,
+                "daily_target_hit_rate": 0.23728813559322035,
+                "daily_win_rate": 0.3050847457627119,
+                "worst_day": -0.01784955722295145,
+                "best_day": 0.06519147941303238,
+                "n_trades": 63,
+                "fee_paid": 1090.166190715944,
+                "slippage_paid": 545.08495658,
+                "funding_paid": -43.07986698366895,
+                "funding_events": 56,
+                "final_equity": 144783.22178572055,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.007037516392887332,
+                "total_return": 0.5002358526294819,
+                "max_drawdown": -0.10106613140556708,
+                "sharpe": 6.441155204714318,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5932203389830508,
+                "worst_day": -0.02179041847561758,
+                "best_day": 0.05083555608408008,
+                "n_trades": 4058,
+                "fee_paid": 2726.3110091183144,
+                "slippage_paid": 1363.1576710619988,
+                "funding_paid": -49.51712686027066,
+                "funding_events": 76,
+                "final_equity": 150023.58526294818,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0067351942213827315,
+              "worst_pair_avg_daily_return": 0.006432872049878131,
+              "best_pair_avg_daily_return": 0.007037516392887332,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.47403403524334375,
+              "worst_pair_total_return": 0.4478322178572056,
+              "worst_max_drawdown": -0.10106613140556708,
+              "pair_return_dispersion": 0.0003023221715046003
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.007766655669712475,
+                "total_return": 2.9476011848924717,
+                "max_drawdown": -0.08753173310886864,
+                "sharpe": 6.439632296569602,
+                "daily_target_hit_rate": 0.3021978021978022,
+                "daily_win_rate": 0.489010989010989,
+                "worst_day": -0.0619368872066558,
+                "best_day": 0.10755973344474556,
+                "n_trades": 6212,
+                "fee_paid": 7507.84298834298,
+                "slippage_paid": 3753.933721640012,
+                "funding_paid": 335.1825992404153,
+                "funding_events": 213,
+                "final_equity": 394760.11848924716,
+                "rejected_orders": 0,
+                "partial_fills": 0,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0074248908737913006,
+                "total_return": 2.6945155460115937,
+                "max_drawdown": -0.10107152984931833,
+                "sharpe": 5.982218435146984,
+                "daily_target_hit_rate": 0.3021978021978022,
+                "daily_win_rate": 0.45604395604395603,
+                "worst_day": -0.04456842622465562,
+                "best_day": 0.12538891683048892,
+                "n_trades": 11535,
+                "fee_paid": 14788.854198818613,
+                "slippage_paid": 7394.438769953983,
+                "funding_paid": -128.76978005170128,
+                "funding_events": 228,
+                "final_equity": 369451.55460115935,
+                "rejected_orders": 0,
+                "partial_fills": 2,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.007595773271751888,
+              "worst_pair_avg_daily_return": 0.0074248908737913006,
+              "best_pair_avg_daily_return": 0.007766655669712475,
+              "positive_pair_count": 2,
+              "mean_total_return": 2.821058365452033,
+              "worst_pair_total_return": 2.6945155460115937,
+              "worst_max_drawdown": -0.10107152984931833,
+              "pair_return_dispersion": 0.00017088239796058703
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.005290341145232896,
+                "total_return": 1858.5898517241203,
+                "max_drawdown": -0.11953944147390305,
+                "sharpe": 5.491753783921567,
+                "daily_target_hit_rate": 0.20670773442847365,
+                "daily_win_rate": 0.5119780971937029,
+                "worst_day": -0.06142365967013241,
+                "best_day": 0.2003118916377422,
+                "n_trades": 30566,
+                "fee_paid": 4967547.523818546,
+                "slippage_paid": 2483781.472498891,
+                "funding_paid": 545573.4486577839,
+                "funding_events": 2588,
+                "final_equity": 185958985.17241204,
+                "rejected_orders": 0,
+                "partial_fills": 3,
+                "scenario": "baseline_realistic"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.004927597071409141,
+                "total_return": 979.700732236802,
+                "max_drawdown": -0.1117115935327091,
+                "sharpe": 5.01207992219645,
+                "daily_target_hit_rate": 0.22861054072553047,
+                "daily_win_rate": 0.46338124572210815,
+                "worst_day": -0.08864101013639003,
+                "best_day": 0.1567304090062671,
+                "n_trades": 85642,
+                "fee_paid": 6121988.186370257,
+                "slippage_paid": 3060998.3883365425,
+                "funding_paid": -225726.06607090952,
+                "funding_events": 2619,
+                "final_equity": 98070073.2236802,
+                "rejected_orders": 0,
+                "partial_fills": 56,
+                "scenario": "baseline_realistic"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0051089691083210185,
+              "worst_pair_avg_daily_return": 0.004927597071409141,
+              "best_pair_avg_daily_return": 0.005290341145232896,
+              "positive_pair_count": 2,
+              "mean_total_return": 1419.145291980461,
+              "worst_pair_total_return": 979.700732236802,
+              "worst_max_drawdown": -0.11953944147390305,
+              "pair_return_dispersion": 0.00018137203691187716
+            }
+          }
+        },
+        "comparison": {
+          "recent_2m": {
+            "delta_mean_avg_daily_return": 0.003768965927762459,
+            "delta_worst_pair_avg_daily_return": 0.0036523563006211654,
+            "delta_worst_max_drawdown": -0.007914112931408979,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "recent_6m": {
+            "delta_mean_avg_daily_return": 0.004143292000337567,
+            "delta_worst_pair_avg_daily_return": 0.005351183357157862,
+            "delta_worst_max_drawdown": 0.030328002361366457,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "full_4y": {
+            "delta_mean_avg_daily_return": 0.0036450330142781574,
+            "delta_worst_pair_avg_daily_return": 0.0049892588887879,
+            "delta_worst_max_drawdown": 0.04102508004282046,
+            "selected_beats_baseline_on_worst_pair": true
+          }
+        }
+      },
+      "conservative_book": {
+        "assumptions": {
+          "name": "conservative_book",
+          "fee_rate": 0.0005,
+          "base_slippage": 0.00035,
+          "delay_bars": 1,
+          "partial_fill_ratio": 0.9,
+          "reject_prob": 0.01,
+          "vol_spike_threshold": 0.9,
+          "vol_spike_mult": 1.6
+        },
+        "baseline_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0022341838617880878,
+                "total_return": 0.1347771354713363,
+                "max_drawdown": -0.08801623970881645,
+                "sharpe": 2.873938495231195,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5254237288135594,
+                "worst_day": -0.05736203681504404,
+                "best_day": 0.027116401398550538,
+                "n_trades": 69,
+                "fee_paid": 1102.127586041163,
+                "slippage_paid": 837.5478489420003,
+                "funding_paid": -42.51581788335499,
+                "funding_events": 76,
+                "final_equity": 113477.71354713364,
+                "rejected_orders": 38,
+                "partial_fills": 69,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0024569750301051655,
+                "total_return": 0.15314802819915907,
+                "max_drawdown": -0.04821780578338397,
+                "sharpe": 3.902848995088599,
+                "daily_target_hit_rate": 0.2542372881355932,
+                "daily_win_rate": 0.6271186440677966,
+                "worst_day": -0.021696747875734723,
+                "best_day": 0.02325800227964092,
+                "n_trades": 1952,
+                "fee_paid": 4368.650898105044,
+                "slippage_paid": 3221.297234991513,
+                "funding_paid": -18.887206987655897,
+                "funding_events": 76,
+                "final_equity": 115314.8028199159,
+                "rejected_orders": 39,
+                "partial_fills": 1952,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0023455794459466264,
+              "worst_pair_avg_daily_return": 0.0022341838617880878,
+              "best_pair_avg_daily_return": 0.0024569750301051655,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.14396258183524768,
+              "worst_pair_total_return": 0.1347771354713363,
+              "worst_max_drawdown": -0.08801623970881645,
+              "pair_return_dispersion": 0.00011139558415853884
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.004376236142822374,
+                "total_return": 1.1773423620475882,
+                "max_drawdown": -0.07054412252692088,
+                "sharpe": 5.7224903959368625,
+                "daily_target_hit_rate": 0.33516483516483514,
+                "daily_win_rate": 0.5384615384615384,
+                "worst_day": -0.047662573643385775,
+                "best_day": 0.10514917424544734,
+                "n_trades": 251,
+                "fee_paid": 5480.740121540233,
+                "slippage_paid": 4061.9429411610013,
+                "funding_paid": 261.5834674600472,
+                "funding_events": 228,
+                "final_equity": 217734.2362047588,
+                "rejected_orders": 78,
+                "partial_fills": 251,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0004592309514773185,
+                "total_return": 0.08181084189077947,
+                "max_drawdown": -0.14430266017321924,
+                "sharpe": 1.0243377997457996,
+                "daily_target_hit_rate": 0.12637362637362637,
+                "daily_win_rate": 0.5439560439560439,
+                "worst_day": -0.041053478090493534,
+                "best_day": 0.02325659477168074,
+                "n_trades": 1644,
+                "fee_paid": 7536.827370571453,
+                "slippage_paid": 6213.212469116807,
+                "funding_paid": -18.806781234095183,
+                "funding_events": 228,
+                "final_equity": 108181.08418907796,
+                "rejected_orders": 131,
+                "partial_fills": 1644,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0024177335471498463,
+              "worst_pair_avg_daily_return": 0.0004592309514773185,
+              "best_pair_avg_daily_return": 0.004376236142822374,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.6295766019691839,
+              "worst_pair_total_return": 0.08181084189077947,
+              "worst_max_drawdown": -0.14430266017321924,
+              "pair_return_dispersion": 0.0019585025956725278
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0024724195247912647,
+                "total_return": 33.98865365620608,
+                "max_drawdown": -0.1011237979225369,
+                "sharpe": 4.087050564339639,
+                "daily_target_hit_rate": 0.19849418206707733,
+                "daily_win_rate": 0.5181382614647502,
+                "worst_day": -0.04894933942985924,
+                "best_day": 0.10520073955953557,
+                "n_trades": 3087,
+                "fee_paid": 251228.519953364,
+                "slippage_paid": 183948.23462699613,
+                "funding_paid": 28470.01030095895,
+                "funding_events": 2621,
+                "final_equity": 3498865.365620608,
+                "rejected_orders": 617,
+                "partial_fills": 3087,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": -9.460326625562893e-05,
+                "total_return": -0.13165750098672235,
+                "max_drawdown": -0.19507689131101202,
+                "sharpe": -0.5111735694945286,
+                "daily_target_hit_rate": 0.018480492813141684,
+                "daily_win_rate": 0.5112936344969199,
+                "worst_day": -0.035654115832046696,
+                "best_day": 0.03221974118188764,
+                "n_trades": 10000,
+                "fee_paid": 17068.575542458504,
+                "slippage_paid": 12348.48533145081,
+                "funding_paid": 468.8085952426391,
+                "funding_events": 2621,
+                "final_equity": 86834.24990132777,
+                "rejected_orders": 197,
+                "partial_fills": 10000,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0011889081292678178,
+              "worst_pair_avg_daily_return": -9.460326625562893e-05,
+              "best_pair_avg_daily_return": 0.0024724195247912647,
+              "positive_pair_count": 1,
+              "mean_total_return": 16.92849807760968,
+              "worst_pair_total_return": -0.13165750098672235,
+              "worst_max_drawdown": -0.19507689131101202,
+              "pair_return_dispersion": 0.0012835113955234469
+            }
+          }
+        },
+        "selected_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.006085388275795545,
+                "total_return": 0.4189236764161446,
+                "max_drawdown": -0.08693442150950714,
+                "sharpe": 6.077486625369316,
+                "daily_target_hit_rate": 0.23728813559322035,
+                "daily_win_rate": 0.3728813559322034,
+                "worst_day": -0.018087576902514724,
+                "best_day": 0.06296165351976679,
+                "n_trades": 80,
+                "fee_paid": 1307.3351025206598,
+                "slippage_paid": 915.1402686299999,
+                "funding_paid": -44.253187234942956,
+                "funding_events": 56,
+                "final_equity": 141892.36764161446,
+                "rejected_orders": 1,
+                "partial_fills": 80,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.006775031879696344,
+                "total_return": 0.4771096218641657,
+                "max_drawdown": -0.1014700326116359,
+                "sharpe": 6.21647532988342,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5084745762711864,
+                "worst_day": -0.02306878123192868,
+                "best_day": 0.05079970209696327,
+                "n_trades": 3733,
+                "fee_paid": 3326.052289567061,
+                "slippage_paid": 2439.2357908541,
+                "funding_paid": -48.602513161236004,
+                "funding_events": 76,
+                "final_equity": 147710.96218641658,
+                "rejected_orders": 45,
+                "partial_fills": 3733,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.006430210077745945,
+              "worst_pair_avg_daily_return": 0.006085388275795545,
+              "best_pair_avg_daily_return": 0.006775031879696344,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.44801664914015515,
+              "worst_pair_total_return": 0.4189236764161446,
+              "worst_max_drawdown": -0.1014700326116359,
+              "pair_return_dispersion": 0.0003448218019503997
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.007568745767662094,
+                "total_return": 2.809649411147404,
+                "max_drawdown": -0.08681216961589444,
+                "sharpe": 6.2531598544509475,
+                "daily_target_hit_rate": 0.2967032967032967,
+                "daily_win_rate": 0.5054945054945055,
+                "worst_day": -0.062408428476813826,
+                "best_day": 0.10470096078730595,
+                "n_trades": 313,
+                "fee_paid": 8424.945231757401,
+                "slippage_paid": 6003.177229329001,
+                "funding_paid": 347.6183758281126,
+                "funding_events": 213,
+                "final_equity": 380964.9411147404,
+                "rejected_orders": 111,
+                "partial_fills": 313,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.007002148595994161,
+                "total_return": 2.4239268259078584,
+                "max_drawdown": -0.10145805739955527,
+                "sharpe": 5.644704593750734,
+                "daily_target_hit_rate": 0.3021978021978022,
+                "daily_win_rate": 0.5274725274725275,
+                "worst_day": -0.046577516049414514,
+                "best_day": 0.12154692289277835,
+                "n_trades": 9350,
+                "fee_paid": 17119.82756377994,
+                "slippage_paid": 12999.927069392232,
+                "funding_paid": -119.90754604228628,
+                "funding_events": 228,
+                "final_equity": 342392.68259078584,
+                "rejected_orders": 124,
+                "partial_fills": 9350,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.007285447181828128,
+              "worst_pair_avg_daily_return": 0.007002148595994161,
+              "best_pair_avg_daily_return": 0.007568745767662094,
+              "positive_pair_count": 2,
+              "mean_total_return": 2.616788118527631,
+              "worst_pair_total_return": 2.4239268259078584,
+              "worst_max_drawdown": -0.10145805739955527,
+              "pair_return_dispersion": 0.0002832985858339664
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.004937425873202703,
+                "total_return": 1117.8910446441025,
+                "max_drawdown": -0.11985706093338988,
+                "sharpe": 5.124233775091282,
+                "daily_target_hit_rate": 0.20739219712525667,
+                "daily_win_rate": 0.4928131416837782,
+                "worst_day": -0.06243470364726034,
+                "best_day": 0.19846092894383927,
+                "n_trades": 6463,
+                "fee_paid": 3783288.028361719,
+                "slippage_paid": 2704129.921901316,
+                "funding_paid": 387422.21477864374,
+                "funding_events": 2605,
+                "final_equity": 111889104.46441025,
+                "rejected_orders": 493,
+                "partial_fills": 6463,
+                "scenario": "conservative_book"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.004541703720805958,
+                "total_return": 562.5401319331538,
+                "max_drawdown": -0.11572134123336031,
+                "sharpe": 4.643175251737114,
+                "daily_target_hit_rate": 0.22587268993839835,
+                "daily_win_rate": 0.5044490075290896,
+                "worst_day": -0.08933992799193058,
+                "best_day": 0.15303707945048872,
+                "n_trades": 165733,
+                "fee_paid": 4589536.923030109,
+                "slippage_paid": 3439655.463371432,
+                "funding_paid": -145695.18976256208,
+                "funding_events": 2621,
+                "final_equity": 56354013.19331538,
+                "rejected_orders": 1989,
+                "partial_fills": 165733,
+                "scenario": "conservative_book"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0047395647970043305,
+              "worst_pair_avg_daily_return": 0.004541703720805958,
+              "best_pair_avg_daily_return": 0.004937425873202703,
+              "positive_pair_count": 2,
+              "mean_total_return": 840.2155882886282,
+              "worst_pair_total_return": 562.5401319331538,
+              "worst_max_drawdown": -0.11985706093338988,
+              "pair_return_dispersion": 0.00019786107619837283
+            }
+          }
+        },
+        "comparison": {
+          "recent_2m": {
+            "delta_mean_avg_daily_return": 0.004084630631799318,
+            "delta_worst_pair_avg_daily_return": 0.0038512044140074572,
+            "delta_worst_max_drawdown": -0.01345379290281945,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "recent_6m": {
+            "delta_mean_avg_daily_return": 0.004867713634678281,
+            "delta_worst_pair_avg_daily_return": 0.006542917644516842,
+            "delta_worst_max_drawdown": 0.042844602773663976,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "full_4y": {
+            "delta_mean_avg_daily_return": 0.003550656667736513,
+            "delta_worst_pair_avg_daily_return": 0.004636306987061587,
+            "delta_worst_max_drawdown": 0.07521983037762214,
+            "selected_beats_baseline_on_worst_pair": true
+          }
+        }
+      },
+      "latency_partial": {
+        "assumptions": {
+          "name": "latency_partial",
+          "fee_rate": 0.0005,
+          "base_slippage": 0.0003,
+          "delay_bars": 2,
+          "partial_fill_ratio": 0.8,
+          "reject_prob": 0.03,
+          "vol_spike_threshold": 0.8,
+          "vol_spike_mult": 1.8
+        },
+        "baseline_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0023828442248224305,
+                "total_return": 0.14450815862616295,
+                "max_drawdown": -0.08926112681109899,
+                "sharpe": 3.1381668948500487,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5254237288135594,
+                "worst_day": -0.06254198893109253,
+                "best_day": 0.03179866754902072,
+                "n_trades": 2159,
+                "fee_paid": 1296.7146438126522,
+                "slippage_paid": 864.2957833619994,
+                "funding_paid": -41.60701020444897,
+                "funding_events": 76,
+                "final_equity": 114450.8158626163,
+                "rejected_orders": 301,
+                "partial_fills": 2159,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0028190987503136523,
+                "total_return": 0.17819096096103926,
+                "max_drawdown": -0.04743786786975668,
+                "sharpe": 4.4257803177543975,
+                "daily_target_hit_rate": 0.2711864406779661,
+                "daily_win_rate": 0.6101694915254238,
+                "worst_day": -0.02130789352480089,
+                "best_day": 0.022586599226615434,
+                "n_trades": 14140,
+                "fee_paid": 4321.475752339696,
+                "slippage_paid": 2774.4062283900134,
+                "funding_paid": -19.658423167298036,
+                "funding_events": 76,
+                "final_equity": 117819.09609610392,
+                "rejected_orders": 480,
+                "partial_fills": 14140,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.002600971487568041,
+              "worst_pair_avg_daily_return": 0.0023828442248224305,
+              "best_pair_avg_daily_return": 0.0028190987503136523,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.1613495597936011,
+              "worst_pair_total_return": 0.14450815862616295,
+              "worst_max_drawdown": -0.08926112681109899,
+              "pair_return_dispersion": 0.0002181272627456109
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.004792477566907096,
+                "total_return": 1.3413603676157981,
+                "max_drawdown": -0.06716380376008002,
+                "sharpe": 6.155085208949655,
+                "daily_target_hit_rate": 0.33516483516483514,
+                "daily_win_rate": 0.5384615384615384,
+                "worst_day": -0.0458581880413802,
+                "best_day": 0.11889288360780226,
+                "n_trades": 7998,
+                "fee_paid": 6691.769713037597,
+                "slippage_paid": 4475.30995846199,
+                "funding_paid": 247.1788330916755,
+                "funding_events": 228,
+                "final_equity": 234136.03676157983,
+                "rejected_orders": 734,
+                "partial_fills": 7998,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.002460931044826774,
+                "total_return": 0.5498989349476866,
+                "max_drawdown": -0.1317800710424285,
+                "sharpe": 3.824451708929804,
+                "daily_target_hit_rate": 0.24725274725274726,
+                "daily_win_rate": 0.5769230769230769,
+                "worst_day": -0.037381643183026836,
+                "best_day": 0.047564176093622956,
+                "n_trades": 41034,
+                "fee_paid": 14964.115882500173,
+                "slippage_paid": 10773.72404792989,
+                "funding_paid": 14.201285198995533,
+                "funding_events": 228,
+                "final_equity": 154989.89349476865,
+                "rejected_orders": 1336,
+                "partial_fills": 41034,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0036267043058669348,
+              "worst_pair_avg_daily_return": 0.002460931044826774,
+              "best_pair_avg_daily_return": 0.004792477566907096,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.9456296512817424,
+              "worst_pair_total_return": 0.5498989349476866,
+              "worst_max_drawdown": -0.1317800710424285,
+              "pair_return_dispersion": 0.0011657732610401608
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0026016090738531237,
+                "total_return": 41.18502621029899,
+                "max_drawdown": -0.10356441181984366,
+                "sharpe": 4.274676451702036,
+                "daily_target_hit_rate": 0.19301848049281314,
+                "daily_win_rate": 0.5044490075290896,
+                "worst_day": -0.051951334317280606,
+                "best_day": 0.12010463037504904,
+                "n_trades": 132813,
+                "fee_paid": 310871.50014830206,
+                "slippage_paid": 204412.08501022842,
+                "funding_paid": 27275.599288513742,
+                "funding_events": 2621,
+                "final_equity": 4218502.621029899,
+                "rejected_orders": 7258,
+                "partial_fills": 132813,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0006863807672607023,
+                "total_return": 1.569030885487292,
+                "max_drawdown": -0.13637327584802905,
+                "sharpe": 1.429320372379432,
+                "daily_target_hit_rate": 0.13826146475017112,
+                "daily_win_rate": 0.4791238877481177,
+                "worst_day": -0.047271740005871976,
+                "best_day": 0.04884747030083614,
+                "n_trades": 366039,
+                "fee_paid": 184463.63501120498,
+                "slippage_paid": 123257.35733415309,
+                "funding_paid": -1682.2892159258265,
+                "funding_events": 2621,
+                "final_equity": 256903.08854872923,
+                "rejected_orders": 11969,
+                "partial_fills": 366039,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.001643994920556913,
+              "worst_pair_avg_daily_return": 0.0006863807672607023,
+              "best_pair_avg_daily_return": 0.0026016090738531237,
+              "positive_pair_count": 2,
+              "mean_total_return": 21.377028547893143,
+              "worst_pair_total_return": 1.569030885487292,
+              "worst_max_drawdown": -0.13637327584802905,
+              "pair_return_dispersion": 0.0009576141532962107
+            }
+          }
+        },
+        "selected_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.005709339341131867,
+                "total_return": 0.3888617974493027,
+                "max_drawdown": -0.08680630183736004,
+                "sharpe": 5.748786128365898,
+                "daily_target_hit_rate": 0.23728813559322035,
+                "daily_win_rate": 0.3559322033898305,
+                "worst_day": -0.01400479066150273,
+                "best_day": 0.06060732489576437,
+                "n_trades": 2367,
+                "fee_paid": 1510.098024747295,
+                "slippage_paid": 906.0632564099977,
+                "funding_paid": -44.58727390801572,
+                "funding_events": 56,
+                "final_equity": 138886.17974493027,
+                "rejected_orders": 201,
+                "partial_fills": 2367,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.006470198203678914,
+                "total_return": 0.45196023105256433,
+                "max_drawdown": -0.10222494238943203,
+                "sharpe": 5.963019278391182,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5084745762711864,
+                "worst_day": -0.02071413054831117,
+                "best_day": 0.047361543869095746,
+                "n_trades": 15024,
+                "fee_paid": 3600.203535043208,
+                "slippage_paid": 2290.1333556000027,
+                "funding_paid": -47.7615440993433,
+                "funding_events": 76,
+                "final_equity": 145196.02310525643,
+                "rejected_orders": 488,
+                "partial_fills": 15024,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.00608976877240539,
+              "worst_pair_avg_daily_return": 0.005709339341131867,
+              "best_pair_avg_daily_return": 0.006470198203678914,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.4204110142509335,
+              "worst_pair_total_return": 0.3888617974493027,
+              "worst_max_drawdown": -0.10222494238943203,
+              "pair_return_dispersion": 0.0003804294312735237
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.007355881121565449,
+                "total_return": 2.671624011046898,
+                "max_drawdown": -0.0872644522588093,
+                "sharpe": 6.122717715302069,
+                "daily_target_hit_rate": 0.3076923076923077,
+                "daily_win_rate": 0.489010989010989,
+                "worst_day": -0.06490267789927218,
+                "best_day": 0.10816056219069736,
+                "n_trades": 12647,
+                "fee_paid": 10380.986539762622,
+                "slippage_paid": 6499.345054829998,
+                "funding_paid": 370.39619929076946,
+                "funding_events": 213,
+                "final_equity": 367162.4011046898,
+                "rejected_orders": 922,
+                "partial_fills": 12647,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.006828786097850551,
+                "total_return": 2.3242580053073048,
+                "max_drawdown": -0.10199178838232292,
+                "sharpe": 5.495604080030754,
+                "daily_target_hit_rate": 0.3021978021978022,
+                "daily_win_rate": 0.554945054945055,
+                "worst_day": -0.047190601433196755,
+                "best_day": 0.11038386516643284,
+                "n_trades": 45695,
+                "fee_paid": 18976.053736342918,
+                "slippage_paid": 12992.8786650282,
+                "funding_paid": -114.72653788720947,
+                "funding_events": 228,
+                "final_equity": 332425.80053073046,
+                "rejected_orders": 1456,
+                "partial_fills": 45695,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.007092333609708,
+              "worst_pair_avg_daily_return": 0.006828786097850551,
+              "best_pair_avg_daily_return": 0.007355881121565449,
+              "positive_pair_count": 2,
+              "mean_total_return": 2.4979410081771016,
+              "worst_pair_total_return": 2.3242580053073048,
+              "worst_max_drawdown": -0.10199178838232292,
+              "pair_return_dispersion": 0.00026354751185744905
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0047719816943943925,
+                "total_return": 895.4409105330592,
+                "max_drawdown": -0.11744034560931338,
+                "sharpe": 4.917587630748014,
+                "daily_target_hit_rate": 0.20670773442847365,
+                "daily_win_rate": 0.4921286789869952,
+                "worst_day": -0.06275716567487588,
+                "best_day": 0.15248392906464336,
+                "n_trades": 238181,
+                "fee_paid": 3963820.4040679233,
+                "slippage_paid": 2495162.5256034816,
+                "funding_paid": 343695.67577763676,
+                "funding_events": 2605,
+                "final_equity": 89644091.05330592,
+                "rejected_orders": 9197,
+                "partial_fills": 238181,
+                "scenario": "latency_partial"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.00429331588218914,
+                "total_return": 392.33386835491626,
+                "max_drawdown": -0.12184929632213937,
+                "sharpe": 4.3894641694035315,
+                "daily_target_hit_rate": 0.22039698836413416,
+                "daily_win_rate": 0.49691991786447637,
+                "worst_day": -0.09070577739307006,
+                "best_day": 0.13797546387325532,
+                "n_trades": 400664,
+                "fee_paid": 3740357.459575556,
+                "slippage_paid": 2532211.7578015258,
+                "funding_paid": -111320.08528100063,
+                "funding_events": 2621,
+                "final_equity": 39333386.83549163,
+                "rejected_orders": 12331,
+                "partial_fills": 400664,
+                "scenario": "latency_partial"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.004532648788291766,
+              "worst_pair_avg_daily_return": 0.00429331588218914,
+              "best_pair_avg_daily_return": 0.0047719816943943925,
+              "positive_pair_count": 2,
+              "mean_total_return": 643.8873894439878,
+              "worst_pair_total_return": 392.33386835491626,
+              "worst_max_drawdown": -0.12184929632213937,
+              "pair_return_dispersion": 0.00023933290610262618
+            }
+          }
+        },
+        "comparison": {
+          "recent_2m": {
+            "delta_mean_avg_daily_return": 0.003488797284837349,
+            "delta_worst_pair_avg_daily_return": 0.003326495116309436,
+            "delta_worst_max_drawdown": -0.012963815578333038,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "recent_6m": {
+            "delta_mean_avg_daily_return": 0.0034656293038410656,
+            "delta_worst_pair_avg_daily_return": 0.004367855053023777,
+            "delta_worst_max_drawdown": 0.02978828266010558,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "full_4y": {
+            "delta_mean_avg_daily_return": 0.0028886538677348533,
+            "delta_worst_pair_avg_daily_return": 0.0036069351149284378,
+            "delta_worst_max_drawdown": 0.014523979525889685,
+            "selected_beats_baseline_on_worst_pair": true
+          }
+        }
+      },
+      "ultra_conservative": {
+        "assumptions": {
+          "name": "ultra_conservative",
+          "fee_rate": 0.0007,
+          "base_slippage": 0.00055,
+          "delay_bars": 3,
+          "partial_fill_ratio": 0.65,
+          "reject_prob": 0.08,
+          "vol_spike_threshold": 0.7,
+          "vol_spike_mult": 2.4
+        },
+        "baseline_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0015452954212012266,
+                "total_return": 0.08839299065865713,
+                "max_drawdown": -0.09133787153171247,
+                "sharpe": 2.021871819001985,
+                "daily_target_hit_rate": 0.3389830508474576,
+                "daily_win_rate": 0.5254237288135594,
+                "worst_day": -0.07435357974553192,
+                "best_day": 0.025494585518911483,
+                "n_trades": 2904,
+                "fee_paid": 1574.4134439453571,
+                "slippage_paid": 1489.7011681750023,
+                "funding_paid": -42.31052200869369,
+                "funding_events": 76,
+                "final_equity": 108839.2990658657,
+                "rejected_orders": 804,
+                "partial_fills": 2904,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0021514733603211953,
+                "total_return": 0.13269898407835767,
+                "max_drawdown": -0.050373234599659034,
+                "sharpe": 3.3864406203410264,
+                "daily_target_hit_rate": 0.2711864406779661,
+                "daily_win_rate": 0.6440677966101694,
+                "worst_day": -0.02483670528827786,
+                "best_day": 0.021328546313085006,
+                "n_trades": 14566,
+                "fee_paid": 5316.7197613032495,
+                "slippage_paid": 4827.183222844395,
+                "funding_paid": -18.183648014054214,
+                "funding_events": 76,
+                "final_equity": 113269.89840783578,
+                "rejected_orders": 1288,
+                "partial_fills": 14566,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.001848384390761211,
+              "worst_pair_avg_daily_return": 0.0015452954212012266,
+              "best_pair_avg_daily_return": 0.0021514733603211953,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.1105459873685074,
+              "worst_pair_total_return": 0.08839299065865713,
+              "worst_max_drawdown": -0.09133787153171247,
+              "pair_return_dispersion": 0.00030308896955998435
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.004105105381378236,
+                "total_return": 1.0697190831132732,
+                "max_drawdown": -0.07484705047333695,
+                "sharpe": 5.209053425380733,
+                "daily_target_hit_rate": 0.3241758241758242,
+                "daily_win_rate": 0.532967032967033,
+                "worst_day": -0.06319974657851479,
+                "best_day": 0.11721219980203323,
+                "n_trades": 10376,
+                "fee_paid": 8063.563030542348,
+                "slippage_paid": 7999.434554891962,
+                "funding_paid": 252.7766967813559,
+                "funding_events": 228,
+                "final_equity": 206971.9083113273,
+                "rejected_orders": 2453,
+                "partial_fills": 10376,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.0004046664839877642,
+                "total_return": 0.0713265635485354,
+                "max_drawdown": -0.13793422130424038,
+                "sharpe": 0.8905597046257185,
+                "daily_target_hit_rate": 0.14835164835164835,
+                "daily_win_rate": 0.554945054945055,
+                "worst_day": -0.04079481255774664,
+                "best_day": 0.02110374329667919,
+                "n_trades": 42445,
+                "fee_paid": 9519.299271162474,
+                "slippage_paid": 11004.978731766785,
+                "funding_paid": -9.491062216847673,
+                "funding_events": 228,
+                "final_equity": 107132.65635485353,
+                "rejected_orders": 3910,
+                "partial_fills": 42445,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.002254885932683,
+              "worst_pair_avg_daily_return": 0.0004046664839877642,
+              "best_pair_avg_daily_return": 0.004105105381378236,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.5705228233309043,
+              "worst_pair_total_return": 0.0713265635485354,
+              "worst_max_drawdown": -0.13793422130424038,
+              "pair_return_dispersion": 0.0018502194486952359
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.002145218583781418,
+                "total_return": 20.76988874397209,
+                "max_drawdown": -0.11245403193111081,
+                "sharpe": 3.5263783400782733,
+                "daily_target_hit_rate": 0.188911704312115,
+                "daily_win_rate": 0.4921286789869952,
+                "worst_day": -0.06153787438269809,
+                "best_day": 0.11440313418928638,
+                "n_trades": 151687,
+                "fee_paid": 256655.25413781352,
+                "slippage_paid": 258501.74506865552,
+                "funding_paid": 19385.0834037251,
+                "funding_events": 2621,
+                "final_equity": 2176988.874397209,
+                "rejected_orders": 20846,
+                "partial_fills": 151687,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": -5.105969474553903e-05,
+                "total_return": -0.08116783169951958,
+                "max_drawdown": -0.18123347616249996,
+                "sharpe": -0.31594860129449326,
+                "daily_target_hit_rate": 0.014373716632443531,
+                "daily_win_rate": 0.4736481861738535,
+                "worst_day": -0.043272220069855205,
+                "best_day": 0.049535908927125005,
+                "n_trades": 68973,
+                "fee_paid": 16445.11869470474,
+                "slippage_paid": 21460.27868831047,
+                "funding_paid": -143.15834693659536,
+                "funding_events": 2621,
+                "final_equity": 91883.21683004804,
+                "rejected_orders": 19407,
+                "partial_fills": 68973,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0010470794445179396,
+              "worst_pair_avg_daily_return": -5.105969474553903e-05,
+              "best_pair_avg_daily_return": 0.002145218583781418,
+              "positive_pair_count": 1,
+              "mean_total_return": 10.344360456136284,
+              "worst_pair_total_return": -0.08116783169951958,
+              "worst_max_drawdown": -0.18123347616249996,
+              "pair_return_dispersion": 0.0010981391392634785
+            }
+          }
+        },
+        "selected_candidate": {
+          "recent_2m": {
+            "start": "2026-02-06",
+            "end": "2026-04-06",
+            "bars": 16993,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.005282316665036985,
+                "total_return": 0.3542420853730195,
+                "max_drawdown": -0.08954881843212503,
+                "sharpe": 5.3207371441249265,
+                "daily_target_hit_rate": 0.23728813559322035,
+                "daily_win_rate": 0.3559322033898305,
+                "worst_day": -0.018550972752769623,
+                "best_day": 0.05562682444002309,
+                "n_trades": 2964,
+                "fee_paid": 2104.31732095187,
+                "slippage_paid": 1653.513835852997,
+                "funding_paid": -43.896005886364705,
+                "funding_events": 56,
+                "final_equity": 135424.20853730195,
+                "rejected_orders": 611,
+                "partial_fills": 2964,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.005666099253068865,
+                "total_return": 0.38463751748461683,
+                "max_drawdown": -0.10275137771098386,
+                "sharpe": 5.233955800493767,
+                "daily_target_hit_rate": 0.3220338983050847,
+                "daily_win_rate": 0.5084745762711864,
+                "worst_day": -0.023436202653372762,
+                "best_day": 0.04704842242937435,
+                "n_trades": 14756,
+                "fee_paid": 4798.557959823625,
+                "slippage_paid": 4194.970318762286,
+                "funding_paid": -45.896922952433556,
+                "funding_events": 76,
+                "final_equity": 138463.75174846168,
+                "rejected_orders": 1267,
+                "partial_fills": 14756,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.005474207959052926,
+              "worst_pair_avg_daily_return": 0.005282316665036985,
+              "best_pair_avg_daily_return": 0.005666099253068865,
+              "positive_pair_count": 2,
+              "mean_total_return": 0.36943980142881816,
+              "worst_pair_total_return": 0.3542420853730195,
+              "worst_max_drawdown": -0.10275137771098386,
+              "pair_return_dispersion": 0.0001918912940159401
+            }
+          },
+          "recent_6m": {
+            "start": "2025-10-06",
+            "end": "2026-04-06",
+            "bars": 52417,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0069106966697627175,
+                "total_return": 2.3825655559016834,
+                "max_drawdown": -0.08906954663459077,
+                "sharpe": 5.7435216794206445,
+                "daily_target_hit_rate": 0.3021978021978022,
+                "daily_win_rate": 0.4835164835164835,
+                "worst_day": -0.07378453788403128,
+                "best_day": 0.11371944011279944,
+                "n_trades": 14224,
+                "fee_paid": 13767.81936074192,
+                "slippage_paid": 12017.095985235012,
+                "funding_paid": 368.15073616061943,
+                "funding_events": 213,
+                "final_equity": 338256.55559016834,
+                "rejected_orders": 2515,
+                "partial_fills": 14224,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.006137107570617752,
+                "total_return": 1.9344661436569446,
+                "max_drawdown": -0.1009482766991543,
+                "sharpe": 4.9439560854161355,
+                "daily_target_hit_rate": 0.2967032967032967,
+                "daily_win_rate": 0.5384615384615384,
+                "worst_day": -0.04838961431236366,
+                "best_day": 0.11197967644846352,
+                "n_trades": 44894,
+                "fee_paid": 24383.053719656906,
+                "slippage_paid": 25767.90552246252,
+                "funding_paid": -93.30197218596922,
+                "funding_events": 228,
+                "final_equity": 293446.61436569446,
+                "rejected_orders": 3967,
+                "partial_fills": 44894,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.006523902120190234,
+              "worst_pair_avg_daily_return": 0.006137107570617752,
+              "best_pair_avg_daily_return": 0.0069106966697627175,
+              "positive_pair_count": 2,
+              "mean_total_return": 2.158515849779314,
+              "worst_pair_total_return": 1.9344661436569446,
+              "worst_max_drawdown": -0.1009482766991543,
+              "pair_return_dispersion": 0.0003867945495724828
+            }
+          },
+          "full_4y": {
+            "start": "2022-04-06",
+            "end": "2026-04-06",
+            "bars": 420769,
+            "per_pair": {
+              "BTCUSDT": {
+                "avg_daily_return": 0.0042773720762230875,
+                "total_return": 438.0265321768297,
+                "max_drawdown": -0.12164872618702327,
+                "sharpe": 4.442689497891859,
+                "daily_target_hit_rate": 0.2005475701574264,
+                "daily_win_rate": 0.48528405201916497,
+                "worst_day": -0.07455744904323658,
+                "best_day": 0.1281744992234788,
+                "n_trades": 239520,
+                "fee_paid": 3061300.879826137,
+                "slippage_paid": 2718047.496479178,
+                "funding_paid": 209219.35508816637,
+                "funding_events": 2605,
+                "final_equity": 43902653.217682965,
+                "rejected_orders": 25605,
+                "partial_fills": 239520,
+                "scenario": "ultra_conservative"
+              },
+              "BNBUSDT": {
+                "avg_daily_return": 0.00019214284937130557,
+                "total_return": 0.2938255389311737,
+                "max_drawdown": -0.141122967323963,
+                "sharpe": 0.7841098063163174,
+                "daily_target_hit_rate": 0.013004791238877482,
+                "daily_win_rate": 0.47638603696098564,
+                "worst_day": -0.060922890256512874,
+                "best_day": 0.08856207609228339,
+                "n_trades": 53048,
+                "fee_paid": 7807.311737908198,
+                "slippage_paid": 10136.938536267167,
+                "funding_paid": -356.73120270920566,
+                "funding_events": 2621,
+                "final_equity": 129382.55389311737,
+                "rejected_orders": 19009,
+                "partial_fills": 53048,
+                "scenario": "ultra_conservative"
+              }
+            },
+            "aggregate": {
+              "mean_avg_daily_return": 0.0022347574627971964,
+              "worst_pair_avg_daily_return": 0.00019214284937130557,
+              "best_pair_avg_daily_return": 0.0042773720762230875,
+              "positive_pair_count": 2,
+              "mean_total_return": 219.16017885788042,
+              "worst_pair_total_return": 0.2938255389311737,
+              "worst_max_drawdown": -0.141122967323963,
+              "pair_return_dispersion": 0.0020426146134258907
+            }
+          }
+        },
+        "comparison": {
+          "recent_2m": {
+            "delta_mean_avg_daily_return": 0.0036258235682917147,
+            "delta_worst_pair_avg_daily_return": 0.0037370212438357585,
+            "delta_worst_max_drawdown": -0.011413506179271393,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "recent_6m": {
+            "delta_mean_avg_daily_return": 0.004269016187507234,
+            "delta_worst_pair_avg_daily_return": 0.0057324410866299875,
+            "delta_worst_max_drawdown": 0.036985944605086085,
+            "selected_beats_baseline_on_worst_pair": true
+          },
+          "full_4y": {
+            "delta_mean_avg_daily_return": 0.0011876780182792568,
+            "delta_worst_pair_avg_daily_return": 0.0002432025441168446,
+            "delta_worst_max_drawdown": 0.04011050883853695,
+            "selected_beats_baseline_on_worst_pair": true
+          }
+        }
+      }
+    },
+    "profiles": {
+      "progressive_stress": {
+        "baseline": {
+          "checks": [
+            {
+              "name": "recent_2m_worst_pair_positive_all",
+              "passed": true,
+              "actual": 0.0015452954212012266,
+              "target": 0.0,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+            },
+            {
+              "name": "recent_2m_worst_pair_vs_baseline_all",
+              "passed": true,
+              "actual": 0.003326495116309436,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "recent_6m_worst_pair_positive_all",
+              "passed": true,
+              "actual": 0.0004046664839877642,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+            },
+            {
+              "name": "recent_6m_worst_pair_vs_baseline_all",
+              "passed": true,
+              "actual": 0.004367855053023777,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "full_4y_worst_pair_positive_all",
+              "passed": false,
+              "actual": -9.460326625562893e-05,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+            },
+            {
+              "name": "full_4y_mean_vs_baseline_all",
+              "passed": true,
+              "actual": 0.0011876780182792568,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "full_4y_worst_pair_vs_baseline_majority",
+              "passed": true,
+              "actual": 4.0,
+              "target": 3.0,
+              "comparator": ">=",
+              "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+            },
+            {
+              "name": "recent_2m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.0931520184741581,
+              "target": 0.18,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+            },
+            {
+              "name": "recent_6m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.14430266017321924,
+              "target": 0.17,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+            },
+            {
+              "name": "full_4y_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.19507689131101202,
+              "target": 0.26,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+            }
+          ],
+          "passed": false
+        },
+        "selected": {
+          "checks": [
+            {
+              "name": "recent_2m_worst_pair_positive_all",
+              "passed": true,
+              "actual": 0.005282316665036985,
+              "target": 0.0,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+            },
+            {
+              "name": "recent_2m_worst_pair_vs_baseline_all",
+              "passed": true,
+              "actual": 0.003326495116309436,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "recent_6m_worst_pair_positive_all",
+              "passed": true,
+              "actual": 0.006137107570617752,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+            },
+            {
+              "name": "recent_6m_worst_pair_vs_baseline_all",
+              "passed": true,
+              "actual": 0.004367855053023777,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "full_4y_worst_pair_positive_all",
+              "passed": true,
+              "actual": 0.00019214284937130557,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+            },
+            {
+              "name": "full_4y_mean_vs_baseline_all",
+              "passed": true,
+              "actual": 0.0011876780182792568,
+              "target": 0.0,
+              "comparator": ">",
+              "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+            },
+            {
+              "name": "full_4y_worst_pair_vs_baseline_majority",
+              "passed": true,
+              "actual": 4.0,
+              "target": 3.0,
+              "comparator": ">=",
+              "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+            },
+            {
+              "name": "recent_2m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.10275137771098386,
+              "target": 0.18,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+            },
+            {
+              "name": "recent_6m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.10199178838232292,
+              "target": 0.17,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+            },
+            {
+              "name": "full_4y_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.141122967323963,
+              "target": 0.26,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+            }
+          ],
+          "passed": true
+        }
+      },
+      "target_060_stress": {
+        "baseline": {
+          "checks": [
+            {
+              "name": "recent_2m_worst_pair_target_060_all",
+              "passed": false,
+              "actual": 0.0015452954212012266,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "recent_6m_worst_pair_target_060_all",
+              "passed": false,
+              "actual": 0.0004046664839877642,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "full_4y_worst_pair_target_060_all",
+              "passed": false,
+              "actual": -9.460326625562893e-05,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "recent_6m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.14430266017321924,
+              "target": 0.17,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+            },
+            {
+              "name": "full_4y_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.19507689131101202,
+              "target": 0.2,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+            }
+          ],
+          "passed": false
+        },
+        "selected": {
+          "checks": [
+            {
+              "name": "recent_2m_worst_pair_target_060_all",
+              "passed": false,
+              "actual": 0.005282316665036985,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "recent_6m_worst_pair_target_060_all",
+              "passed": true,
+              "actual": 0.006137107570617752,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "full_4y_worst_pair_target_060_all",
+              "passed": false,
+              "actual": 0.00019214284937130557,
+              "target": 0.006,
+              "comparator": ">=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+            },
+            {
+              "name": "recent_6m_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.10199178838232292,
+              "target": 0.17,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+            },
+            {
+              "name": "full_4y_worst_mdd_cap_all",
+              "passed": true,
+              "actual": 0.141122967323963,
+              "target": 0.2,
+              "comparator": "<=",
+              "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+            }
+          ],
+          "passed": false
+        }
+      }
+    },
+    "promotion_decision": {
+      "validation_gate": {
+        "passes_dsr_proxy": true,
+        "passes_cpcv_positive_rate": true,
+        "passes_cpcv_pass_rate": true,
+        "passes_cpcv_tail_loss": true,
+        "passes_cpcv_overfit_rate": true,
+        "passes_pbo_selected_below_median_rate": true,
+        "passes_pbo_avg_selected_test_percentile": true,
+        "passes_pbo_selection_share": true,
+        "passes_false_positive_risk": true,
+        "passes_validation_quality": true,
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "market_os_gate": {
+        "passes_market_os_fitness": true,
+        "passes_corr_state_robustness": true,
+        "passes_regime_coverage": true,
+        "passes_parameter_instability": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "final_oos_audit": {
+        "passes_final_oos_total_return": true,
+        "passes_final_oos_max_drawdown": true,
+        "failed_checks": [],
+        "passed": true
+      },
+      "target_060_stress": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.005282316665036985,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_pair_target_060_all",
+            "passed": true,
+            "actual": 0.006137107570617752,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "full_4y_worst_pair_target_060_all",
+            "passed": false,
+            "actual": 0.00019214284937130557,
+            "target": 0.006,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인 0.6%/day 이상"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10199178838232292,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.141122967323963,
+            "target": 0.2,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 20% 이내"
+          }
+        ],
+        "passed": false
+      },
+      "progressive_stress": {
+        "checks": [
+          {
+            "name": "recent_2m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.005282316665036985,
+            "target": 0.0,
+            "comparator": ">=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 음수가 아니어야 함"
+          },
+          {
+            "name": "recent_2m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.003326495116309436,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.006137107570617752,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "recent_6m_worst_pair_vs_baseline_all",
+            "passed": true,
+            "actual": 0.004367855053023777,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 코인이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_positive_all",
+            "passed": true,
+            "actual": 0.00019214284937130557,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 코인이 양수여야 함"
+          },
+          {
+            "name": "full_4y_mean_vs_baseline_all",
+            "passed": true,
+            "actual": 0.0011876780182792568,
+            "target": 0.0,
+            "comparator": ">",
+            "note": "모든 스트레스 시나리오에서 4년 평균 일수익률이 baseline보다 좋아야 함"
+          },
+          {
+            "name": "full_4y_worst_pair_vs_baseline_majority",
+            "passed": true,
+            "actual": 4.0,
+            "target": 3.0,
+            "comparator": ">=",
+            "note": "4년 전체 최악 코인 기준 baseline 우위가 대부분 시나리오에서 유지돼야 함"
+          },
+          {
+            "name": "recent_2m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10275137771098386,
+            "target": 0.18,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 2개월 최악 MDD 18% 이내"
+          },
+          {
+            "name": "recent_6m_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.10199178838232292,
+            "target": 0.17,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 최근 6개월 최악 MDD 17% 이내"
+          },
+          {
+            "name": "full_4y_worst_mdd_cap_all",
+            "passed": true,
+            "actual": 0.141122967323963,
+            "target": 0.26,
+            "comparator": "<=",
+            "note": "모든 스트레스 시나리오에서 4년 전체 최악 MDD 26% 이내"
+          }
+        ],
+        "passed": true
+      },
+      "ready_for_live": true,
+      "ready_for_merge": false,
+      "status": "ready_for_live",
+      "failed_checks": [
+        "target_060_stress.recent_2m_worst_pair_target_060_all",
+        "target_060_stress.full_4y_worst_pair_target_060_all"
+      ]
+    }
+  },
+  "decision": {
+    "status": "shadow_ready_only",
+    "ready_for_shadow_live": true,
+    "ready_for_live": false,
+    "ready_for_merge": false,
+    "validation_gate_passed": true,
+    "market_os_gate_passed": true,
+    "final_oos_audit_passed": true,
+    "stress_gate_passed": false
+  }
+}

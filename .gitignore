@@ -1,2 +1,34 @@
 .env
 .venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local test/cache directories
+.pytest_cache/
+
+# Runtime logs
+logs/*.log
+logs/*.jsonl
+
+# Runtime state and health snapshots
+models/rotation_target_050_live_state.json
+models/operation_health_report.json
+models/operation_health_history.jsonl
+models/pairwise_regime_live_state.json
+models/pairwise_regime_shadow_state.json
+models/pairwise_regime_mixture_shadow_live_state.json
+
+# Local market caches refreshed during searches and live loops
+data/market_context/
+data/binance_futures/*_1d.csv
+data/binance_futures/*_5m.csv
+data/binance_futures/*_funding_*.csv
+
+# Detailed experiment traces not used as durable decision artifacts
+models/ga_long_short_rotation_curve.csv
+models/ga_long_short_rotation_daily_returns.csv
+models/ga_long_short_rotation_selection.csv
+models/ga_long_short_rotation_weights.csv
+models/pairwise_regime_stop_loss_2pct_compare.json

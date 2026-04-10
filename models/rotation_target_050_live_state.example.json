@@ -1,0 +1,42 @@
+{
+  "overlay": null,
+  "overlay_completed_day": null,
+  "core_day_state": null,
+  "shutdown_protection": [],
+  "latest_decision_snapshot": null,
+  "decision_journal": {
+    "last_fingerprint": null,
+    "last_recorded_at": null,
+    "log_path": "logs/rotation_target_050_decisions.jsonl"
+  },
+  "latest_runtime_snapshot": {
+    "captured_at": null,
+    "equity": null,
+    "positions": [],
+    "protections": [],
+    "exchange_error": null,
+    "plan": null
+  },
+  "notification_state": {
+    "last_briefing_effective_day": null,
+    "last_briefing_equity": null,
+    "last_summary_effective_day": null,
+    "last_session_effective_day": null,
+    "last_session_type": null
+  },
+  "runtime_health": {
+    "process_started_at": null,
+    "last_loop_started_at": null,
+    "last_loop_completed_at": null,
+    "last_success_at": null,
+    "last_error_at": null,
+    "last_error_message": null,
+    "consecutive_errors": 0,
+    "loop_success_count": 0,
+    "loop_error_count": 0,
+    "last_duration_seconds": null,
+    "pid": null,
+    "poll_seconds": null
+  },
+  "updated_at": null
+}

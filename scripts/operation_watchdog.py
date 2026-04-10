@@ -24,6 +24,7 @@ load_dotenv(ROOT_DIR / ".env")
 MODELS_DIR = ROOT_DIR / "models"
 STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
 BOT_STATE_PATH = Path(os.getenv("TELEGRAM_BOT_STATE_PATH", "/tmp/epic-invest-telegram-bot-state.json"))
+BOT_PID_PATH = Path(os.getenv("TELEGRAM_BOT_PID_FILE", "/tmp/epic-invest-telegram-bot.pid"))
 TRADER_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
 WATCHDOG_REPORT_PATH = MODELS_DIR / "operation_health_report.json"
 WATCHDOG_HISTORY_PATH = MODELS_DIR / "operation_health_history.jsonl"
@@ -163,9 +164,27 @@ def is_pid_running(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
     except OSError:
         return False
     return True
+
+
+def resolve_live_pid(*candidates: int | None) -> int | None:
+    ordered: list[int] = []
+    seen: set[int] = set()
+    for candidate in candidates:
+        if candidate is None or candidate in seen:
+            continue
+        seen.add(candidate)
+        ordered.append(candidate)
+    for candidate in ordered:
+        if is_pid_running(candidate):
+            return candidate
+    return ordered[0] if ordered else None
 
 
 def run_command(command: list[str], timeout: int = 120) -> dict[str, Any]:
@@ -271,7 +290,7 @@ def evaluate_trader() -> dict[str, Any]:
     state = read_json(STATE_PATH, {})
     runtime = state.get("runtime_health") or {}
     runtime_pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
-    pid = runtime_pid or read_pid(TRADER_PID_PATH)
+    pid = resolve_live_pid(runtime_pid, read_pid(TRADER_PID_PATH))
     pid_verified = is_pid_running(pid)
     last_progress_at = latest_signal(
         [
@@ -320,7 +339,8 @@ def evaluate_trader() -> dict[str, Any]:
 def evaluate_bot() -> dict[str, Any]:
     state = read_json(BOT_STATE_PATH, {})
     runtime = state.get("runtime") or {}
-    pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
+    runtime_pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
+    pid = resolve_live_pid(runtime_pid, read_pid(BOT_PID_PATH))
     pid_verified = is_pid_running(pid)
     last_progress_at = latest_signal(
         [
@@ -433,14 +453,15 @@ def kill_target_processes(target: str) -> list[dict[str, Any]]:
     trader_state = read_json(STATE_PATH, {})
     trader_runtime = trader_state.get("runtime_health") or {}
     trader_runtime_pid = int(trader_runtime.get("pid")) if str(trader_runtime.get("pid") or "").isdigit() else None
-    trader_pid = read_pid(TRADER_PID_PATH)
+    trader_pid = resolve_live_pid(trader_runtime_pid, read_pid(TRADER_PID_PATH))
     bot_state = read_json(BOT_STATE_PATH, {})
     bot_runtime = (bot_state.get("runtime") or {})
-    bot_pid = int(bot_runtime.get("pid")) if str(bot_runtime.get("pid") or "").isdigit() else None
+    bot_runtime_pid = int(bot_runtime.get("pid")) if str(bot_runtime.get("pid") or "").isdigit() else None
+    bot_pid = resolve_live_pid(bot_runtime_pid, read_pid(BOT_PID_PATH))
 
     targets: list[tuple[str, int | None]] = []
     if target in {"trader", "both"}:
-        targets.append(("trader", trader_runtime_pid or trader_pid))
+        targets.append(("trader", trader_pid))
     if target in {"bot", "both"}:
         targets.append(("bot", bot_pid))
 

@@ -1,0 +1,362 @@
+{
+  "generated_at": "2026-04-10T13:42:51.352353+00:00",
+  "strategy_class": "pairwise_equity_corr_risk_compare",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "windows": {
+    "recent_2m": {
+      "start": "2026-02-06",
+      "end": "2026-04-06",
+      "pairs": {
+        "BTCUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.006571313572256077,
+            "total_return": 0.4599762780615173,
+            "max_drawdown": -0.08802820534072264,
+            "sharpe": 6.659509684877474,
+            "daily_target_hit_rate": 0.23728813559322035,
+            "daily_win_rate": 0.3559322033898305,
+            "worst_day": -0.014926167309571303,
+            "best_day": 0.06885811951128384,
+            "n_trades": 1293,
+            "fee_paid": 1561.8911077147202,
+            "slippage_paid": 780.9474891599998,
+            "funding_paid": -42.099596962743036,
+            "funding_events": 52,
+            "final_equity": 145997.62780615172
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.006571313572256077,
+            "total_return": 0.4599762780615173,
+            "max_drawdown": -0.08802820534072264,
+            "sharpe": 6.659509684877474,
+            "daily_target_hit_rate": 0.23728813559322035,
+            "daily_win_rate": 0.3559322033898305,
+            "worst_day": -0.014926167309571303,
+            "best_day": 0.06885811951128384,
+            "n_trades": 1293,
+            "fee_paid": 1561.8911077147202,
+            "slippage_paid": 780.9474891599998,
+            "funding_paid": -42.099596962743036,
+            "funding_events": 52,
+            "final_equity": 145997.62780615172
+          },
+          "delta": {
+            "total_return": 0.0,
+            "avg_daily_return": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "n_trades": 0
+          }
+        },
+        "BNBUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.006966100666139343,
+            "total_return": 0.49431860739498923,
+            "max_drawdown": -0.10106613140556708,
+            "sharpe": 6.420037258765033,
+            "daily_target_hit_rate": 0.3389830508474576,
+            "daily_win_rate": 0.6271186440677966,
+            "worst_day": -0.02179041847561758,
+            "best_day": 0.05083555608408008,
+            "n_trades": 4061,
+            "fee_paid": 2699.0281215548807,
+            "slippage_paid": 1349.5162019759994,
+            "funding_paid": -49.5589169570592,
+            "funding_events": 6,
+            "final_equity": 149431.86073949892
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.006966100666139343,
+            "total_return": 0.49431860739498923,
+            "max_drawdown": -0.10106613140556708,
+            "sharpe": 6.420037258765033,
+            "daily_target_hit_rate": 0.3389830508474576,
+            "daily_win_rate": 0.6271186440677966,
+            "worst_day": -0.02179041847561758,
+            "best_day": 0.05083555608408008,
+            "n_trades": 4061,
+            "fee_paid": 2699.0281215548807,
+            "slippage_paid": 1349.5162019759994,
+            "funding_paid": -49.5589169570592,
+            "funding_events": 6,
+            "final_equity": 149431.86073949892
+          },
+          "delta": {
+            "total_return": 0.0,
+            "avg_daily_return": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "n_trades": 0
+          }
+        }
+      },
+      "baseline_aggregate": {
+        "mean_total_return": 0.47714744272825327,
+        "worst_total_return": 0.4599762780615173,
+        "mean_avg_daily_return": 0.0067687071191977095,
+        "worst_avg_daily_return": 0.006571313572256077,
+        "mean_sharpe": 6.5397734718212535,
+        "worst_max_drawdown": -0.10106613140556708,
+        "mean_max_drawdown": -0.09454716837314486,
+        "total_trades": 5354
+      },
+      "corr_risk_aggregate": {
+        "mean_total_return": 0.47714744272825327,
+        "worst_total_return": 0.4599762780615173,
+        "mean_avg_daily_return": 0.0067687071191977095,
+        "worst_avg_daily_return": 0.006571313572256077,
+        "mean_sharpe": 6.5397734718212535,
+        "worst_max_drawdown": -0.10106613140556708,
+        "mean_max_drawdown": -0.09454716837314486,
+        "total_trades": 5354
+      },
+      "delta_summary": {
+        "pair_count": 2,
+        "total_return_improved_pairs": 0,
+        "max_drawdown_improved_pairs": 0,
+        "sharpe_improved_pairs": 0
+      }
+    },
+    "recent_6m": {
+      "start": "2025-10-06",
+      "end": "2026-04-06",
+      "pairs": {
+        "BTCUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.007831906632314497,
+            "total_return": 2.9868349289252505,
+            "max_drawdown": -0.08815157813139696,
+            "sharpe": 6.512762136378741,
+            "daily_target_hit_rate": 0.3076923076923077,
+            "daily_win_rate": 0.47802197802197804,
+            "worst_day": -0.0636887605238241,
+            "best_day": 0.12067055387301018,
+            "n_trades": 6217,
+            "fee_paid": 10244.563481512447,
+            "slippage_paid": 5122.294288960007,
+            "funding_paid": 345.2558630122024,
+            "funding_events": 213,
+            "final_equity": 398683.49289252504
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.007831906632314497,
+            "total_return": 2.9868349289252505,
+            "max_drawdown": -0.08815157813139696,
+            "sharpe": 6.512762136378741,
+            "daily_target_hit_rate": 0.3076923076923077,
+            "daily_win_rate": 0.47802197802197804,
+            "worst_day": -0.0636887605238241,
+            "best_day": 0.12067055387301018,
+            "n_trades": 6217,
+            "fee_paid": 10244.563481512447,
+            "slippage_paid": 5122.294288960007,
+            "funding_paid": 345.2558630122024,
+            "funding_events": 213,
+            "final_equity": 398683.49289252504
+          },
+          "delta": {
+            "total_return": 0.0,
+            "avg_daily_return": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "n_trades": 0
+          }
+        },
+        "BNBUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.007320300342595076,
+            "total_return": 2.628039370257865,
+            "max_drawdown": -0.10107147882606549,
+            "sharpe": 5.9381194151185115,
+            "daily_target_hit_rate": 0.3021978021978022,
+            "daily_win_rate": 0.489010989010989,
+            "worst_day": -0.04089642982398167,
+            "best_day": 0.1253891066686621,
+            "n_trades": 11563,
+            "fee_paid": 14226.86511075519,
+            "slippage_paid": 7113.443926215987,
+            "funding_paid": -126.7143372202703,
+            "funding_events": 67,
+            "final_equity": 362803.9370257865
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.007320300342595076,
+            "total_return": 2.628039370257865,
+            "max_drawdown": -0.10107147882606549,
+            "sharpe": 5.9381194151185115,
+            "daily_target_hit_rate": 0.3021978021978022,
+            "daily_win_rate": 0.489010989010989,
+            "worst_day": -0.04089642982398167,
+            "best_day": 0.1253891066686621,
+            "n_trades": 11563,
+            "fee_paid": 14226.86511075519,
+            "slippage_paid": 7113.443926215987,
+            "funding_paid": -126.7143372202703,
+            "funding_events": 67,
+            "final_equity": 362803.9370257865
+          },
+          "delta": {
+            "total_return": 0.0,
+            "avg_daily_return": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "n_trades": 0
+          }
+        }
+      },
+      "baseline_aggregate": {
+        "mean_total_return": 2.807437149591558,
+        "worst_total_return": 2.628039370257865,
+        "mean_avg_daily_return": 0.0075761034874547864,
+        "worst_avg_daily_return": 0.007320300342595076,
+        "mean_sharpe": 6.225440775748626,
+        "worst_max_drawdown": -0.10107147882606549,
+        "mean_max_drawdown": -0.09461152847873122,
+        "total_trades": 17780
+      },
+      "corr_risk_aggregate": {
+        "mean_total_return": 2.807437149591558,
+        "worst_total_return": 2.628039370257865,
+        "mean_avg_daily_return": 0.0075761034874547864,
+        "worst_avg_daily_return": 0.007320300342595076,
+        "mean_sharpe": 6.225440775748626,
+        "worst_max_drawdown": -0.10107147882606549,
+        "mean_max_drawdown": -0.09461152847873122,
+        "total_trades": 17780
+      },
+      "delta_summary": {
+        "pair_count": 2,
+        "total_return_improved_pairs": 0,
+        "max_drawdown_improved_pairs": 0,
+        "sharpe_improved_pairs": 0
+      }
+    },
+    "full_4y": {
+      "start": "2022-04-06",
+      "end": "2026-04-06",
+      "pairs": {
+        "BTCUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.005169081154046267,
+            "total_return": 1588.1325859920373,
+            "max_drawdown": -0.13120797822524488,
+            "sharpe": 5.381676222969411,
+            "daily_target_hit_rate": 0.20944558521560575,
+            "daily_win_rate": 0.5126625598904859,
+            "worst_day": -0.06387932120297446,
+            "best_day": 0.14685525501896457,
+            "n_trades": 29365,
+            "fee_paid": 5860133.543851603,
+            "slippage_paid": 2930073.4562763833,
+            "funding_paid": 494700.5071478609,
+            "funding_events": 2582,
+            "final_equity": 158913258.59920374
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.0051536780190437545,
+            "total_return": 1551.9357716710829,
+            "max_drawdown": -0.1312082620636924,
+            "sharpe": 5.381413227443583,
+            "daily_target_hit_rate": 0.20944558521560575,
+            "daily_win_rate": 0.5297741273100616,
+            "worst_day": -0.06387928268425669,
+            "best_day": 0.14685629971028114,
+            "n_trades": 29953,
+            "fee_paid": 5716606.538264831,
+            "slippage_paid": 2858309.8007041635,
+            "funding_paid": 479199.4319938851,
+            "funding_events": 2595,
+            "final_equity": 155293577.1671083
+          },
+          "delta": {
+            "total_return": -36.196814320954445,
+            "avg_daily_return": -1.5403135002512412e-05,
+            "sharpe": -0.0002629955258273142,
+            "max_drawdown": -2.8383844752344345e-07,
+            "n_trades": 588
+          }
+        },
+        "BNBUSDT": {
+          "equity_corr_context": "QQQ",
+          "equity_corr_source_mode": "market_context",
+          "baseline": {
+            "avg_daily_return": 0.0049477247660247095,
+            "total_return": 1012.9238126518213,
+            "max_drawdown": -0.11578440617221653,
+            "sharpe": 5.033672624674903,
+            "daily_target_hit_rate": 0.23613963039014374,
+            "daily_win_rate": 0.48802190280629704,
+            "worst_day": -0.08864073219192836,
+            "best_day": 0.15673020607527421,
+            "n_trades": 113013,
+            "fee_paid": 6335483.915025455,
+            "slippage_paid": 3167746.3985732035,
+            "funding_paid": -230900.2785602932,
+            "funding_events": 1214,
+            "final_equity": 101392381.26518214
+          },
+          "corr_risk": {
+            "avg_daily_return": 0.004934639104877926,
+            "total_return": 994.6895216735779,
+            "max_drawdown": -0.11578441871158396,
+            "sharpe": 5.037791546703432,
+            "daily_target_hit_rate": 0.23613963039014374,
+            "daily_win_rate": 0.4798083504449008,
+            "worst_day": -0.08864073219192836,
+            "best_day": 0.156729442196075,
+            "n_trades": 113179,
+            "fee_paid": 6192858.439654472,
+            "slippage_paid": 3096433.579197243,
+            "funding_paid": -226006.22702146287,
+            "funding_events": 1214,
+            "final_equity": 99568952.16735779
+          },
+          "delta": {
+            "total_return": -18.234290978243394,
+            "avg_daily_return": -1.3085661146783507e-05,
+            "sharpe": 0.004118922028529148,
+            "max_drawdown": -1.2539367433284099e-08,
+            "n_trades": 166
+          }
+        }
+      },
+      "baseline_aggregate": {
+        "mean_total_return": 1300.5281993219294,
+        "worst_total_return": 1012.9238126518213,
+        "mean_avg_daily_return": 0.005058402960035489,
+        "worst_avg_daily_return": 0.0049477247660247095,
+        "mean_sharpe": 5.207674423822157,
+        "worst_max_drawdown": -0.13120797822524488,
+        "mean_max_drawdown": -0.1234961921987307,
+        "total_trades": 142378
+      },
+      "corr_risk_aggregate": {
+        "mean_total_return": 1273.3126466723304,
+        "worst_total_return": 994.6895216735779,
+        "mean_avg_daily_return": 0.005044158561960841,
+        "worst_avg_daily_return": 0.004934639104877926,
+        "mean_sharpe": 5.209602387073508,
+        "worst_max_drawdown": -0.1312082620636924,
+        "mean_max_drawdown": -0.12349634038763818,
+        "total_trades": 143132
+      },
+      "delta_summary": {
+        "pair_count": 2,
+        "total_return_improved_pairs": 0,
+        "max_drawdown_improved_pairs": 0,
+        "sharpe_improved_pairs": 1
+      }
+    }
+  }
+}

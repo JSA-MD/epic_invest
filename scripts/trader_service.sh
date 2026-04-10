@@ -14,6 +14,7 @@ PID_FILE="${TRADER_PID_FILE:-/tmp/epic-invest-trader.pid}"
 POLL_SECONDS="${TRADER_POLL_SECONDS:-60}"
 STARTUP_WAIT_SECONDS="${TRADER_STARTUP_WAIT_SECONDS:-20}"
 REBALANCE_NOTIONAL_BAND_USD="${REBALANCE_NOTIONAL_BAND_USD:-25}"
+RUNTIME_PROFILE_PATH="$ROOT_DIR/models/active_runtime_profile.json"
 
 print_line() {
   printf '%s\n' "$1"
@@ -69,6 +70,25 @@ send_telegram_lifecycle_message() {
       -d "chat_id=${chat_id}" \
       --data-urlencode "text=${text}" >/dev/null 2>&1 || true
   done
+}
+
+write_active_runtime_profile() {
+  local trader="$1"
+  local mode="${2:-${BINANCE_MODE:-demo}}"
+  local force_execute="${3:-0}"
+  mkdir -p "$(dirname "$RUNTIME_PROFILE_PATH")"
+  cat > "$RUNTIME_PROFILE_PATH" <<EOF
+{
+  "active_trader": "$trader",
+  "mode": "$mode",
+  "force_execute": $force_execute,
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+EOF
+}
+
+clear_active_runtime_profile() {
+  rm -f "$RUNTIME_PROFILE_PATH"
 }
 
 collect_process_rows() {
@@ -169,6 +189,46 @@ wait_for_exit() {
     sleep "$sleep_s"
   done
   return 1
+}
+
+terminate_matching_processes() {
+  local pattern="$1"
+  local pids=()
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "${pid:-}" ]] || continue
+    pids+=("$pid")
+  done < <(pgrep -f "$pattern" 2>/dev/null | awk 'NF' | sort -u)
+
+  if (( ${#pids[@]} == 0 )); then
+    return 0
+  fi
+
+  for pid in "${pids[@]}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 1
+
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+stop_core_processes() {
+  stop_trader
+  terminate_matching_processes "$ROOT_DIR/scripts/rotation_target_050_live.py"
+  terminate_matching_processes "scripts/rotation_target_050_live.py"
+}
+
+stop_pairwise_processes() {
+  "$ROOT_DIR/pairwise_shadow_launchd_unload.sh" >/dev/null 2>&1 || true
+  "$ROOT_DIR/scripts/pairwise_live_service.sh" stop >/dev/null 2>&1 || true
+  terminate_matching_processes "$ROOT_DIR/scripts/pairwise_regime_live.py loop"
+  terminate_matching_processes "$ROOT_DIR/scripts/pairwise_regime_live.py shadow-loop"
+  terminate_matching_processes "scripts/pairwise_regime_live.py loop"
+  terminate_matching_processes "scripts/pairwise_regime_live.py shadow-loop"
 }
 
 install_shutdown_protection() {

@@ -26,8 +26,11 @@ from search_pair_subset_regime_mixture import (
     fast_overlay_replay_from_context,
     json_safe,
     load_or_fetch_funding,
+    normalize_mapping_indices,
+    normalize_route_state_mode,
     parse_csv_tuple,
     realistic_overlay_replay_from_context,
+    route_state_count,
     summarize_single_result,
 )
 from validate_pair_subset_summary import build_validation_bundle
@@ -61,15 +64,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-mutations", type=int, default=6000)
     parser.add_argument("--top-realistic", type=int, default=25)
     parser.add_argument("--seed", type=int, default=20260409)
+    parser.add_argument(
+        "--route-state-mode",
+        choices=("base", "equity_corr"),
+        default="base",
+    )
     return parser.parse_args()
 
 
-def baseline_pair_configs(pairs: tuple[str, ...], baseline_summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def normalize_pair_config(config: dict[str, Any], route_state_mode: str) -> dict[str, Any]:
+    requested_mode = normalize_route_state_mode(route_state_mode)
+    return {
+        "route_breadth_threshold": float(config["route_breadth_threshold"]),
+        "mapping_indices": list(normalize_mapping_indices(config["mapping_indices"], requested_mode)),
+        "route_state_mode": requested_mode,
+    }
+
+
+def baseline_pair_configs(
+    pairs: tuple[str, ...],
+    baseline_summary: dict[str, Any],
+    route_state_mode: str,
+) -> dict[str, dict[str, Any]]:
     selected = baseline_summary["selected_candidate"]
+    base_config = normalize_pair_config(selected, route_state_mode)
     return {
         pair: {
-            "route_breadth_threshold": float(selected["route_breadth_threshold"]),
-            "mapping_indices": [int(v) for v in selected["mapping_indices"]],
+            "route_breadth_threshold": float(base_config["route_breadth_threshold"]),
+            "mapping_indices": list(base_config["mapping_indices"]),
+            "route_state_mode": str(base_config["route_state_mode"]),
         }
         for pair in pairs
     }
@@ -80,6 +103,7 @@ def candidate_key(candidate: dict[str, Any], pairs: tuple[str, ...]) -> tuple[An
     for pair in pairs:
         cfg = candidate["pair_configs"][pair]
         key.append(float(cfg["route_breadth_threshold"]))
+        key.append(str(cfg.get("route_state_mode", "base")))
         key.extend(int(v) for v in cfg["mapping_indices"])
     return tuple(key)
 
@@ -114,13 +138,15 @@ def main() -> None:
     started = perf_counter()
     random.seed(args.seed)
     np.random.seed(args.seed)
+    route_state_mode = normalize_route_state_mode(args.route_state_mode)
+    route_gene_count = route_state_count(route_state_mode)
 
     pairs = parse_csv_tuple(args.pairs, str)
     candidate_summary_paths = parse_csv_tuple(args.candidate_summaries, str)
     route_thresholds = (0.35, 0.5, 0.65, 0.8)
 
     baseline_summary = json.loads(Path(args.baseline_summary).read_text())
-    baseline_configs = baseline_pair_configs(pairs, baseline_summary)
+    baseline_configs = baseline_pair_configs(pairs, baseline_summary, route_state_mode)
     base_windows = baseline_summary["selected_candidate"]["windows"]
     base_2m = float(base_windows["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
     base_6m = float(base_windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
@@ -168,6 +194,7 @@ def main() -> None:
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
                     funding_df=funding_slice,
+                    route_state_mode=route_state_mode,
                 ),
             }
         window_cache[label] = {"pairs": pair_cache}
@@ -218,7 +245,17 @@ def main() -> None:
     for raw_path in candidate_summary_paths:
         obj = json.loads(Path(raw_path).read_text())
         for item in obj.get("realistic_top_candidates", []):
-            top_pair_configs.append({"pair_configs": item["pair_configs"]})
+            pair_configs = item.get("pair_configs")
+            if not pair_configs:
+                continue
+            top_pair_configs.append(
+                {
+                    "pair_configs": {
+                        pair: normalize_pair_config(pair_configs[pair], route_state_mode)
+                        for pair in pairs
+                    }
+                }
+            )
     start_candidates.extend(top_pair_configs)
 
     mixed_candidates: list[dict[str, Any]] = []
@@ -265,7 +302,7 @@ def main() -> None:
             "thresholds": sorted({float(item["pair_configs"][pair]["route_breadth_threshold"]) for item in start_eval[:12]} | set(route_thresholds)),
             "mappings": [
                 sorted({int(item["pair_configs"][pair]["mapping_indices"][bucket]) for item in start_eval[:20]})
-                for bucket in range(4)
+                for bucket in range(route_gene_count)
             ],
         }
         for pair in pairs
@@ -273,7 +310,7 @@ def main() -> None:
 
     candidates = [clone_candidate(chosen_start)]
     for pair in pairs:
-        for gene in range(5):
+        for gene in range(route_gene_count + 1):
             if gene == 0:
                 for value in gene_pool[pair]["thresholds"]:
                     candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
@@ -290,7 +327,7 @@ def main() -> None:
         steps = random.choice((1, 1, 1, 2, 2, 3))
         for _ in range(steps):
             pair = random.choice(pairs)
-            gene = random.randrange(5)
+            gene = random.randrange(route_gene_count + 1)
             if gene == 0:
                 candidate["pair_configs"][pair]["route_breadth_threshold"] = float(random.choice(route_thresholds))
             else:
@@ -354,6 +391,8 @@ def main() -> None:
             "candidate_summary_paths": list(candidate_summary_paths),
             "library_source": "full-grid",
             "library_size": len(library),
+            "route_state_mode": route_state_mode,
+            "route_state_count": route_gene_count,
         },
         "pairs": list(pairs),
         "baseline_summary_path": str(args.baseline_summary),

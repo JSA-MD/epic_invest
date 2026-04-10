@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover - optional dependency
     NUMBA_AVAILABLE = False
 
 import gp_crypto_evolution as gp
+from equity_corr_regime import build_btc_equity_corr_overlay
 from replay_regime_mixture_realistic import (
     fetch_funding_rates,
     load_model,
@@ -38,6 +39,30 @@ DEFAULT_WINDOWS = (
     ("recent_2m", "2026-02-06", "2026-04-06"),
     ("recent_6m", "2025-10-06", "2026-04-06"),
     ("full_4y", "2022-04-06", "2026-04-06"),
+)
+ROUTE_STATE_MODE_BASE = "base"
+ROUTE_STATE_MODE_EQUITY_CORR = "equity_corr"
+BASE_ROUTE_STATE_NAMES = (
+    "bear_narrow",
+    "bear_broad",
+    "bull_narrow",
+    "bull_broad",
+)
+EQUITY_CORR_ROUTE_BUCKETS = (
+    "equity_inverse",
+    "equity_mixed",
+    "equity_aligned",
+)
+EQUITY_CORR_BUCKET_CODES = {
+    "equity_inverse": 0,
+    "equity_mixed": 1,
+    "equity_aligned": 2,
+    "equity_unknown": 1,
+}
+EQUITY_CORR_ROUTE_STATE_NAMES = tuple(
+    f"{corr_bucket}:{base_state}"
+    for corr_bucket in EQUITY_CORR_ROUTE_BUCKETS
+    for base_state in BASE_ROUTE_STATE_NAMES
 )
 
 
@@ -75,6 +100,12 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         help="Fast replay engine for the candidate pre-search stage.",
     )
+    parser.add_argument(
+        "--route-state-mode",
+        choices=(ROUTE_STATE_MODE_BASE, ROUTE_STATE_MODE_EQUITY_CORR),
+        default=ROUTE_STATE_MODE_BASE,
+        help="Route state space: base=4-state, equity_corr=12-state (BTC regime x breadth x BTC-equity corr).",
+    )
     return parser.parse_args()
 
 
@@ -106,6 +137,44 @@ def json_safe(value: Any) -> Any:
     return value
 
 
+def normalize_route_state_mode(route_state_mode: str | None) -> str:
+    mode = str(route_state_mode or ROUTE_STATE_MODE_BASE).strip().lower()
+    if mode not in {ROUTE_STATE_MODE_BASE, ROUTE_STATE_MODE_EQUITY_CORR}:
+        raise ValueError(f"Unsupported route_state_mode: {route_state_mode}")
+    return mode
+
+
+def route_state_names(route_state_mode: str) -> tuple[str, ...]:
+    mode = normalize_route_state_mode(route_state_mode)
+    if mode == ROUTE_STATE_MODE_BASE:
+        return BASE_ROUTE_STATE_NAMES
+    return EQUITY_CORR_ROUTE_STATE_NAMES
+
+
+def route_state_count(route_state_mode: str) -> int:
+    return len(route_state_names(route_state_mode))
+
+
+def normalize_mapping_indices(mapping: tuple[int, ...] | list[int], route_state_mode: str) -> tuple[int, ...]:
+    mode = normalize_route_state_mode(route_state_mode)
+    values = tuple(int(v) for v in mapping)
+    if mode == ROUTE_STATE_MODE_BASE:
+        if len(values) == len(BASE_ROUTE_STATE_NAMES):
+            return values
+        if (
+            len(values) == len(EQUITY_CORR_ROUTE_STATE_NAMES)
+            and values[:4] == values[4:8]
+            and values[:4] == values[8:12]
+        ):
+            return values[:4]
+        raise ValueError("Base route_state_mode requires four indices or a compressible repeated 12-state mapping")
+    if len(values) == len(EQUITY_CORR_ROUTE_STATE_NAMES):
+        return values
+    if len(values) == len(BASE_ROUTE_STATE_NAMES):
+        return values * len(EQUITY_CORR_ROUTE_BUCKETS)
+    raise ValueError("Equity correlation route_state_mode requires four or twelve indices")
+
+
 def build_library_lookup(library: list[OverlayParams]) -> dict[str, Any]:
     spans = sorted({params.signal_span for params in library})
     span_to_pos = {span: idx for idx, span in enumerate(spans)}
@@ -130,7 +199,9 @@ def build_fast_context(
     route_thresholds: tuple[float, ...],
     library_lookup: dict[str, Any],
     funding_df: pd.DataFrame | None = None,
+    route_state_mode: str = ROUTE_STATE_MODE_BASE,
 ) -> dict[str, Any]:
+    route_state_mode = normalize_route_state_mode(route_state_mode)
     idx = pd.DatetimeIndex(df.index)
     day_index = idx.normalize()
     spans = library_lookup["spans"]
@@ -141,7 +212,12 @@ def build_fast_context(
         ]
     )
     bucket_codes = {
-        float(threshold): build_route_bucket_codes(idx, overlay_inputs, float(threshold)).astype("int64")
+        float(threshold): build_route_bucket_codes(
+            idx,
+            overlay_inputs,
+            float(threshold),
+            route_state_mode=route_state_mode,
+        ).astype("int64")
         for threshold in route_thresholds
     }
     funding_rates = np.zeros(len(idx), dtype="float64")
@@ -164,8 +240,15 @@ def build_fast_context(
         "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
+        "equity_corr": overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").to_numpy(dtype="float64"),
+        "equity_corr_gross_scale": overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "equity_corr_regime_mult": overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
         "funding_rates": funding_rates,
+        "equity_corr_context": overlay_inputs.get("equity_corr_context"),
+        "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
+        "route_state_mode": route_state_mode,
+        "route_state_names": route_state_names(route_state_mode),
     }
 
 
@@ -175,6 +258,8 @@ def _fast_overlay_replay_kernel_impl(
     regime: np.ndarray,
     breadth: np.ndarray,
     vol_ann: np.ndarray,
+    equity_corr_gross_scale: np.ndarray,
+    equity_corr_regime_mult: np.ndarray,
     smooth_signal_matrix: np.ndarray,
     library_signal_pos: np.ndarray,
     library_rebalance_bars: np.ndarray,
@@ -226,8 +311,10 @@ def _fast_overlay_replay_kernel_impl(
         requested_weight = signal_pct / 100.0
         regime_score = regime[i]
         breadth_score = breadth[i]
-        long_ok = regime_score >= library_regime_threshold[active_idx] and breadth_score >= library_breadth_threshold[active_idx]
-        short_ok = regime_score <= -library_regime_threshold[active_idx] and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[i]
+        effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[i]
+        long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
+        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
         if requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
@@ -236,12 +323,12 @@ def _fast_overlay_replay_kernel_impl(
         bar_vol_ann = vol_ann[i]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
             vol_scale = library_target_vol_ann[active_idx] / bar_vol_ann
-            gross_scale = library_gross_cap[active_idx] / max(abs(requested_weight), 1e-8)
+            gross_scale = effective_gross_cap / max(abs(requested_weight), 1e-8)
             if gross_scale < vol_scale:
                 vol_scale = gross_scale
             requested_weight *= vol_scale
 
-        gross_cap = library_gross_cap[active_idx]
+        gross_cap = effective_gross_cap
         if requested_weight > gross_cap:
             requested_weight = gross_cap
         elif requested_weight < -gross_cap:
@@ -354,6 +441,8 @@ def _realistic_overlay_replay_kernel_impl(
     regime: np.ndarray,
     breadth: np.ndarray,
     vol_ann: np.ndarray,
+    equity_corr_gross_scale: np.ndarray,
+    equity_corr_regime_mult: np.ndarray,
     smooth_signal_matrix: np.ndarray,
     library_signal_pos: np.ndarray,
     library_rebalance_bars: np.ndarray,
@@ -430,8 +519,10 @@ def _realistic_overlay_replay_kernel_impl(
         requested_weight = signal_pct / 100.0
         regime_score = regime[signal_idx]
         breadth_score = breadth[signal_idx]
-        long_ok = regime_score >= library_regime_threshold[active_idx] and breadth_score >= library_breadth_threshold[active_idx]
-        short_ok = regime_score <= -library_regime_threshold[active_idx] and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[signal_idx]
+        effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[signal_idx]
+        long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
+        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
         if requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
@@ -440,12 +531,12 @@ def _realistic_overlay_replay_kernel_impl(
         bar_vol_ann = vol_ann[signal_idx]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
             vol_scale = library_target_vol_ann[active_idx] / bar_vol_ann
-            gross_scale = library_gross_cap[active_idx] / max(abs(requested_weight), 1e-8)
+            gross_scale = effective_gross_cap / max(abs(requested_weight), 1e-8)
             if gross_scale < vol_scale:
                 vol_scale = gross_scale
             requested_weight *= vol_scale
 
-        gross_cap = library_gross_cap[active_idx]
+        gross_cap = effective_gross_cap
         if requested_weight > gross_cap:
             requested_weight = gross_cap
         elif requested_weight < -gross_cap:
@@ -559,24 +650,37 @@ def build_overlay_inputs(df: pd.DataFrame, pairs: tuple[str, ...], regime_pair: 
     breadth = (daily_close.pct_change(3) > 0.0).mean(axis=1)
     bar_ret = close[regime_pair].pct_change()
     vol_ann = bar_ret.rolling(12 * 24 * 3).std() * np.sqrt(365.25 * 24.0 * 60.0 / 5.0)
-    return {
+    overlay = {
         "btc_regime_daily": regime,
         "breadth_daily": breadth,
         "vol_ann_bar": vol_ann,
     }
+    overlay.update(build_btc_equity_corr_overlay(close))
+    return overlay
 
 
 def build_route_bucket_codes(
     index: pd.DatetimeIndex,
     overlay_inputs: dict[str, pd.Series],
     breadth_threshold: float,
+    route_state_mode: str = ROUTE_STATE_MODE_BASE,
 ) -> np.ndarray:
+    route_state_mode = normalize_route_state_mode(route_state_mode)
     day_index = index.normalize()
     regime_daily = overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0)
     breadth_daily = overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0)
     is_up = (regime_daily >= 0.0).astype(np.int8)
     is_broad = (breadth_daily >= breadth_threshold).astype(np.int8)
-    return (is_up * 2 + is_broad).to_numpy(dtype="int8")
+    base_codes = (is_up * 2 + is_broad).to_numpy(dtype="int8")
+    if route_state_mode == ROUTE_STATE_MODE_BASE:
+        return base_codes
+    corr_bucket = (
+        overlay_inputs["equity_corr_bucket_daily"]
+        .reindex(day_index, method="ffill")
+        .fillna("equity_unknown")
+    )
+    corr_codes = corr_bucket.map(EQUITY_CORR_BUCKET_CODES).fillna(EQUITY_CORR_BUCKET_CODES["equity_unknown"]).astype("int8")
+    return corr_codes.to_numpy(dtype="int8") * len(BASE_ROUTE_STATE_NAMES) + base_codes
 
 
 def load_or_fetch_funding(symbol: str, start: str, end: str) -> pd.DataFrame:
@@ -631,10 +735,16 @@ def fast_overlay_replay_from_context(
     context: dict[str, Any],
     library: list[OverlayParams],
     library_lookup: dict[str, Any],
-    mapping: tuple[int, int, int, int],
+    mapping: tuple[int, ...],
     route_breadth_threshold: float,
     fast_engine: str,
+    *,
+    use_equity_corr_risk: bool = False,
 ) -> dict[str, Any]:
+    route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
+    mapping = normalize_mapping_indices(mapping, route_state_mode)
+    corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
+    corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
     if fast_engine == "numba":
         result = _fast_overlay_replay_kernel(
             context["close"],
@@ -642,6 +752,8 @@ def fast_overlay_replay_from_context(
             context["regime"],
             context["breadth"],
             context["vol_ann"],
+            corr_gross_scale,
+            corr_regime_mult,
             context["smooth_signal_matrix"],
             library_lookup["signal_pos"],
             library_lookup["rebalance_bars"],
@@ -679,6 +791,8 @@ def fast_overlay_replay_from_context(
     regime = context["regime"]
     breadth = context["breadth"]
     vol_ann = context["vol_ann"]
+    equity_corr_gross_scale = corr_gross_scale
+    equity_corr_regime_mult = corr_regime_mult
     smooth_signal_matrix = context["smooth_signal_matrix"]
     signal_positions = library_lookup["signal_pos"]
 
@@ -701,8 +815,10 @@ def fast_overlay_replay_from_context(
         requested_weight = signal_pct / 100.0
         regime_score = float(regime[i])
         breadth_score = float(breadth[i])
-        long_ok = regime_score >= params.regime_threshold and breadth_score >= params.breadth_threshold
-        short_ok = regime_score <= -params.regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
+        effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult[i])
+        effective_gross_cap = float(params.gross_cap) * float(equity_corr_gross_scale[i])
+        long_ok = regime_score >= effective_regime_threshold and breadth_score >= params.breadth_threshold
+        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
         if requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
@@ -712,10 +828,10 @@ def fast_overlay_replay_from_context(
         if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
             vol_scale = min(
                 params.target_vol_ann / bar_vol_ann,
-                params.gross_cap / max(abs(requested_weight), 1e-8),
+                effective_gross_cap / max(abs(requested_weight), 1e-8),
             )
             requested_weight *= float(vol_scale)
-        requested_weight = float(np.clip(requested_weight, -params.gross_cap, params.gross_cap))
+        requested_weight = float(np.clip(requested_weight, -effective_gross_cap, effective_gross_cap))
 
         drawdown = equity / max(peak_equity, 1e-8) - 1.0
         if drawdown <= -params.kill_switch_pct and cooldown_bars_left == 0:
@@ -755,13 +871,19 @@ def fast_overlay_replay_from_context(
 def realistic_overlay_replay_from_context(
     context: dict[str, Any],
     library_lookup: dict[str, Any],
-    mapping: tuple[int, int, int, int],
+    mapping: tuple[int, ...],
     route_breadth_threshold: float,
     fee_rate: float = 0.0004,
     slippage: float = 0.0002,
     amount_step: float = 0.001,
     min_qty: float = 0.001,
+    *,
+    use_equity_corr_risk: bool = False,
 ) -> dict[str, Any]:
+    route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
+    mapping = normalize_mapping_indices(mapping, route_state_mode)
+    corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
+    corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
     result = _realistic_overlay_replay_kernel(
         context["open"],
         context["close"],
@@ -770,6 +892,8 @@ def realistic_overlay_replay_from_context(
         context["regime"],
         context["breadth"],
         context["vol_ann"],
+        corr_gross_scale,
+        corr_regime_mult,
         context["smooth_signal_matrix"],
         library_lookup["signal_pos"],
         library_lookup["rebalance_bars"],
@@ -815,8 +939,11 @@ def realistic_overlay_replay(
     overlay_inputs: dict[str, pd.Series],
     funding_df: pd.DataFrame,
     library: list[OverlayParams],
-    mapping: tuple[int, int, int, int],
+    mapping: tuple[int, ...],
     route_breadth_threshold: float,
+    *,
+    use_equity_corr_risk: bool = False,
+    route_state_mode: str = ROUTE_STATE_MODE_BASE,
 ) -> dict[str, Any]:
     library_lookup = build_library_lookup(library)
     context = build_fast_context(
@@ -827,12 +954,14 @@ def realistic_overlay_replay(
         route_thresholds=(float(route_breadth_threshold),),
         library_lookup=library_lookup,
         funding_df=funding_df,
+        route_state_mode=route_state_mode,
     )
     return realistic_overlay_replay_from_context(
         context,
         library_lookup,
         mapping,
         route_breadth_threshold,
+        use_equity_corr_risk=use_equity_corr_risk,
     )
 
 
@@ -875,15 +1004,61 @@ def parse_csv_tuple(raw: str, cast) -> tuple[Any, ...]:
     return tuple(cast(part.strip()) for part in raw.split(",") if part.strip())
 
 
+def build_search_candidate_pool(
+    route_thresholds: tuple[float, ...],
+    subset_indices: tuple[int, ...],
+    baseline_mapping: tuple[int, ...],
+    baseline_route_threshold: float,
+    route_state_mode: str,
+) -> list[tuple[float, tuple[int, ...]]]:
+    mode = normalize_route_state_mode(route_state_mode)
+    baseline_mapping = normalize_mapping_indices(baseline_mapping, mode)
+    ordered: list[tuple[float, tuple[int, ...]]] = []
+    seen: set[tuple[float, tuple[int, ...]]] = set()
+
+    def add(route_threshold: float, mapping: tuple[int, ...] | list[int]) -> None:
+        key = (float(route_threshold), normalize_mapping_indices(mapping, mode))
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(key)
+
+    if mode == ROUTE_STATE_MODE_BASE:
+        for route_threshold in route_thresholds:
+            for mapping in itertools.product(subset_indices, repeat=len(BASE_ROUTE_STATE_NAMES)):
+                add(route_threshold, mapping)
+        add(baseline_route_threshold, baseline_mapping)
+        return ordered
+
+    base_candidates = list(itertools.product(subset_indices, repeat=len(BASE_ROUTE_STATE_NAMES)))
+    for route_threshold in route_thresholds:
+        add(route_threshold, baseline_mapping)
+        for mapping in base_candidates:
+            add(route_threshold, mapping)
+            for corr_block in range(len(EQUITY_CORR_ROUTE_BUCKETS)):
+                mutated = list(baseline_mapping)
+                start = corr_block * len(BASE_ROUTE_STATE_NAMES)
+                mutated[start:start + len(BASE_ROUTE_STATE_NAMES)] = mapping
+                add(route_threshold, mutated)
+        for bucket in range(route_state_count(mode)):
+            for value in subset_indices:
+                mutated = list(baseline_mapping)
+                mutated[bucket] = int(value)
+                add(route_threshold, mutated)
+    return ordered
+
+
 def main() -> None:
     args = parse_args()
     pairs = parse_csv_tuple(args.pairs, str)
     subset_indices = parse_csv_tuple(args.subset_indices, int)
     route_thresholds = parse_csv_tuple(args.route_thresholds, float)
     fast_engine = resolve_fast_engine(args.fast_engine)
+    route_state_mode = normalize_route_state_mode(args.route_state_mode)
 
     total_started = perf_counter()
     baseline_candidate, library, _ = resolve_candidate(Path(args.summary), None, None)
+    baseline_mapping = normalize_mapping_indices(baseline_candidate.mapping_indices, route_state_mode)
     if baseline_candidate.route_breadth_threshold not in route_thresholds:
         route_thresholds = tuple(sorted(set(route_thresholds + (baseline_candidate.route_breadth_threshold,))))
     library_lookup = build_library_lookup(library)
@@ -929,6 +1104,7 @@ def main() -> None:
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
                     funding_df=funding_slice,
+                    route_state_mode=route_state_mode,
                 ),
             }
         window_cache[label] = {
@@ -954,7 +1130,7 @@ def main() -> None:
                     pair_data["fast_context"],
                     library,
                     library_lookup,
-                    baseline_candidate.mapping_indices,
+                    baseline_mapping,
                     baseline_candidate.route_breadth_threshold,
                     fast_engine,
                 )
@@ -962,7 +1138,7 @@ def main() -> None:
             per_pair_realistic[pair] = realistic_overlay_replay_from_context(
                 pair_data["fast_context"],
                 library_lookup,
-                baseline_candidate.mapping_indices,
+                baseline_mapping,
                 baseline_candidate.route_breadth_threshold,
             )
         baseline_fast[label] = aggregate_metrics(per_pair_fast)
@@ -975,13 +1151,13 @@ def main() -> None:
         }
     baseline_seconds = perf_counter() - baseline_started
 
-    candidate_pool = [
-        (route_threshold, tuple(int(v) for v in mapping))
-        for route_threshold in route_thresholds
-        for mapping in itertools.product(subset_indices, repeat=4)
-    ]
-    if (baseline_candidate.route_breadth_threshold, baseline_candidate.mapping_indices) not in candidate_pool:
-        candidate_pool.append((baseline_candidate.route_breadth_threshold, baseline_candidate.mapping_indices))
+    candidate_pool = build_search_candidate_pool(
+        route_thresholds=route_thresholds,
+        subset_indices=subset_indices,
+        baseline_mapping=baseline_mapping,
+        baseline_route_threshold=baseline_candidate.route_breadth_threshold,
+        route_state_mode=route_state_mode,
+    )
 
     scored = []
     fast_search_started = perf_counter()
@@ -1013,6 +1189,8 @@ def main() -> None:
             {
                 "route_breadth_threshold": route_threshold,
                 "mapping_indices": list(mapping),
+                "route_state_mode": route_state_mode,
+                "route_state_names": list(route_state_names(route_state_mode)),
                 "recent_2m": recent_2m,
                 "recent_6m": recent_6m,
                 "score": score_candidate(recent_2m, recent_6m),
@@ -1052,6 +1230,8 @@ def main() -> None:
             {
                 "route_breadth_threshold": route_threshold,
                 "mapping_indices": list(mapping),
+                "route_state_mode": route_state_mode,
+                "route_state_names": list(route_state_names(route_state_mode)),
                 "score": item["score"],
                 "windows": windows,
                 "validation": build_validation_bundle(windows, baseline_realistic),
@@ -1082,7 +1262,9 @@ def main() -> None:
         "pairs": list(pairs),
         "baseline_candidate": {
             "route_breadth_threshold": baseline_candidate.route_breadth_threshold,
-            "mapping_indices": list(baseline_candidate.mapping_indices),
+            "mapping_indices": list(baseline_mapping),
+            "route_state_mode": route_state_mode,
+            "route_state_names": list(route_state_names(route_state_mode)),
         },
         "baseline_fast": baseline_fast,
         "baseline_realistic": baseline_realistic,
@@ -1109,6 +1291,11 @@ def main() -> None:
             "target_060_pass_count": len(target_060_candidates),
             "progressive_pass_count": len(progressive_candidates),
             "realistic_top_count": len(realistic_top),
+        },
+        "route_state": {
+            "mode": route_state_mode,
+            "state_names": list(route_state_names(route_state_mode)),
+            "state_count": route_state_count(route_state_mode),
         },
         "runtime": {
             "fast_engine": fast_engine,

@@ -22,14 +22,18 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 MODELS_DIR = ROOT_DIR / "models"
-STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
+RUNTIME_PROFILE_PATH = MODELS_DIR / "active_runtime_profile.json"
+CORE_STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
+PAIRWISE_STATE_PATH = Path(os.getenv("PAIRWISE_LIVE_STATE_PATH", str(MODELS_DIR / "pairwise_regime_live_state.json")))
 BOT_STATE_PATH = Path(os.getenv("TELEGRAM_BOT_STATE_PATH", "/tmp/epic-invest-telegram-bot-state.json"))
 BOT_PID_PATH = Path(os.getenv("TELEGRAM_BOT_PID_FILE", "/tmp/epic-invest-telegram-bot.pid"))
-TRADER_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
+CORE_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
+PAIRWISE_PID_PATH = Path(os.getenv("PAIRWISE_LIVE_PID_FILE", "/tmp/epic_pairwise_live.pid"))
 WATCHDOG_REPORT_PATH = MODELS_DIR / "operation_health_report.json"
 WATCHDOG_HISTORY_PATH = MODELS_DIR / "operation_health_history.jsonl"
 WATCHDOG_STATE_PATH = Path(os.getenv("WATCHDOG_STATE_PATH", "/tmp/epic-invest-watchdog-state.json"))
-TRADER_LOG_PATH = Path(os.getenv("TRADER_LOG_FILE", "/tmp/epic-invest-trader.log"))
+CORE_LOG_PATH = Path(os.getenv("TRADER_LOG_FILE", "/tmp/epic-invest-trader.log"))
+PAIRWISE_LOG_PATH = Path(os.getenv("PAIRWISE_LIVE_LOG_FILE", str(ROOT_DIR / "logs" / "pairwise_live_service.log")))
 WATCHDOG_LOG_PATH = Path(os.getenv("WATCHDOG_LOG_FILE", "/tmp/epic-invest-watchdog.log"))
 
 TRADER_LABEL = "com.epicinvest.trader"
@@ -39,23 +43,37 @@ TRADER_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.trader.plist"
 BOT_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.telegram-bot.plist"
 WATCHDOG_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.watchdog.plist"
 PYTHON_BIN = ROOT_DIR / ".venv" / "bin" / "python"
-TRADER_SCRIPT = ROOT_DIR / "scripts" / "rotation_target_050_live.py"
+CORE_TRADER_SCRIPT = ROOT_DIR / "scripts" / "rotation_target_050_live.py"
+PAIRWISE_TRADER_SCRIPT = ROOT_DIR / "scripts" / "pairwise_regime_live.py"
+PAIRWISE_SERVICE_SCRIPT = ROOT_DIR / "scripts" / "pairwise_live_service.sh"
 
 UTC = timezone.utc
 DOMAIN = f"gui/{os.getuid()}"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_ALLOWED_CHAT_IDS = [
-    item.strip()
-    for raw in [os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", ""), os.getenv("TELEGRAM_CHAT_ID", "")]
-    for item in raw.split(",")
-    if item.strip()
-]
+
+
+def resolve_telegram_chat_ids() -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for raw in [os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", ""), os.getenv("TELEGRAM_CHAT_ID", "")]:
+        for item in raw.split(","):
+            item = item.strip()
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            values.append(item)
+    return values
+
+
+TELEGRAM_ALLOWED_CHAT_IDS = resolve_telegram_chat_ids()
 WATCHDOG_INTERVAL_SECONDS = int(os.getenv("WATCHDOG_INTERVAL_SECONDS", "60"))
 WATCHDOG_TRADER_STALE_SECONDS = int(os.getenv("WATCHDOG_TRADER_STALE_SECONDS", "180"))
 WATCHDOG_BOT_STALE_SECONDS = int(os.getenv("WATCHDOG_BOT_STALE_SECONDS", "180"))
 WATCHDOG_PROTECT_STALE_SECONDS = int(os.getenv("WATCHDOG_PROTECT_STALE_SECONDS", "300"))
 WATCHDOG_ERROR_ESCALATION_COUNT = int(os.getenv("WATCHDOG_ERROR_ESCALATION_COUNT", "3"))
 WATCHDOG_ALERT_COOLDOWN_SECONDS = int(os.getenv("WATCHDOG_ALERT_COOLDOWN_SECONDS", "300"))
+WATCHDOG_TRADER_GRACE_SECONDS = int(os.getenv("WATCHDOG_TRADER_GRACE_SECONDS", "90"))
+PAIRWISE_POLL_SECONDS = int(os.getenv("PAIRWISE_LIVE_POLL_SECONDS", "300"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -187,13 +205,17 @@ def resolve_live_pid(*candidates: int | None) -> int | None:
     return ordered[0] if ordered else None
 
 
-def run_command(command: list[str], timeout: int = 120) -> dict[str, Any]:
+def run_command(command: list[str], timeout: int = 120, env_updates: dict[str, str] | None = None) -> dict[str, Any]:
+    env = os.environ.copy()
+    if env_updates:
+        env.update(env_updates)
     completed = subprocess.run(
         command,
         cwd=str(ROOT_DIR),
         text=True,
         capture_output=True,
         timeout=timeout,
+        env=env,
     )
     return {
         "command": command,
@@ -218,6 +240,51 @@ def kickstart_launchd(label: str, plist_path: Path) -> dict[str, Any]:
         "label": label,
         "actions": actions,
         "ok": all(action["returncode"] == 0 for action in actions),
+    }
+
+
+def read_runtime_profile() -> dict[str, Any]:
+    payload = read_json(RUNTIME_PROFILE_PATH, {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def resolve_active_trader_key() -> str:
+    profile = read_runtime_profile()
+    key = str(profile.get("active_trader") or "").strip().lower()
+    if key in {"core", "pairwise"}:
+        return key
+    pairwise_pid = read_pid(PAIRWISE_PID_PATH)
+    core_pid = read_pid(CORE_PID_PATH)
+    if is_pid_running(pairwise_pid) and not is_pid_running(core_pid):
+        return "pairwise"
+    return "core"
+
+
+def active_trader_profile() -> dict[str, Any]:
+    runtime_profile = read_runtime_profile()
+    key = resolve_active_trader_key()
+    if key == "pairwise":
+        stale_threshold = max(WATCHDOG_TRADER_STALE_SECONDS, PAIRWISE_POLL_SECONDS + WATCHDOG_TRADER_GRACE_SECONDS)
+        protect_threshold = max(WATCHDOG_PROTECT_STALE_SECONDS, stale_threshold + WATCHDOG_TRADER_GRACE_SECONDS)
+        return {
+            "key": "pairwise",
+            "state_path": PAIRWISE_STATE_PATH,
+            "pid_path": PAIRWISE_PID_PATH,
+            "log_path": PAIRWISE_LOG_PATH,
+            "mode": str(runtime_profile.get("mode") or os.getenv("PAIRWISE_LIVE_MODE", os.getenv("BINANCE_MODE", "demo"))),
+            "force_execute": bool(runtime_profile.get("force_execute", False)),
+            "stale_threshold_seconds": stale_threshold,
+            "protect_threshold_seconds": protect_threshold,
+        }
+    return {
+        "key": "core",
+        "state_path": CORE_STATE_PATH,
+        "pid_path": CORE_PID_PATH,
+        "log_path": CORE_LOG_PATH,
+        "mode": str(runtime_profile.get("mode") or os.getenv("BINANCE_MODE", "demo")),
+        "force_execute": False,
+        "stale_threshold_seconds": WATCHDOG_TRADER_STALE_SECONDS,
+        "protect_threshold_seconds": WATCHDOG_PROTECT_STALE_SECONDS,
     }
 
 
@@ -248,6 +315,18 @@ def send_telegram_notification(text: str) -> bool:
     return delivered
 
 
+def build_alert_fingerprint(report: dict[str, Any]) -> str:
+    payload = {
+        "active_trader": report.get("trader", {}).get("active_profile"),
+        "trader_status": report.get("trader", {}).get("status"),
+        "trader_reasons": report.get("trader", {}).get("reasons") or [],
+        "bot_status": report.get("bot", {}).get("status"),
+        "bot_reasons": report.get("bot", {}).get("reasons") or [],
+        "recovery_types": [item.get("type") for item in report.get("recovery_actions", [])],
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 def maybe_send_alert(report: dict[str, Any]) -> None:
     issues = []
     if report["trader"]["status"] != "ok":
@@ -264,12 +343,13 @@ def maybe_send_alert(report: dict[str, Any]) -> None:
     message_lines = [
         "운영 감시 알림",
         f"- 시각: {report['generated_at']}",
+        f"- 대상: {report['trader'].get('active_profile', 'core')}",
         *[f"- {issue}" for issue in issues],
     ]
     if report.get("recovery_actions"):
         message_lines.append(f"- 자동 조치 수: {len(report['recovery_actions'])}")
     message = "\n".join(message_lines)
-    fingerprint = hashlib.sha1(message.encode("utf-8")).hexdigest()
+    fingerprint = build_alert_fingerprint(report)
 
     state = read_json(WATCHDOG_STATE_PATH, {"last_alert_at": None, "last_alert_fingerprint": None})
     last_alert_at = age_seconds(state.get("last_alert_at"))
@@ -287,10 +367,11 @@ def maybe_send_alert(report: dict[str, Any]) -> None:
 
 
 def evaluate_trader() -> dict[str, Any]:
-    state = read_json(STATE_PATH, {})
+    profile = active_trader_profile()
+    state = read_json(profile["state_path"], {})
     runtime = state.get("runtime_health") or {}
     runtime_pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
-    pid = resolve_live_pid(runtime_pid, read_pid(TRADER_PID_PATH))
+    pid = resolve_live_pid(runtime_pid, read_pid(profile["pid_path"]))
     pid_verified = is_pid_running(pid)
     last_progress_at = latest_signal(
         [
@@ -307,7 +388,7 @@ def evaluate_trader() -> dict[str, Any]:
 
     if stale_seconds is None:
         reasons.append("no_recent_success_signal")
-    elif stale_seconds > WATCHDOG_TRADER_STALE_SECONDS:
+    elif stale_seconds > float(profile["stale_threshold_seconds"]):
         reasons.append("state_stale")
     if consecutive_errors >= WATCHDOG_ERROR_ESCALATION_COUNT:
         reasons.append("consecutive_errors")
@@ -320,6 +401,7 @@ def evaluate_trader() -> dict[str, Any]:
 
     return {
         "status": status,
+        "active_profile": profile["key"],
         "pid": pid,
         "running": status == "ok" or status == "warning",
         "pid_verified": pid_verified,
@@ -328,10 +410,12 @@ def evaluate_trader() -> dict[str, Any]:
         "last_loop_started_at": runtime.get("last_loop_started_at"),
         "last_loop_completed_at": runtime.get("last_loop_completed_at"),
         "stale_seconds": None if stale_seconds is None else round(stale_seconds, 1),
+        "stale_threshold_seconds": profile["stale_threshold_seconds"],
+        "protect_threshold_seconds": profile["protect_threshold_seconds"],
         "consecutive_errors": consecutive_errors,
         "last_error_at": runtime.get("last_error_at"),
         "last_error_message": last_error_message,
-        "log_age_seconds": file_age_seconds(TRADER_LOG_PATH),
+        "log_age_seconds": file_age_seconds(profile["log_path"]),
         "reasons": reasons,
     }
 
@@ -394,21 +478,58 @@ def build_report() -> dict[str, Any]:
     }
 
 
-def protect_positions() -> dict[str, Any]:
-    return run_command([str(PYTHON_BIN), str(TRADER_SCRIPT), "shutdown-protect", "--execute"], timeout=180)
+def protect_positions(profile: dict[str, Any]) -> dict[str, Any]:
+    if profile["key"] == "pairwise":
+        return run_command(
+            [
+                str(PYTHON_BIN),
+                str(PAIRWISE_TRADER_SCRIPT),
+                "shutdown-protect",
+                "--execute",
+                "--mode",
+                str(profile["mode"]),
+                "--state-path",
+                str(profile["state_path"]),
+            ],
+            timeout=180,
+        )
+    return run_command([str(PYTHON_BIN), str(CORE_TRADER_SCRIPT), "shutdown-protect", "--execute"], timeout=180)
+
+
+def restart_active_trader(profile: dict[str, Any]) -> dict[str, Any]:
+    if profile["key"] == "pairwise":
+        actions = [
+            run_command([str(PAIRWISE_SERVICE_SCRIPT), "stop"], timeout=60),
+            run_command(
+                [str(PAIRWISE_SERVICE_SCRIPT), "start"],
+                timeout=60,
+                env_updates={
+                    "PAIRWISE_FORCE_EXECUTE": "1" if profile.get("force_execute") else "0",
+                    "PAIRWISE_FORCE_NOTE": "watchdog_recovery",
+                    "PAIRWISE_LIVE_MODE": str(profile.get("mode") or "demo"),
+                },
+            ),
+        ]
+        return {
+            "profile": profile["key"],
+            "actions": actions,
+            "ok": all(action["returncode"] == 0 for action in actions),
+        }
+    return kickstart_launchd(TRADER_LABEL, TRADER_PLIST)
 
 
 def maybe_recover(report: dict[str, Any]) -> dict[str, Any]:
     actions: list[dict[str, Any]] = []
     trader = report["trader"]
     bot = report["bot"]
+    profile = active_trader_profile()
 
     if trader["status"] == "critical":
-        if trader.get("stale_seconds") is not None and float(trader["stale_seconds"]) >= WATCHDOG_PROTECT_STALE_SECONDS:
-            actions.append({"type": "protect_positions", "result": protect_positions()})
+        if trader.get("stale_seconds") is not None and float(trader["stale_seconds"]) >= float(profile["protect_threshold_seconds"]):
+            actions.append({"type": "protect_positions", "result": protect_positions(profile)})
         elif int(trader.get("consecutive_errors", 0)) >= WATCHDOG_ERROR_ESCALATION_COUNT:
-            actions.append({"type": "protect_positions", "result": protect_positions()})
-        actions.append({"type": "restart_trader", "result": kickstart_launchd(TRADER_LABEL, TRADER_PLIST)})
+            actions.append({"type": "protect_positions", "result": protect_positions(profile)})
+        actions.append({"type": "restart_trader", "result": restart_active_trader(profile)})
 
     if bot["status"] == "critical":
         actions.append({"type": "restart_bot", "result": kickstart_launchd(BOT_LABEL, BOT_PLIST)})
@@ -450,10 +571,11 @@ def check_once(recover: bool) -> dict[str, Any]:
 
 def kill_target_processes(target: str) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
-    trader_state = read_json(STATE_PATH, {})
+    profile = active_trader_profile()
+    trader_state = read_json(profile["state_path"], {})
     trader_runtime = trader_state.get("runtime_health") or {}
     trader_runtime_pid = int(trader_runtime.get("pid")) if str(trader_runtime.get("pid") or "").isdigit() else None
-    trader_pid = resolve_live_pid(trader_runtime_pid, read_pid(TRADER_PID_PATH))
+    trader_pid = resolve_live_pid(trader_runtime_pid, read_pid(profile["pid_path"]))
     bot_state = read_json(BOT_STATE_PATH, {})
     bot_runtime = (bot_state.get("runtime") or {})
     bot_runtime_pid = int(bot_runtime.get("pid")) if str(bot_runtime.get("pid") or "").isdigit() else None

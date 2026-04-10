@@ -28,6 +28,9 @@ from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
     build_overlay_inputs,
     build_route_bucket_codes,
+    normalize_mapping_indices,
+    normalize_route_state_mode,
+    route_state_names,
 )
 
 load_dotenv(ROOT / ".env")
@@ -59,6 +62,12 @@ SHADOW_PROMOTION_MIN_RETURN = 0.0
 SHADOW_PROMOTION_MAX_STALE_MINUTES = 20
 TARGET_WEIGHT_EPS = 1e-6
 DEFAULT_POLL_SECONDS = 300
+PAIRWISE_EQUITY_CORR_RISK_ENABLED = os.getenv("PAIRWISE_EQUITY_CORR_RISK", "0").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 
 def utc_now() -> datetime:
@@ -172,6 +181,8 @@ def parse_args() -> argparse.Namespace:
     run_once = sub.add_parser("run-once")
     add_common(run_once)
     run_once.add_argument("--execute", action="store_true")
+    run_once.add_argument("--force-execute", action="store_true")
+    run_once.add_argument("--force-note", default="manual_primary_switch")
     run_once.add_argument("--mode", choices=("demo", "live"), default="demo")
     run_once.add_argument("--shadow-state-path", type=Path, default=DEFAULT_SHADOW_STATE_PATH)
 
@@ -182,6 +193,8 @@ def parse_args() -> argparse.Namespace:
     loop = sub.add_parser("loop")
     add_common(loop)
     loop.add_argument("--execute", action="store_true")
+    loop.add_argument("--force-execute", action="store_true")
+    loop.add_argument("--force-note", default="manual_primary_switch")
     loop.add_argument("--mode", choices=("demo", "live"), default="demo")
     loop.add_argument("--shadow-state-path", type=Path, default=DEFAULT_SHADOW_STATE_PATH)
     loop.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
@@ -281,12 +294,17 @@ def compute_requested_weight(
     regime_score: float,
     breadth_score: float,
     bar_vol_ann: float,
+    *,
+    equity_corr_gross_scale: float = 1.0,
+    equity_corr_regime_mult: float = 1.0,
 ) -> float:
     smoothed = pd.Series(raw_signal).ewm(span=max(int(params.signal_span), 1), adjust=False).mean().to_numpy()
     signal_pct = float(np.nan_to_num(smoothed[-1], nan=0.0))
     requested_weight = signal_pct / 100.0
-    long_ok = regime_score >= float(params.regime_threshold) and breadth_score >= float(params.breadth_threshold)
-    short_ok = regime_score <= -float(params.regime_threshold) and breadth_score <= (1.0 - float(params.breadth_threshold))
+    effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult)
+    effective_gross_cap = float(params.gross_cap) * float(equity_corr_gross_scale)
+    long_ok = regime_score >= effective_regime_threshold and breadth_score >= float(params.breadth_threshold)
+    short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - float(params.breadth_threshold))
     if requested_weight > 0.0 and not long_ok:
         signal_pct = 0.0
         requested_weight = 0.0
@@ -296,10 +314,10 @@ def compute_requested_weight(
     if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
         vol_scale = min(
             float(params.target_vol_ann) / float(bar_vol_ann),
-            float(params.gross_cap) / max(abs(requested_weight), 1e-8),
+            float(effective_gross_cap) / max(abs(requested_weight), 1e-8),
         )
         requested_weight *= float(vol_scale)
-    return float(np.clip(requested_weight, -float(params.gross_cap), float(params.gross_cap)))
+    return float(np.clip(requested_weight, -float(effective_gross_cap), float(effective_gross_cap)))
 
 
 def build_pairwise_plan(
@@ -328,10 +346,17 @@ def build_pairwise_plan(
     for pair in PAIRS:
         raw_signal = np.asarray(compiled(*gp.get_feature_arrays(df, pair)), dtype=float)
         overlay_inputs = build_overlay_inputs(df, PAIRS, regime_pair=pair)
-        bucket_codes = build_route_bucket_codes(df.index, overlay_inputs, config[pair]["route_breadth_threshold"])
-        mapping = config[pair]["mapping_indices"]
+        route_state_mode = normalize_route_state_mode(config[pair].get("route_state_mode"))
+        bucket_codes = build_route_bucket_codes(
+            df.index,
+            overlay_inputs,
+            config[pair]["route_breadth_threshold"],
+            route_state_mode=route_state_mode,
+        )
+        mapping = normalize_mapping_indices(config[pair]["mapping_indices"], route_state_mode)
         bucket_code = int(bucket_codes[signal_index])
         active_index = int(mapping[bucket_code])
+        route_state_name = route_state_names(route_state_mode)[bucket_code]
         params = library[active_index]
         current_weight = float(current_weights.get(pair, 0.0))
         cooldown_bars_left = max(int(cooldown_state.get(pair, 0)), 0)
@@ -345,12 +370,32 @@ def build_pairwise_plan(
             overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
         )
         bar_vol_ann = float(overlay_inputs["vol_ann_bar"].fillna(np.nan).iloc[signal_index])
+        equity_corr_value = float(
+            overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").iloc[signal_index]
+        )
+        equity_corr_bucket = str(
+            overlay_inputs["equity_corr_bucket_daily"].reindex(day_index, method="ffill").fillna("equity_unknown").iloc[signal_index]
+        )
+        equity_corr_quantile_state = str(
+            overlay_inputs["equity_corr_quantile_state_daily"].reindex(day_index, method="ffill").fillna("missing").iloc[signal_index]
+        )
+        equity_corr_gross_scale = float(
+            overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
+        )
+        equity_corr_regime_mult = float(
+            overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
+        )
+        if not PAIRWISE_EQUITY_CORR_RISK_ENABLED:
+            equity_corr_gross_scale = 1.0
+            equity_corr_regime_mult = 1.0
         requested_weight = compute_requested_weight(
             raw_signal=raw_signal,
             params=params,
             regime_score=regime_score,
             breadth_score=breadth_score,
             bar_vol_ann=bar_vol_ann,
+            equity_corr_gross_scale=equity_corr_gross_scale,
+            equity_corr_regime_mult=equity_corr_regime_mult,
         )
         drawdown = current_equity / max(peak_equity, 1e-8) - 1.0
         if drawdown <= -float(params.kill_switch_pct) and cooldown_bars_left == 0:
@@ -375,11 +420,20 @@ def build_pairwise_plan(
             "rebalance_due": rebalance_due,
             "cooldown_bars_left_after": cooldown_bars_left,
             "route_bucket": bucket_code,
+            "route_state_mode": route_state_mode,
+            "route_state_name": route_state_name,
             "route_mapping_index": active_index,
             "params": asdict(params),
             "regime_score": regime_score,
             "breadth_score": breadth_score,
             "bar_vol_ann": bar_vol_ann,
+            "equity_corr_value": equity_corr_value if np.isfinite(equity_corr_value) else None,
+            "equity_corr_bucket": equity_corr_bucket,
+            "equity_corr_quantile_state": equity_corr_quantile_state,
+            "equity_corr_context": overlay_inputs.get("equity_corr_context"),
+            "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
+            "equity_corr_gross_scale": equity_corr_gross_scale,
+            "equity_corr_regime_threshold_mult": equity_corr_regime_mult,
             "signal_value": float(np.nan_to_num(raw_signal[-1], nan=0.0)),
         }
 
@@ -396,6 +450,7 @@ def build_pairwise_plan(
         "gross_leverage": gross,
         "net_exposure": net,
         "latest_prices": latest_prices,
+        "equity_corr_risk_enabled": PAIRWISE_EQUITY_CORR_RISK_ENABLED,
         "summary_path": str(summary_path),
         "model_path": str(model_path),
     }
@@ -700,7 +755,9 @@ def run_live_once(args: argparse.Namespace) -> int:
     if args.execute:
         shadow_state = load_state(args.shadow_state_path)
         evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
-        if not evaluation["promotion_ready"]:
+        force_execute = bool(getattr(args, "force_execute", False))
+        force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
+        if not evaluation["promotion_ready"] and not force_execute:
             record_runtime_success(
                 state,
                 plan,
@@ -738,6 +795,15 @@ def run_live_once(args: argparse.Namespace) -> int:
             pairs=list(PAIRS),
         )
         protection_report = bridge.install_shutdown_protection(exchange, state, execute=True)
+        execution_mode = "live-executed"
+        execution_override: Dict[str, Any] | None = None
+        if force_execute and not evaluation["promotion_ready"]:
+            execution_mode = "live-forced"
+            execution_override = {
+                "force_execute": True,
+                "force_note": force_note,
+                "promotion_gate_bypassed": True,
+            }
         record_runtime_success(
             state,
             plan,
@@ -748,6 +814,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                     "equity": equity,
                     "actions": actions,
                     "shutdown_protection": protection_report,
+                    "promotion_gate": evaluation,
+                    "override": execution_override,
                 }
             },
         )
@@ -755,12 +823,14 @@ def run_live_once(args: argparse.Namespace) -> int:
             args.decision_log_path,
             {
                 "at": iso_now(),
-                "mode": "live-executed",
+                "mode": execution_mode,
                 "execute": True,
                 "plan": plan,
                 "equity": equity,
                 "actions": actions,
                 "shutdown_protection": protection_report,
+                "promotion_gate": evaluation,
+                "override": execution_override,
             },
         )
         save_state(args.state_path, state)
@@ -772,6 +842,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "equity": equity,
                         "actions": actions,
                         "shutdown_protection": protection_report,
+                        "promotion_gate": evaluation,
+                        "override": execution_override,
                     }
                 ),
                 indent=2,

@@ -30,7 +30,14 @@ from rotation_target_050_live import (
     save_state,
     utc_now,
 )
-from search_pair_subset_regime_mixture import build_library_lookup, build_overlay_inputs, build_route_bucket_codes
+from search_pair_subset_regime_mixture import (
+    build_library_lookup,
+    build_overlay_inputs,
+    build_route_bucket_codes,
+    normalize_mapping_indices,
+    normalize_route_state_mode,
+    route_state_names,
+)
 from search_gp_drawdown_overlay import OverlayParams, iter_params
 
 
@@ -428,6 +435,7 @@ def build_pairwise_plan(
 
     for pair in pairs:
         pair_config = candidate["pair_configs"][pair]
+        route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
         overlay_inputs = build_overlay_inputs(df_all, pairs, regime_pair=pair)
         context = {
             "close": df_all[[f"{asset}_close" for asset in pairs]]
@@ -438,6 +446,7 @@ def build_pairwise_plan(
                     pd.DatetimeIndex(df_all.index),
                     overlay_inputs,
                     float(pair_config["route_breadth_threshold"]),
+                    route_state_mode=route_state_mode,
                 ).astype("int64")
             },
             "regime": overlay_inputs["btc_regime_daily"].reindex(df_all.index.normalize(), method="ffill").fillna(0.0).to_numpy(dtype="float64"),
@@ -454,7 +463,9 @@ def build_pairwise_plan(
         signal_idx = len(df_all) - 1
         route_threshold = float(pair_config["route_breadth_threshold"])
         bucket_code = int(context["bucket_codes"][route_threshold][signal_idx])
-        active_idx = int(pair_config["mapping_indices"][bucket_code])
+        mapping = normalize_mapping_indices(pair_config["mapping_indices"], route_state_mode)
+        active_idx = int(mapping[bucket_code])
+        route_state_name = route_state_names(route_state_mode)[bucket_code]
         params = library[active_idx]
         signal_pos = int(library_lookup["signal_pos"][active_idx])
         signal_pct = float(np.clip(context["smooth_signal_matrix"][signal_pos, signal_idx], -500.0, 500.0))
@@ -488,6 +499,8 @@ def build_pairwise_plan(
                 "pair": pair,
                 "symbol": PAIR_TO_MARKET[pair],
                 "bucket_code": bucket_code,
+                "route_state_mode": route_state_mode,
+                "route_state_name": route_state_name,
                 "active_library_index": active_idx,
                 "params": asdict(params),
                 "regime_score": regime_score,

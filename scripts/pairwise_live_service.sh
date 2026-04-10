@@ -8,6 +8,8 @@ STATE_PATH="${PAIRWISE_LIVE_STATE_PATH:-$ROOT_DIR/models/pairwise_regime_live_st
 DECISION_LOG_PATH="${PAIRWISE_LIVE_DECISION_LOG_PATH:-$ROOT_DIR/logs/pairwise_regime_decisions.jsonl}"
 POLL_SECONDS="${PAIRWISE_LIVE_POLL_SECONDS:-300}"
 MODE="${PAIRWISE_LIVE_MODE:-demo}"
+FORCE_EXECUTE="${PAIRWISE_FORCE_EXECUTE:-0}"
+FORCE_NOTE="${PAIRWISE_FORCE_NOTE:-manual_primary_switch}"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$STATE_PATH")" "$(dirname "$DECISION_LOG_PATH")"
 
@@ -28,12 +30,19 @@ case "${1:-}" in
       echo "pairwise live already running (pid $(cat "$PID_FILE"))"
       exit 0
     fi
+    extra_args=()
+    case "$(printf '%s' "$FORCE_EXECUTE" | tr '[:upper:]' '[:lower:]')" in
+      1|true|yes|on)
+        extra_args+=(--force-execute --force-note "$FORCE_NOTE")
+        ;;
+    esac
     nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_live.py" loop \
       --execute \
       --mode "$MODE" \
       --poll-seconds "$POLL_SECONDS" \
       --state-path "$STATE_PATH" \
       --decision-log-path "$DECISION_LOG_PATH" \
+      "${extra_args[@]}" \
       >>"$LOG_FILE" 2>&1 &
     echo $! >"$PID_FILE"
     echo "pairwise live started (pid $!)"

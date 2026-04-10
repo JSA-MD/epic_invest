@@ -133,6 +133,46 @@ class OperationWatchdogTests(unittest.TestCase):
             watchdog.build_alert_fingerprint(report_b),
         )
 
+    def test_degrade_pairwise_force_execute_writes_runtime_profile(self) -> None:
+        with patch.object(watchdog, "write_json") as write_json:
+            result = watchdog.degrade_pairwise_force_execute({"mode": "demo"}, "watchdog_critical_recovery")
+        self.assertTrue(result["ok"])
+        written_payload = write_json.call_args.args[1]
+        self.assertEqual(written_payload["active_trader"], "pairwise")
+        self.assertFalse(written_payload["force_execute"])
+        self.assertEqual(written_payload["degraded_reason"], "watchdog_critical_recovery")
+
+    def test_maybe_recover_demotes_pairwise_force_execute_before_restart(self) -> None:
+        report = {
+            "trader": {
+                "status": "critical",
+                "stale_seconds": 500.0,
+                "consecutive_errors": 0,
+            },
+            "bot": {"status": "ok"},
+            "recovery_actions": [],
+        }
+        profile = {
+            "key": "pairwise",
+            "mode": "demo",
+            "force_execute": True,
+            "protect_threshold_seconds": 480,
+        }
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "protect_positions", return_value={"ok": True}) as protect_positions,
+            patch.object(watchdog, "degrade_pairwise_force_execute", return_value={"ok": True}) as degrade,
+            patch.object(watchdog, "restart_active_trader", return_value={"ok": True}) as restart,
+        ):
+            result = watchdog.maybe_recover(report)
+        self.assertEqual(result["recovery_actions"][0]["type"], "protect_positions")
+        self.assertEqual(result["recovery_actions"][1]["type"], "degrade_pairwise_force_execute")
+        self.assertEqual(result["recovery_actions"][2]["type"], "restart_trader")
+        protect_positions.assert_called_once()
+        degrade.assert_called_once()
+        restarted_profile = restart.call_args.args[0]
+        self.assertFalse(restarted_profile["force_execute"])
+
 
 if __name__ == "__main__":
     unittest.main()

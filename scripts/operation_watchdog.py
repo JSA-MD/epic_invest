@@ -248,6 +248,18 @@ def read_runtime_profile() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def write_runtime_profile(active_trader: str, mode: str, force_execute: bool, **extra: Any) -> dict[str, Any]:
+    payload = {
+        "active_trader": str(active_trader),
+        "mode": str(mode),
+        "force_execute": bool(force_execute),
+        "updated_at": utc_now().isoformat(),
+    }
+    payload.update(extra)
+    write_json(RUNTIME_PROFILE_PATH, payload)
+    return payload
+
+
 def resolve_active_trader_key() -> str:
     profile = read_runtime_profile()
     key = str(profile.get("active_trader") or "").strip().lower()
@@ -402,6 +414,7 @@ def evaluate_trader() -> dict[str, Any]:
     return {
         "status": status,
         "active_profile": profile["key"],
+        "force_execute": bool(profile.get("force_execute", False)),
         "pid": pid,
         "running": status == "ok" or status == "warning",
         "pid_verified": pid_verified,
@@ -518,6 +531,21 @@ def restart_active_trader(profile: dict[str, Any]) -> dict[str, Any]:
     return kickstart_launchd(TRADER_LABEL, TRADER_PLIST)
 
 
+def degrade_pairwise_force_execute(profile: dict[str, Any], reason: str) -> dict[str, Any]:
+    updated = write_runtime_profile(
+        "pairwise",
+        str(profile.get("mode") or "demo"),
+        False,
+        degraded_by="watchdog",
+        degraded_reason=str(reason),
+        degraded_at=utc_now().isoformat(),
+    )
+    return {
+        "ok": True,
+        "updated_profile": updated,
+    }
+
+
 def maybe_recover(report: dict[str, Any]) -> dict[str, Any]:
     actions: list[dict[str, Any]] = []
     trader = report["trader"]
@@ -529,6 +557,14 @@ def maybe_recover(report: dict[str, Any]) -> dict[str, Any]:
             actions.append({"type": "protect_positions", "result": protect_positions(profile)})
         elif int(trader.get("consecutive_errors", 0)) >= WATCHDOG_ERROR_ESCALATION_COUNT:
             actions.append({"type": "protect_positions", "result": protect_positions(profile)})
+        if profile["key"] == "pairwise" and bool(profile.get("force_execute", False)):
+            actions.append(
+                {
+                    "type": "degrade_pairwise_force_execute",
+                    "result": degrade_pairwise_force_execute(profile, "watchdog_critical_recovery"),
+                }
+            )
+            profile = {**profile, "force_execute": False}
         actions.append({"type": "restart_trader", "result": restart_active_trader(profile)})
 
     if bot["status"] == "critical":

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 import gp_crypto_evolution as gp
+from pairwise_validation_engine import build_candidate_validation_bundle, build_return_frame
 from replay_regime_mixture_realistic import load_model
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
@@ -69,6 +70,10 @@ def parse_args() -> argparse.Namespace:
         choices=("base", "equity_corr"),
         default="base",
     )
+    parser.add_argument("--cpcv-blocks", type=int, default=6)
+    parser.add_argument("--cpcv-test-blocks", type=int, default=2)
+    parser.add_argument("--cpcv-embargo-days", type=int, default=2)
+    parser.add_argument("--validation-candidate-count", type=int, default=18)
     return parser.parse_args()
 
 
@@ -112,6 +117,25 @@ def clone_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(candidate))
 
 
+def candidate_id(candidate: dict[str, Any], pairs: tuple[str, ...]) -> str:
+    return "|".join(str(part) for part in candidate_key(candidate, pairs))
+
+
+def replace_corr_block(mapping: list[int], block_index: int, block_values: list[int] | tuple[int, ...]) -> list[int]:
+    block_size = 4
+    start = int(block_index) * block_size
+    updated = list(mapping)
+    updated[start:start + block_size] = [int(v) for v in block_values]
+    return updated
+
+
+def replace_base_state_across_blocks(mapping: list[int], base_slot: int, value: int, route_gene_count: int) -> list[int]:
+    updated = list(mapping)
+    for offset in range(int(base_slot), int(route_gene_count), 4):
+        updated[offset] = int(value)
+    return updated
+
+
 def candidate_score(
     windows: dict[str, Any],
     base_2m: float,
@@ -131,6 +155,52 @@ def candidate_score(
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 0.45
     score -= abs(float(full_4y["worst_max_drawdown"])) * 0.30
     return float(score)
+
+
+def candidate_score_with_validation(item: dict[str, Any]) -> float:
+    score = float(item["score"])
+    validation_engine = item.get("validation_engine") or {}
+    profile = validation_engine.get("profile") or {}
+    gate = validation_engine.get("gate") or {}
+    score += float(profile.get("validation_quality_score", 0.0)) * 0.35
+    score -= float(profile.get("false_positive_risk", 1.0)) * 0.45
+    if gate.get("passed"):
+        score += 0.25
+    return float(score)
+
+
+def build_candidate_validation_input(
+    candidate: dict[str, Any],
+    *,
+    pairs: tuple[str, ...],
+    window_cache: dict[str, Any],
+    library: list[Any],
+    library_lookup: dict[str, Any],
+) -> tuple[np.ndarray, pd.DatetimeIndex]:
+    daily_returns_by_pair: list[np.ndarray] = []
+    daily_index: pd.DatetimeIndex | None = None
+    window_pairs = window_cache["full_4y"]["pairs"]
+    for pair in pairs:
+        cfg = candidate["pair_configs"][pair]
+        result = fast_overlay_replay_from_context(
+            window_pairs[pair]["fast_context"],
+            library,
+            library_lookup,
+            tuple(int(v) for v in cfg["mapping_indices"]),
+            float(cfg["route_breadth_threshold"]),
+            "python",
+        )
+        pair_daily_returns = np.asarray(result["daily_metrics"]["daily_returns"], dtype="float64")
+        pair_daily_index = pd.DatetimeIndex(window_pairs[pair]["fast_context"]["validation_daily_index"])
+        daily_returns_by_pair.append(pair_daily_returns)
+        daily_index = pair_daily_index if daily_index is None else daily_index
+    if not daily_returns_by_pair:
+        return np.asarray([], dtype="float64"), pd.DatetimeIndex([])
+    common_len = min(len(values) for values in daily_returns_by_pair)
+    if daily_index is None:
+        return np.asarray([], dtype="float64"), pd.DatetimeIndex([])
+    aligned = np.vstack([values[:common_len] for values in daily_returns_by_pair])
+    return np.mean(aligned, axis=0), pd.DatetimeIndex(daily_index[:common_len])
 
 
 def main() -> None:
@@ -304,6 +374,25 @@ def main() -> None:
                 sorted({int(item["pair_configs"][pair]["mapping_indices"][bucket]) for item in start_eval[:20]})
                 for bucket in range(route_gene_count)
             ],
+            "corr_blocks": [
+                sorted(
+                    {
+                        tuple(int(v) for v in item["pair_configs"][pair]["mapping_indices"][block * 4:(block + 1) * 4])
+                        for item in start_eval[:20]
+                    }
+                )
+                for block in range(max(route_gene_count // 4, 1))
+            ],
+            "base_state_values": [
+                sorted(
+                    {
+                        int(item["pair_configs"][pair]["mapping_indices"][idx])
+                        for item in start_eval[:20]
+                        for idx in range(base_slot, route_gene_count, 4)
+                    }
+                )
+                for base_slot in range(min(4, route_gene_count))
+            ],
         }
         for pair in pairs
     }
@@ -321,16 +410,73 @@ def main() -> None:
                     candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
                     candidate["pair_configs"][pair]["mapping_indices"][gene - 1] = int(value)
                     candidates.append(candidate)
+        if route_gene_count >= 8:
+            for block_index, block_patterns in enumerate(gene_pool[pair]["corr_blocks"]):
+                for block_values in block_patterns:
+                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
+                    candidate["pair_configs"][pair]["mapping_indices"] = replace_corr_block(
+                        candidate["pair_configs"][pair]["mapping_indices"],
+                        block_index,
+                        block_values,
+                    )
+                    candidates.append(candidate)
+            for base_slot, values in enumerate(gene_pool[pair]["base_state_values"]):
+                for value in values:
+                    candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
+                    candidate["pair_configs"][pair]["mapping_indices"] = replace_base_state_across_blocks(
+                        candidate["pair_configs"][pair]["mapping_indices"],
+                        base_slot,
+                        int(value),
+                        route_gene_count,
+                    )
+                    candidates.append(candidate)
 
     for _ in range(args.random_mutations):
         candidate = {"pair_configs": clone_candidate(chosen_start)["pair_configs"]}
         steps = random.choice((1, 1, 1, 2, 2, 3))
         for _ in range(steps):
             pair = random.choice(pairs)
-            gene = random.randrange(route_gene_count + 1)
-            if gene == 0:
+            mutation_mode = random.choice(
+                ("threshold", "single_bucket", "single_bucket", "single_bucket", "corr_block", "base_state")
+            )
+            if mutation_mode == "threshold":
                 candidate["pair_configs"][pair]["route_breadth_threshold"] = float(random.choice(route_thresholds))
+            elif mutation_mode == "single_bucket":
+                gene = random.randrange(route_gene_count)
+                bucket = gene
+                if random.random() < 0.6 and gene_pool[pair]["mappings"][bucket]:
+                    candidate["pair_configs"][pair]["mapping_indices"][bucket] = int(
+                        random.choice(gene_pool[pair]["mappings"][bucket])
+                    )
+                else:
+                    candidate["pair_configs"][pair]["mapping_indices"][bucket] = int(random.randrange(len(library)))
+            elif mutation_mode == "corr_block" and route_gene_count >= 8:
+                block_index = random.randrange(max(route_gene_count // 4, 1))
+                patterns = gene_pool[pair]["corr_blocks"][block_index]
+                if patterns and random.random() < 0.7:
+                    block_values = random.choice(patterns)
+                else:
+                    block_values = tuple(int(random.randrange(len(library))) for _ in range(4))
+                candidate["pair_configs"][pair]["mapping_indices"] = replace_corr_block(
+                    candidate["pair_configs"][pair]["mapping_indices"],
+                    block_index,
+                    block_values,
+                )
+            elif mutation_mode == "base_state" and route_gene_count >= 8:
+                base_slot = random.randrange(4)
+                values = gene_pool[pair]["base_state_values"][base_slot]
+                value = int(random.choice(values)) if values and random.random() < 0.7 else int(random.randrange(len(library)))
+                candidate["pair_configs"][pair]["mapping_indices"] = replace_base_state_across_blocks(
+                    candidate["pair_configs"][pair]["mapping_indices"],
+                    base_slot,
+                    value,
+                    route_gene_count,
+                )
             else:
+                gene = random.randrange(route_gene_count + 1)
+                if gene == 0:
+                    candidate["pair_configs"][pair]["route_breadth_threshold"] = float(random.choice(route_thresholds))
+                    continue
                 bucket = gene - 1
                 if random.random() < 0.6 and gene_pool[pair]["mappings"][bucket]:
                     candidate["pair_configs"][pair]["mapping_indices"][bucket] = int(
@@ -362,9 +508,32 @@ def main() -> None:
             )
     fast_ranked.sort(key=lambda item: item["score"], reverse=True)
 
+    validation_candidates = fast_ranked[: max(int(args.validation_candidate_count), args.top_realistic)]
+    validation_frames_by_key = {}
+    for item in validation_candidates:
+        candidate = {"pair_configs": item["pair_configs"]}
+        key = candidate_id(candidate, pairs)
+        composite_returns, composite_index = build_candidate_validation_input(
+            candidate,
+            pairs=pairs,
+            window_cache=window_cache,
+            library=library,
+            library_lookup=library_lookup,
+        )
+        validation_frames_by_key[key] = build_return_frame(composite_returns, composite_index)
+
     realistic_top = []
     for item in fast_ranked[: args.top_realistic]:
         windows = eval_realistic({"pair_configs": item["pair_configs"]})
+        candidate = {"pair_configs": item["pair_configs"]}
+        key = candidate_id(candidate, pairs)
+        composite_returns, composite_index = build_candidate_validation_input(
+            candidate,
+            pairs=pairs,
+            window_cache=window_cache,
+            library=library,
+            library_lookup=library_lookup,
+        )
         realistic_top.append(
             {
                 "pair_configs": item["pair_configs"],
@@ -377,10 +546,45 @@ def main() -> None:
                     base_4y_mean,
                 ),
                 "validation": build_validation_bundle(windows, baseline_summary["selected_candidate"]["windows"]),
+                "validation_engine": build_candidate_validation_bundle(
+                    key,
+                    composite_returns,
+                    composite_index,
+                    trial_count=max(len(validation_candidates), 1),
+                    peer_frames_by_key=validation_frames_by_key,
+                    cpcv_blocks=args.cpcv_blocks,
+                    cpcv_test_blocks=args.cpcv_test_blocks,
+                    cpcv_embargo_days=args.cpcv_embargo_days,
+                ),
             }
         )
-    realistic_top.sort(key=lambda item: item["score"], reverse=True)
-    selected = realistic_top[0]
+    realistic_top.sort(key=candidate_score_with_validation, reverse=True)
+    selected = None
+    selection_reason = "no_candidates"
+    validation_pass_candidates = [
+        item for item in realistic_top if item["validation_engine"]["gate"]["passed"]
+    ]
+    progressive_candidates = [
+        item
+        for item in validation_pass_candidates
+        if item["validation"]["profiles"]["progressive_improvement"]["passed"]
+    ]
+    target_060_candidates = [
+        item
+        for item in validation_pass_candidates
+        if item["validation"]["profiles"]["target_060"]["passed"]
+    ]
+    selected = max(target_060_candidates, key=candidate_score_with_validation) if target_060_candidates else None
+    selection_reason = "target_060_plus_validation"
+    if selected is None and progressive_candidates:
+        selected = max(progressive_candidates, key=candidate_score_with_validation)
+        selection_reason = "progressive_plus_validation"
+    if selected is None and validation_pass_candidates:
+        selected = max(validation_pass_candidates, key=candidate_score_with_validation)
+        selection_reason = "validation_only"
+    if selected is None and realistic_top:
+        selected = realistic_top[0]
+        selection_reason = "no_validation_gate_pass"
 
     report = {
         "search": {
@@ -393,6 +597,9 @@ def main() -> None:
             "library_size": len(library),
             "route_state_mode": route_state_mode,
             "route_state_count": route_gene_count,
+            "cpcv_blocks": int(args.cpcv_blocks),
+            "cpcv_test_blocks": int(args.cpcv_test_blocks),
+            "cpcv_embargo_days": int(args.cpcv_embargo_days),
         },
         "pairs": list(pairs),
         "baseline_summary_path": str(args.baseline_summary),
@@ -405,6 +612,12 @@ def main() -> None:
             "start_candidate_count": len(start_candidates),
             "repair_candidate_count": len(seen),
             "fast_ranked_count": len(fast_ranked),
+        },
+        "selection": {
+            "reason": selection_reason,
+            "validation_pass_count": len(validation_pass_candidates),
+            "progressive_validation_pass_count": len(progressive_candidates),
+            "target_060_validation_pass_count": len(target_060_candidates),
         },
         "realistic_top_candidates": realistic_top,
         "selected_candidate": selected,

@@ -221,6 +221,7 @@ def build_fast_context(
         for threshold in route_thresholds
     }
     funding_rates = np.zeros(len(idx), dtype="float64")
+    validation_daily_index = pd.DatetimeIndex(day_index.unique())
     if funding_df is not None and not funding_df.empty:
         funding_series = (
             funding_df[["fundingTime", "fundingRate"]]
@@ -249,6 +250,7 @@ def build_fast_context(
         "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
         "route_state_mode": route_state_mode,
         "route_state_names": route_state_names(route_state_mode),
+        "validation_daily_index": validation_daily_index,
     }
 
 

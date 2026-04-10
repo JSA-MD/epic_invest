@@ -34,6 +34,7 @@ from core_strategy_registry import (
     resolve_core_strategy,
     save_core_artifact,
 )
+from core_market_profile import build_core_market_profile
 from ga_long_short_rotation import (
     LongShortParams,
     build_long_short_target_weights,
@@ -929,6 +930,28 @@ def build_promotion_gate(candidate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_strategy_validation_context(
+    candidate: dict[str, Any],
+    candidate_selection_pbo: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "promotion_gate": candidate["promotion_gate"],
+        "selection_score": float(candidate["selection_score"]),
+        "promotion_score": float(candidate["promotion_score"]),
+        "objective_metrics": candidate["objective_metrics"],
+        "validation_profile": candidate["validation_profile"],
+        "cpcv_pbo": candidate["cpcv_pbo"],
+        "regime_breakdown_summary": candidate["regime_breakdown"]["summary"],
+        "corr_state_summary": candidate["corr_state_robustness"]["summary"],
+        "candidate_selection_pbo": {
+            "n_splits": candidate_selection_pbo["n_splits"],
+            "pbo": candidate_selection_pbo["pbo"],
+            "avg_selected_test_percentile": candidate_selection_pbo["avg_selected_test_percentile"],
+            "worst_selected_test_percentile": candidate_selection_pbo["worst_selected_test_percentile"],
+        },
+    }
+
+
 def build_day_folds(index: pd.DatetimeIndex, fold_days: int, fold_step: int) -> list[tuple[str, str]]:
     days = pd.DatetimeIndex(index.normalize().unique())
     if len(days) == 0:
@@ -1185,13 +1208,17 @@ def build_btc_regime_labels(
     slow_lookback: int = 14,
     threshold: float = 0.02,
 ) -> pd.Series:
-    btc_fast = close_slice["BTCUSDT"].pct_change(fast_lookback)
-    btc_slow = close_slice["BTCUSDT"].pct_change(slow_lookback)
-    regime = 0.5 * btc_fast + 0.5 * btc_slow
-    labels = pd.Series("sideways", index=close_slice.index)
-    labels.loc[regime >= float(threshold)] = "bull"
-    labels.loc[regime <= -float(threshold)] = "bear"
-    return labels
+    profile = build_core_market_profile(
+        close_slice,
+        pd.DataFrame(),
+        fast_lookback=fast_lookback,
+        slow_lookback=slow_lookback,
+        vol_window=max(2, fast_lookback),
+        corr_window=20,
+        regime_threshold=threshold,
+        breadth_threshold=0.50,
+    )
+    return profile["regime_labels"]
 
 
 def build_regime_breakdown_from_portfolio_frame(
@@ -1323,20 +1350,23 @@ def build_corr_state_breakdown(
             },
             "states": {},
         }
-
-    btc_ret = work_close["BTCUSDT"].pct_change()
     net_ret = portfolio_frame["net_return"]
     context_frame = market_context_close.loc[VAL_START:TEST_END].copy() if not market_context_close.empty else pd.DataFrame()
-    context_names = list(context_frame.columns) if not context_frame.empty else []
-    use_internal_fallback = not context_names
+    market_profile = build_core_market_profile(
+        work_close,
+        context_frame,
+        fast_lookback=5,
+        slow_lookback=14,
+        vol_window=5,
+        corr_window=corr_window,
+        regime_threshold=0.02,
+        breadth_threshold=0.50,
+    )
+    corr_profiles = market_profile["corr_state_profiles"]
+    state_profiles = corr_profiles.get("profiles") or {}
+    source_mode = str(corr_profiles.get("source_mode", "missing"))
 
-    if use_internal_fallback:
-        alt_cols = [col for col in work_close.columns if col != "BTCUSDT"]
-        if alt_cols:
-            context_frame = pd.DataFrame({"internal_alt_basket": work_close[alt_cols].mean(axis=1)})
-            context_names = ["internal_alt_basket"]
-
-    if not context_names:
+    if not state_profiles:
         return {
             "summary": {
                 "included_states": 0,
@@ -1345,18 +1375,20 @@ def build_corr_state_breakdown(
                 "min_total_return": 0.0,
                 "corr_window": int(corr_window),
                 "contexts_used": [],
-                "source_mode": "missing",
+                "source_mode": source_mode,
             },
             "states": {},
         }
 
     states_by_context: dict[str, Any] = {}
     flat_states: dict[str, Any] = {}
-    for context_name in context_names:
-        context_ret = context_frame[context_name].pct_change()
-        rolling_corr = btc_ret.rolling(int(corr_window)).corr(context_ret).replace([np.inf, -np.inf], np.nan)
+    for context_name, profile in state_profiles.items():
+        rolling_corr = profile["rolling_corr"]
+        labels = profile["labels"].reindex(portfolio_frame.index)
+        low_cut = float(profile["low_cut"])
+        high_cut = float(profile["high_cut"])
         valid_corr = rolling_corr.dropna()
-        if valid_corr.empty:
+        if valid_corr.empty or labels.empty:
             states_by_context[context_name] = {
                 "summary": {
                     "included_states": 0,
@@ -1364,19 +1396,12 @@ def build_corr_state_breakdown(
                     "avg_total_return": 0.0,
                     "min_total_return": 0.0,
                     "corr_window": int(corr_window),
-                    "low_cut": 0.0,
-                    "high_cut": 0.0,
+                    "low_cut": low_cut,
+                    "high_cut": high_cut,
                 },
                 "states": {},
             }
             continue
-
-        low_cut = float(valid_corr.quantile(0.33))
-        high_cut = float(valid_corr.quantile(0.67))
-        labels = pd.Series("mid_corr", index=rolling_corr.index)
-        labels.loc[rolling_corr <= low_cut] = "low_corr"
-        labels.loc[rolling_corr >= high_cut] = "high_corr"
-        labels = labels.reindex(portfolio_frame.index)
 
         context_states: dict[str, Any] = {}
         for name in ("low_corr", "mid_corr", "high_corr"):
@@ -1417,7 +1442,7 @@ def build_corr_state_breakdown(
     summary = summarize_regime_stats(flat_states)
     summary["corr_window"] = int(corr_window)
     summary["contexts_used"] = list(states_by_context.keys())
-    summary["source_mode"] = "internal_fallback" if use_internal_fallback else "market_context"
+    summary["source_mode"] = source_mode
     return {
         "summary": summary,
         "states": states_by_context,
@@ -1778,6 +1803,8 @@ def main() -> None:
         row["promotion_gate"] = build_promotion_gate(row)
         row["promotion_score"] = promotion_score(row)
 
+    rows_by_key = {row["key"]: row for row in rows}
+
     ranked = sorted(
         rows,
         key=lambda row: (
@@ -1798,15 +1825,7 @@ def main() -> None:
         selected_row["params"],
         key=selected_row["key"],
         source=selected_row["source"],
-        metadata={
-            "promotion_gate": selected_row["promotion_gate"],
-            "selection_score": selected_row["selection_score"],
-            "promotion_score": selected_row["promotion_score"],
-            "objective_metrics": selected_row["objective_metrics"],
-            "validation_profile": selected_row["validation_profile"],
-            "cpcv_pbo": selected_row["cpcv_pbo"],
-            "pareto": selected_row["pareto"],
-        },
+        metadata=build_strategy_validation_context(selected_row, cpcv_pbo),
     )
 
     if promoted:
@@ -1822,6 +1841,19 @@ def main() -> None:
             active_strategy = selected_strategy
             artifact_action = "bootstrap_without_passed_gate"
             artifact_updated = True
+
+    active_row = rows_by_key.get(active_strategy.key)
+    if active_row is not None:
+        active_strategy = resolve_core_strategy(
+            active_row["family"],
+            active_row["params"],
+            key=active_row["key"],
+            source=active_strategy.source,
+            metadata=build_strategy_validation_context(active_row, cpcv_pbo),
+        )
+        if not promoted:
+            artifact_updated = True
+            artifact_action = "retained_existing_artifact_with_refreshed_metadata"
 
     summary = {
         "strategy_class": "unified_core_competition_search",

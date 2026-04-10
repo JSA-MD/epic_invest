@@ -19,14 +19,37 @@
       "passes_test_positive": true,
       "passes_oos_positive": true,
       "passes_oos_mdd": true,
+      "passes_dsr_hard_gate": false,
+      "passes_generalization_gap": true,
+      "passes_return_stability_gap": false,
       "passes_stress_survival": true,
-      "passes_fold_positive_rate": true,
-      "passes_cpcv_positive_rate": true,
-      "passes_cpcv_pass_rate": true,
-      "passed": true
+      "passes_fold_positive_rate": false,
+      "passes_cpcv_positive_rate": false,
+      "passes_cpcv_pass_rate": false,
+      "passes_cpcv_tail_loss": false,
+      "passes_cpcv_overfit_rate": false,
+      "passes_pbo_selected_below_median_rate": false,
+      "passes_pbo_avg_selected_test_percentile": true,
+      "passes_pbo_selection_share": true,
+      "passes_regime_positive_rate": true,
+      "passes_corr_positive_rate": false,
+      "passes_false_positive_risk": true,
+      "passes_validation_quality": true,
+      "failed_checks": [
+        "passes_dsr_hard_gate",
+        "passes_return_stability_gap",
+        "passes_fold_positive_rate",
+        "passes_cpcv_positive_rate",
+        "passes_cpcv_pass_rate",
+        "passes_cpcv_tail_loss",
+        "passes_cpcv_overfit_rate",
+        "passes_pbo_selected_below_median_rate",
+        "passes_corr_positive_rate"
+      ],
+      "passed": false
     },
     "selection_score": 27.858014784330166,
-    "promotion_score": 233.33790665601978,
+    "promotion_score": 238.46087880259438,
     "objective_metrics": {
       "oos_calmar": 2.2928399717817944,
       "oos_dsr_proxy": 0.08957705702450292,
@@ -34,16 +57,69 @@
       "generalization_gap": 0.06215079629188236,
       "return_stability_gap": 0.26804281208752023
     },
-    "pareto": {
-      "rank": 1,
-      "is_nondominated": true,
-      "crowding_distance": null,
-      "crowding_sort_value": 1000000000.0
+    "validation_profile": {
+      "false_positive_risk": 0.4086119452009209,
+      "validation_quality_score": 0.5913880547990791,
+      "cpcv_overfit_rate": 0.4,
+      "pbo_selected_below_median_rate": 0.4,
+      "pbo_avg_selected_test_percentile": 0.6620833333333332,
+      "pbo_selection_share": 0.6666666666666666,
+      "risk_components": {
+        "dsr_shortfall": 0.7014098099183236,
+        "generalization_gap_excess": 0.0,
+        "return_stability_gap_excess": 0.7869520805834683,
+        "cpcv_pass_shortfall": 0.09999999999999998,
+        "cpcv_positive_shortfall": 0.09999999999999998,
+        "cpcv_tail_loss_shortfall": 0.36076919946381153,
+        "cpcv_overfit_rate": 0.4,
+        "pbo_selected_below_median_rate": 1.0,
+        "pbo_avg_selected_test_percentile": 0.0,
+        "pbo_selection_share": 0.0,
+        "fold_positive_shortfall": 0.09999999999999998,
+        "stress_shortfall": 0.0,
+        "regime_shortfall": 0.0,
+        "corr_shortfall": 0.02777777777777768
+      }
+    },
+    "cpcv_pbo": {
+      "selected_count": 10,
+      "selection_share": 0.6666666666666666,
+      "selected_below_median_rate": 0.4,
+      "avg_selected_test_percentile": 0.6620833333333332,
+      "worst_selected_test_percentile": 0.2666666666666667,
+      "avg_selected_test_score": -11.939646183222383,
+      "avg_selected_test_return": 0.06847005927617991
+    },
+    "regime_breakdown_summary": {
+      "included_states": 3,
+      "positive_rate": 0.6666666666666666,
+      "avg_total_return": 0.13223916564132687,
+      "min_total_return": -0.0007218477601453888
+    },
+    "corr_state_summary": {
+      "included_states": 12,
+      "positive_rate": 0.5833333333333334,
+      "avg_total_return": 0.14254759077282156,
+      "min_total_return": -0.05612850019185789,
+      "corr_window": 20,
+      "contexts_used": [
+        "QQQ",
+        "SPY",
+        "GLD",
+        "DXY"
+      ],
+      "source_mode": "market_context"
+    },
+    "candidate_selection_pbo": {
+      "n_splits": 15,
+      "pbo": 0.4666666666666667,
+      "avg_selected_test_percentile": 0.5797222222222224,
+      "worst_selected_test_percentile": 0.08750000000000002
     }
   },
   "selected_score": 27.858014784330166,
-  "summary_path": "/Users/jsa/work/epic_invest/models/core_competition_summary.json",
-  "created_at": "2026-04-10T11:42:27.937217+00:00",
+  "summary_path": "models/core_competition_validation_recheck_pbo_20260410.json",
+  "created_at": "2026-04-10T12:50:48.759773+00:00",
   "search_config": {
     "population": 60,
     "generations": 14,
@@ -71,6 +147,24 @@
     "corr_window": 20,
     "corr_state_min_days": 10,
     "neighbor_count": 4,
+    "validation_thresholds": {
+      "oos_dsr_proxy_min": 0.3,
+      "stress_survival_rate_min": 0.8,
+      "fold_positive_rate_min": 0.6666666666666666,
+      "cpcv_positive_rate_min": 0.6666666666666666,
+      "cpcv_pass_rate_min": 0.6666666666666666,
+      "cpcv_min_test_return_min": -0.05,
+      "cpcv_overfit_rate_max": 0.35,
+      "pbo_selected_below_median_rate_max": 0.2,
+      "pbo_avg_selected_test_percentile_min": 0.55,
+      "pbo_selection_share_min": 0.05,
+      "generalization_gap_max": 0.1,
+      "return_stability_gap_max": 0.15,
+      "regime_positive_rate_min": 0.6666666666666666,
+      "corr_positive_rate_min": 0.6,
+      "false_positive_risk_max": 0.45,
+      "validation_quality_score_min": 0.55
+    },
     "refresh_market_context": false,
     "refresh_cache": false
   }

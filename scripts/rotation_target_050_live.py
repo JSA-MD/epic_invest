@@ -46,6 +46,11 @@ from core_strategy_registry import (
     load_core_artifact,
     resolve_core_strategy,
 )
+from core_market_profile import (
+    build_context_corr_snapshot,
+    build_core_market_profile,
+    build_route_state_snapshot,
+)
 from gp_crypto_evolution import (
     COMMISSION_PCT,
     DAILY_MAX_LOSS_PCT,
@@ -56,6 +61,7 @@ from gp_crypto_evolution import (
     fetch_klines,
     load_all_pairs,
 )
+from market_context import load_market_context_dataset
 
 load_dotenv()
 
@@ -709,17 +715,29 @@ def build_core_selection_diagnostics(
     strategy: ResolvedCoreStrategy,
 ) -> dict[str, Any]:
     params = strategy.params
-    ret = close.pct_change()
-    momentum = (
-        0.60 * close.pct_change(params.lookback_fast)
-        + 0.40 * close.pct_change(params.lookback_slow)
+    market_context_close, market_context_status = load_market_context_dataset(
+        refresh=False,
+        allow_fetch_on_miss=False,
+        target_index=close.index,
+        min_context_days=20,
     )
-    realized_vol = ret.rolling(params.vol_window).std() * np.sqrt(365.25)
-    btc_regime = (
-        0.50 * close["BTCUSDT"].pct_change(params.lookback_fast)
-        + 0.50 * close["BTCUSDT"].pct_change(params.lookback_slow)
+    long_regime_threshold = float(getattr(params, "long_regime_threshold", getattr(params, "regime_threshold", 0.0)))
+    long_breadth_threshold = float(getattr(params, "long_breadth_threshold", getattr(params, "breadth_threshold", 0.50)))
+    market_profile = build_core_market_profile(
+        close,
+        market_context_close,
+        fast_lookback=int(params.lookback_fast),
+        slow_lookback=int(params.lookback_slow),
+        vol_window=int(params.vol_window),
+        corr_window=20,
+        regime_threshold=long_regime_threshold,
+        breadth_threshold=long_breadth_threshold,
     )
-    breadth = (momentum > 0.0).mean(axis=1)
+    feature_frame = market_profile["feature_frame"]
+    momentum = market_profile["momentum"]
+    realized_vol = market_profile["realized_vol"]
+    btc_regime = market_profile["regime_score"]
+    breadth = market_profile["breadth"]
 
     target_weights = build_core_target_weights(close, strategy)
     base_core = target_weights.loc[market_day].fillna(0.0).astype("float64")
@@ -756,12 +774,14 @@ def build_core_selection_diagnostics(
 
     btc_regime_value = float(btc_regime.loc[market_day])
     breadth_value = float(breadth.loc[market_day])
+    route_state = build_route_state_snapshot(feature_frame, market_day)
+    context_corr_snapshot = build_context_corr_snapshot(market_profile["corr_state_profiles"], market_day)
     selected_positions = selected_position_rows(base_core)
     selected_pairs = [item["pair"] for item in selected_positions]
     long_pairs = [item["pair"] for item in selected_positions if item["side"] == "롱"]
     short_pairs = [item["pair"] for item in selected_positions if item["side"] == "숏"]
-    long_gate = bool(np.isfinite(btc_regime_value) and btc_regime_value > float(getattr(params, "regime_threshold", 0.0)))
-    long_breadth_gate = bool(np.isfinite(breadth_value) and breadth_value >= float(getattr(params, "breadth_threshold", 0.50)))
+    long_gate = bool(np.isfinite(btc_regime_value) and btc_regime_value > long_regime_threshold)
+    long_breadth_gate = bool(np.isfinite(breadth_value) and breadth_value >= long_breadth_threshold)
     short_regime_threshold = float(getattr(params, "short_regime_threshold", getattr(params, "regime_threshold", 0.0)))
     short_breadth_threshold = float(getattr(params, "short_breadth_threshold", getattr(params, "breadth_threshold", 0.50)))
     short_gate = bool(np.isfinite(btc_regime_value) and btc_regime_value <= -short_regime_threshold)
@@ -787,6 +807,9 @@ def build_core_selection_diagnostics(
         "passed_short_breadth": short_breadth_gate,
         "btc_regime": btc_regime_value,
         "breadth": breadth_value,
+        "route_state": route_state,
+        "context_corr_snapshot": context_corr_snapshot,
+        "market_context_status": market_context_status,
         "selected_positions": selected_positions,
         "momentum_ranked": pair_rows(ranked.sort_values(ascending=False)),
         "positive_ranked": pair_rows(positive_ranked),
@@ -886,6 +909,15 @@ def build_strategy_plan(effective_date: str | None, leverage: float) -> dict[str
         "core_strategy_family": core_strategy.family,
         "core_strategy_key": core_strategy.key,
         "core_strategy_source": core_strategy.source,
+        "core_strategy_metadata": core_strategy.metadata,
+        "core_validation_context": {
+            "promotion_gate": core_strategy.metadata.get("promotion_gate"),
+            "validation_profile": core_strategy.metadata.get("validation_profile"),
+            "cpcv_pbo": core_strategy.metadata.get("cpcv_pbo"),
+            "regime_breakdown_summary": core_strategy.metadata.get("regime_breakdown_summary"),
+            "corr_state_summary": core_strategy.metadata.get("corr_state_summary"),
+            "candidate_selection_pbo": core_strategy.metadata.get("candidate_selection_pbo"),
+        },
         "core_params": asdict(core_strategy.params),
         "overlay_params": asdict(BEST_OVERLAY_PARAMS),
         "session_type": session_type,
@@ -1463,6 +1495,7 @@ def build_entry_rationale(plan: dict[str, Any]) -> dict[str, Any]:
             "selected_pairs": [pair for pair, weight in plan["core_weights"].items() if abs(float(weight)) > EPSILON],
             "selected_positions": diagnostics.get("selected_positions"),
             "core_diagnostics": diagnostics,
+            "core_validation_context": plan.get("core_validation_context"),
         }
     if plan["session_type"] == "overlay":
         return {

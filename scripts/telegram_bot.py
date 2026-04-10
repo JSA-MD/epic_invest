@@ -526,6 +526,7 @@ def format_decision(snapshot: dict[str, Any]) -> str:
     exit_plan = decision.get("exit_plan") or {}
     if rationale_mode == "core":
         core = rationale.get("core_diagnostics") or {}
+        validation = rationale.get("core_validation_context") or {}
         selected_pairs = rationale.get("selected_pairs") or []
         lines.append("- 진입근거:")
         lines.append(
@@ -538,6 +539,18 @@ def format_decision(snapshot: dict[str, Any]) -> str:
             lines.append(
                 f"  breadth {format_pct(core.get('breadth'), signed=False)} / 기준 {format_pct(core.get('breadth_threshold'), signed=False)}"
             )
+            route_state = core.get("route_state") or {}
+            if route_state:
+                lines.append(
+                    f"  라우트 상태 {route_state.get('route_bucket')} | 레짐 라벨 {route_state.get('regime_label')}"
+                )
+            context_corr = (core.get("context_corr_snapshot") or {}).get("contexts") or {}
+            if context_corr:
+                preview = ", ".join(
+                    f"{name} {str(row.get('state') or 'n/a')} {row.get('corr') if row.get('corr') is not None else 'n/a'}"
+                    for name, row in list(context_corr.items())[:4]
+                )
+                lines.append(f"  상관 컨텍스트: {preview}")
             ranked = core.get("positive_ranked") or []
             if ranked:
                 ranked_preview = ", ".join(
@@ -556,6 +569,33 @@ def format_decision(snapshot: dict[str, Any]) -> str:
                     )
                 if selected_vol is not None:
                     lines.append(f"  선택 종목 연환산 변동성: {format_pct(selected_vol, signed=False)}")
+        profile = validation.get("validation_profile") or {}
+        if profile:
+            lines.append(
+                f"  false positive risk {format_pct(profile.get('false_positive_risk'), signed=False)} | "
+                f"validation quality {format_pct(profile.get('validation_quality_score'), signed=False)}"
+            )
+        pbo = validation.get("cpcv_pbo") or {}
+        if pbo:
+            lines.append(
+                f"  후보 PBO 중위권하회율 {format_pct(pbo.get('selected_below_median_rate'), signed=False)} | "
+                f"선정 점유율 {format_pct(pbo.get('selection_share'), signed=False)}"
+            )
+        corr_summary = validation.get("corr_state_summary") or {}
+        if corr_summary:
+            lines.append(
+                f"  상관 상태 positive rate {format_pct(corr_summary.get('positive_rate'), signed=False)} | "
+                f"context {', '.join(corr_summary.get('contexts_used') or []) or '없음'}"
+            )
+        regime_summary = validation.get("regime_breakdown_summary") or {}
+        if regime_summary:
+            lines.append(
+                f"  레짐 positive rate {format_pct(regime_summary.get('positive_rate'), signed=False)}"
+            )
+        gate = validation.get("promotion_gate") or {}
+        failed_checks = gate.get("failed_checks") or []
+        if failed_checks:
+            lines.append(f"  최근 승격 차단: {', '.join(failed_checks[:4])}")
         lines.append("- 종료 조건:")
         kill_switch = exit_plan.get("kill_switch") or {}
         if kill_switch.get("trigger_equity") is not None:

@@ -21,6 +21,15 @@ class CoreLiveSmokeTests(unittest.TestCase):
         self.assertTrue(artifact.key)
         self.assertTrue(artifact.source)
         self.assertIsNotNone(artifact.params)
+        for key in (
+            "promotion_gate",
+            "validation_profile",
+            "cpcv_pbo",
+            "regime_breakdown_summary",
+            "corr_state_summary",
+            "candidate_selection_pbo",
+        ):
+            self.assertIn(key, artifact.metadata)
 
     def test_live_state_example_matches_loader_defaults(self) -> None:
         with open(ROOT_DIR / "models" / "rotation_target_050_live_state.example.json", "r") as f:

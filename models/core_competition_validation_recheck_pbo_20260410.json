@@ -1,6 +1,6 @@
 {
   "strategy_class": "unified_core_competition_search",
-  "created_at": "2026-04-10T12:34:58.618107+00:00",
+  "created_at": "2026-04-10T12:50:48.759773+00:00",
   "dataset": {
     "n_days": 188,
     "start": "2025-10-01",
@@ -218,8 +218,8 @@
   },
   "promotion_decision": {
     "promoted": false,
-    "artifact_updated": false,
-    "artifact_action": "retained_existing_artifact",
+    "artifact_updated": true,
+    "artifact_action": "retained_existing_artifact_with_refreshed_metadata",
     "failed_checks": [
       "passes_dsr_hard_gate",
       "passes_return_stability_gap",

@@ -129,6 +129,76 @@ class PairwiseValidationEngineTests(unittest.TestCase):
         self.assertFalse(market_os["audit"]["passes_final_oos_total_return"])
         self.assertNotIn("passes_final_oos_total_return", market_os["gate"])
 
+    def test_validation_robustness_profile_rewards_lower_overfit_risk(self) -> None:
+        robust = engine.build_validation_robustness_profile(
+            {
+                "profile": {
+                    "false_positive_risk": 0.10,
+                    "validation_quality_score": 0.90,
+                    "cpcv_overfit_rate": 0.12,
+                    "pbo_selected_below_median_rate": 0.18,
+                    "pbo_avg_selected_test_percentile": 0.72,
+                    "pbo_selection_share": 0.35,
+                },
+                "market_operating_system": {
+                    "fitness": {
+                        "score": 0.74,
+                        "raw": {
+                            "parameter_instability": 0.22,
+                            "corr_state_robustness": 0.67,
+                            "regime_coverage": 0.58,
+                        },
+                    },
+                    "state_summary": {
+                        "corr_state_robustness": 0.67,
+                        "regime_coverage": 0.58,
+                    },
+                },
+                "gate": {
+                    "passes_validation_quality": True,
+                    "passes_false_positive_risk": True,
+                    "passes_market_os_fitness": True,
+                    "passed": True,
+                },
+            }
+        )
+        fragile = engine.build_validation_robustness_profile(
+            {
+                "profile": {
+                    "false_positive_risk": 0.58,
+                    "validation_quality_score": 0.42,
+                    "cpcv_overfit_rate": 0.66,
+                    "pbo_selected_below_median_rate": 0.61,
+                    "pbo_avg_selected_test_percentile": 0.22,
+                    "pbo_selection_share": 0.01,
+                },
+                "market_operating_system": {
+                    "fitness": {
+                        "score": 0.31,
+                        "raw": {
+                            "parameter_instability": 0.96,
+                            "corr_state_robustness": 0.21,
+                            "regime_coverage": 0.19,
+                        },
+                    },
+                    "state_summary": {
+                        "corr_state_robustness": 0.21,
+                        "regime_coverage": 0.19,
+                    },
+                },
+                "gate": {
+                    "passes_validation_quality": False,
+                    "passes_false_positive_risk": False,
+                    "passes_market_os_fitness": False,
+                    "passed": False,
+                },
+            }
+        )
+
+        self.assertGreater(robust["score"], fragile["score"])
+        self.assertLess(robust["penalty"], fragile["penalty"])
+        self.assertGreater(robust["gate_pass_ratio"], fragile["gate_pass_ratio"])
+
     def test_build_candidate_validation_bundle_includes_gate(self) -> None:
         index = pd.date_range("2025-01-01", periods=120, freq="D", tz="UTC")
         returns_a = np.full(120, 0.0035, dtype="float64")
@@ -168,6 +238,7 @@ class PairwiseValidationEngineTests(unittest.TestCase):
         self.assertIn("candidate_selection_pbo", bundle)
         self.assertIn("market_operating_system", bundle)
         self.assertIn("passes_market_os_fitness", bundle["gate"])
+        self.assertIn("robustness", bundle)
         self.assertIn("final_oos", bundle["market_operating_system"]["stages"])
         self.assertIn("audit", bundle["market_operating_system"])
 

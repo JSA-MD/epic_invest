@@ -55,6 +55,41 @@ def build_report(
     }
 
 
+def build_report_with_pairs(
+    *,
+    recent_2m: tuple[float, float, float, float],
+    recent_6m: tuple[float, float, float, float],
+    full_4y: tuple[float, float, float, float],
+    hit_rate: float,
+    win_rate: float,
+    sharpe: float,
+    worst_day: float,
+    n_trades: int,
+) -> dict[str, object]:
+    report = build_report(recent_2m=recent_2m, recent_6m=recent_6m, full_4y=full_4y)
+    for key in ("recent_2m", "recent_6m", "full_4y"):
+        report["windows"][key]["per_pair"] = {  # type: ignore[index]
+            "BTCUSDT": {
+                "daily_target_hit_rate": hit_rate,
+                "daily_win_rate": win_rate,
+                "sharpe": sharpe,
+                "worst_day": worst_day,
+                "n_trades": n_trades,
+                "avg_daily_return": report["windows"][key]["aggregate"]["worst_pair_avg_daily_return"],  # type: ignore[index]
+            },
+            "BNBUSDT": {
+                "daily_target_hit_rate": hit_rate,
+                "daily_win_rate": win_rate,
+                "sharpe": sharpe,
+                "worst_day": worst_day,
+                "n_trades": n_trades,
+                "avg_daily_return": report["windows"][key]["aggregate"]["worst_pair_avg_daily_return"],  # type: ignore[index]
+            },
+        }
+        report["windows"][key]["aggregate"]["positive_pair_count"] = 2  # type: ignore[index]
+    return report
+
+
 def stress_proxy_reserve(report: dict[str, object]) -> float:
     windows = report["windows"]  # type: ignore[index]
     candidates = []
@@ -109,6 +144,33 @@ class PairwiseNsga3StressAwareFitnessTests(unittest.TestCase):
         self.assertGreater(
             pairwise_nsga3.score_realistic_candidate(reserve_favored),
             pairwise_nsga3.score_realistic_candidate(bnb_dragged),
+        )
+
+    def test_fast_scalar_score_penalizes_fragile_validation_proxy(self) -> None:
+        robust = build_report_with_pairs(
+            recent_2m=(0.0068, 0.0070, -0.05, 0.0020),
+            recent_6m=(0.0069, 0.0071, -0.08, 0.0025),
+            full_4y=(0.0067, 0.0069, -0.12, 0.0030),
+            hit_rate=0.60,
+            win_rate=0.63,
+            sharpe=1.8,
+            worst_day=-0.018,
+            n_trades=42,
+        )
+        fragile = build_report_with_pairs(
+            recent_2m=(0.0068, 0.0070, -0.05, 0.0110),
+            recent_6m=(0.0069, 0.0071, -0.08, 0.0120),
+            full_4y=(0.0067, 0.0069, -0.24, 0.0140),
+            hit_rate=0.42,
+            win_rate=0.45,
+            sharpe=0.4,
+            worst_day=-0.055,
+            n_trades=180,
+        )
+
+        self.assertGreater(
+            pairwise_nsga3.fast_scalar_score(robust["windows"]),  # type: ignore[index]
+            pairwise_nsga3.fast_scalar_score(fragile["windows"]),  # type: ignore[index]
         )
 
 

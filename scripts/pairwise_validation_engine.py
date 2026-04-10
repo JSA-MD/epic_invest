@@ -46,6 +46,18 @@ OPERATING_SYSTEM_FITNESS_WEIGHTS = {
     "turnover_cost": -0.03,
     "parameter_instability": -0.02,
 }
+VALIDATION_ROBUSTNESS_WEIGHTS = {
+    "false_positive_risk": 0.20,
+    "validation_quality_shortfall": 0.10,
+    "cpcv_overfit_rate": 0.15,
+    "pbo_selected_below_median_rate": 0.10,
+    "pbo_avg_selected_test_percentile": 0.07,
+    "pbo_selection_share": 0.03,
+    "market_os_fitness": 0.12,
+    "corr_state_robustness": 0.08,
+    "regime_coverage": 0.05,
+    "parameter_instability": 0.10,
+}
 
 
 def threshold_shortfall(actual: float, minimum: float) -> float:
@@ -806,6 +818,85 @@ def build_validation_gate(
     }
 
 
+def build_validation_robustness_profile(validation_engine: dict[str, Any] | None) -> dict[str, Any]:
+    validation_engine = validation_engine or {}
+    profile = validation_engine.get("profile") or {}
+    market_os = validation_engine.get("market_operating_system") or {}
+    market_os_fitness = market_os.get("fitness") or {}
+    market_os_raw = market_os_fitness.get("raw") or {}
+    state_summary = market_os.get("state_summary") or {}
+    gate = validation_engine.get("gate") or {}
+    gate_checks = [
+        bool(passed)
+        for name, passed in gate.items()
+        if name not in {"failed_checks", "passed"}
+    ]
+    gate_pass_ratio = float(sum(gate_checks) / len(gate_checks)) if gate_checks else 0.0
+    components = {
+        "false_positive_risk": clip01(profile.get("false_positive_risk", 1.0)),
+        "validation_quality_shortfall": threshold_shortfall(
+            profile.get("validation_quality_score", 0.0),
+            VALIDATION_THRESHOLDS["validation_quality_score_min"],
+        ),
+        "cpcv_overfit_rate": threshold_excess(
+            profile.get("cpcv_overfit_rate", 1.0),
+            VALIDATION_THRESHOLDS["cpcv_overfit_rate_max"],
+        ),
+        "pbo_selected_below_median_rate": threshold_excess(
+            profile.get("pbo_selected_below_median_rate", 1.0),
+            VALIDATION_THRESHOLDS["pbo_selected_below_median_rate_max"],
+        ),
+        "pbo_avg_selected_test_percentile": threshold_shortfall(
+            profile.get("pbo_avg_selected_test_percentile", 0.0),
+            VALIDATION_THRESHOLDS["pbo_avg_selected_test_percentile_min"],
+        ),
+        "pbo_selection_share": threshold_shortfall(
+            profile.get("pbo_selection_share", 0.0),
+            VALIDATION_THRESHOLDS["pbo_selection_share_min"],
+        ),
+        "market_os_fitness": threshold_shortfall(
+            market_os_fitness.get("score", 0.0),
+            VALIDATION_THRESHOLDS["market_os_fitness_min"],
+        ),
+        "corr_state_robustness": threshold_shortfall(
+            state_summary.get("corr_state_robustness", market_os_raw.get("corr_state_robustness", 0.0)),
+            VALIDATION_THRESHOLDS["corr_state_robustness_min"],
+        ),
+        "regime_coverage": threshold_shortfall(
+            state_summary.get("regime_coverage", market_os_raw.get("regime_coverage", 0.0)),
+            VALIDATION_THRESHOLDS["regime_coverage_min"],
+        ),
+        "parameter_instability": threshold_excess(
+            market_os_raw.get("parameter_instability", 1.0),
+            VALIDATION_THRESHOLDS["parameter_instability_max"],
+        ),
+    }
+    penalty = float(
+        np.clip(
+            sum(
+                float(components[name]) * float(weight)
+                for name, weight in VALIDATION_ROBUSTNESS_WEIGHTS.items()
+            ),
+            0.0,
+            1.0,
+        )
+    )
+    score = float(np.clip(1.0 - penalty, 0.0, 1.0))
+    return {
+        "score": score,
+        "penalty": penalty,
+        "reserve": float(score - VALIDATION_THRESHOLDS["validation_quality_score_min"]),
+        "gate_pass_ratio": gate_pass_ratio,
+        "gate_passed": bool(gate.get("passed", False)),
+        "components": components,
+        "weights": VALIDATION_ROBUSTNESS_WEIGHTS,
+    }
+
+
+def validation_robustness_score(validation_engine: dict[str, Any] | None) -> float:
+    return float(build_validation_robustness_profile(validation_engine).get("score", 0.0))
+
+
 def build_candidate_validation_bundle(
     candidate_key: str,
     daily_returns: np.ndarray,
@@ -845,6 +936,13 @@ def build_candidate_validation_bundle(
         cost_reference=cost_reference,
     )
     gate = build_validation_gate(dsr_proxy, cpcv, profile, market_operating_system)
+    robustness = build_validation_robustness_profile(
+        {
+            "profile": profile,
+            "market_operating_system": market_operating_system,
+            "gate": gate,
+        }
+    )
     daily_metrics = metrics["daily_metrics"]
     return {
         "metrics": {
@@ -868,4 +966,5 @@ def build_candidate_validation_bundle(
         "profile": profile,
         "market_operating_system": market_operating_system,
         "gate": gate,
+        "robustness": robustness,
     }

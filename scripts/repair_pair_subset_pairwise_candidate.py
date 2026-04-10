@@ -15,7 +15,11 @@ import numpy as np
 import pandas as pd
 
 import gp_crypto_evolution as gp
-from pairwise_validation_engine import build_candidate_validation_bundle, build_return_frame
+from pairwise_validation_engine import (
+    build_candidate_validation_bundle,
+    build_return_frame,
+    build_validation_robustness_profile,
+)
 from replay_regime_mixture_realistic import load_model
 from run_pair_subset_pairwise_stress import build_candidate_metrics as build_stress_candidate_metrics
 from run_pair_subset_stress_matrix import SCENARIOS
@@ -216,6 +220,87 @@ def bnb_full_4y_target_shortfall(
     return target_shortfall(bnb_full_4y, target_daily_return)
 
 
+def fast_stress_proxy_reserve(windows: dict[str, Any]) -> float:
+    recent_2m = float(unwrap_window_aggregate(windows["recent_2m"])["worst_pair_avg_daily_return"])
+    recent_6m = float(unwrap_window_aggregate(windows["recent_6m"])["worst_pair_avg_daily_return"])
+    full_4y = float(unwrap_window_aggregate(windows["full_4y"])["worst_pair_avg_daily_return"])
+    bnb_full_4y = pair_metric_or_default(
+        windows,
+        label="full_4y",
+        pair="BNBUSDT",
+        metric="avg_daily_return",
+        default_metric="worst_pair_avg_daily_return",
+    )
+    return float(min(recent_2m, recent_6m, full_4y, bnb_full_4y) - TARGET_060_DAILY_RETURN)
+
+
+def fast_validation_robustness_proxy(
+    windows: dict[str, Any],
+    *,
+    target_daily_return: float,
+    pair_count: int | None = None,
+) -> float:
+    labels = ("recent_2m", "recent_6m", "full_4y")
+    inferred_pair_count = int(pair_count or 0)
+    min_target_hit = 1.0
+    min_win_rate = 1.0
+    min_sharpe = float("inf")
+    positive_ratios: list[float] = []
+    mean_trades: list[float] = []
+    max_dispersion = 0.0
+    max_worst_day_abs = 0.0
+    max_drawdown_excess = 0.0
+
+    for label in labels:
+        window_block = windows[label]
+        aggregate = unwrap_window_aggregate(window_block)
+        per_pair = window_block.get("per_pair") if isinstance(window_block, dict) else None
+        if isinstance(per_pair, dict) and per_pair:
+            inferred_pair_count = max(inferred_pair_count, len(per_pair))
+            for metrics in per_pair.values():
+                min_target_hit = min(min_target_hit, float(metrics.get("daily_target_hit_rate", 0.0)))
+                min_win_rate = min(min_win_rate, float(metrics.get("daily_win_rate", 0.0)))
+                min_sharpe = min(min_sharpe, float(metrics.get("sharpe", 0.0)))
+                max_worst_day_abs = max(max_worst_day_abs, abs(float(metrics.get("worst_day", 0.0))))
+                mean_trades.append(float(metrics.get("n_trades", 0.0)))
+        positive_ratio = float(aggregate.get("positive_pair_count", 0.0)) / max(inferred_pair_count, 1)
+        positive_ratios.append(positive_ratio)
+        max_dispersion = max(max_dispersion, float(aggregate.get("pair_return_dispersion", 0.0)))
+        max_drawdown_excess = max(
+            max_drawdown_excess,
+            max(0.0, abs(float(aggregate.get("worst_max_drawdown", 0.0))) - 0.18),
+        )
+
+    if min_sharpe == float("inf"):
+        min_sharpe = 0.0
+    reserve = float(
+        min(
+            fast_stress_proxy_reserve(windows),
+            pair_metric_or_default(
+                windows,
+                label="full_4y",
+                pair="BNBUSDT",
+                metric="avg_daily_return",
+                default_metric="worst_pair_avg_daily_return",
+            )
+            - target_daily_return,
+        )
+    )
+    score = 0.0
+    score += reserve * 120.0
+    score += min_target_hit * 0.35
+    score += min_win_rate * 0.25
+    score += float(np.clip(min_sharpe / 3.0, -1.0, 1.0)) * 0.20
+    score += float(np.mean(np.asarray(positive_ratios, dtype="float64"))) * 0.20 if positive_ratios else 0.0
+    score -= aggregate_target_shortfall(windows, target_daily_return=target_daily_return) * 90.0
+    score -= bnb_full_4y_target_shortfall(windows, target_daily_return=target_daily_return) * 120.0
+    score -= max_dispersion * 18.0
+    score -= max_worst_day_abs * 16.0
+    score -= max_drawdown_excess * 12.0
+    score -= float(np.mean(np.asarray(mean_trades, dtype="float64"))) / 400.0 if mean_trades else 0.0
+    return float(score)
+
+
 def build_ultra_conservative_stress_proxy(
     *,
     df_all: pd.DataFrame,
@@ -297,6 +382,10 @@ def candidate_score(
     score -= target_shortfall(float(full_4y["mean_avg_daily_return"]), target_daily_return) * 18.0
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 0.45
     score -= abs(float(full_4y["worst_max_drawdown"])) * 0.40
+    score += fast_validation_robustness_proxy(
+        windows,
+        target_daily_return=target_daily_return,
+    ) * 1.8
     return float(score)
 
 
@@ -304,6 +393,7 @@ def candidate_score_with_validation(item: dict[str, Any]) -> float:
     score = float(item["score"])
     validation = item.get("validation") or {}
     validation_engine = item.get("validation_engine") or {}
+    validation_robustness = item.get("validation_robustness") or build_validation_robustness_profile(validation_engine)
     profile = validation_engine.get("profile") or {}
     market_os = validation_engine.get("market_operating_system") or {}
     market_fitness = (market_os.get("fitness") or {}).get("score", 0.0)
@@ -319,6 +409,8 @@ def candidate_score_with_validation(item: dict[str, Any]) -> float:
     score += float(market_fitness) * 1.35
     score += float(profile.get("validation_quality_score", 0.0)) * 0.35
     score -= float(profile.get("false_positive_risk", 1.0)) * 0.45
+    score += float(validation_robustness.get("score", 0.0)) * 1.10
+    score += float(validation_robustness.get("gate_pass_ratio", 0.0)) * 0.20
     score -= aggregate_target_shortfall(aggregate_windows, target_daily_return=TARGET_060_DAILY_RETURN) * 14.0
     if (market_os.get("gate") or {}).get("passed"):
         score += 0.20
@@ -342,6 +434,7 @@ def stress_aware_fitness(item: dict[str, Any]) -> float:
     score = candidate_score_with_validation(item)
     windows = item.get("windows") or {}
     validation_engine = item.get("validation_engine") or {}
+    validation_robustness = item.get("validation_robustness") or build_validation_robustness_profile(validation_engine)
     validation_gate = validation_engine.get("gate") or {}
     market_os_gate = ((validation_engine.get("market_operating_system") or {}).get("gate") or {})
     stress_proxy = item.get("stress_proxy") or {}
@@ -359,6 +452,8 @@ def stress_aware_fitness(item: dict[str, Any]) -> float:
         score -= 120.0
     if not bool(final_oos_profile.get("passed", False)):
         score -= 80.0
+    score += float(validation_robustness.get("score", 0.0)) * 80.0
+    score += float(validation_robustness.get("gate_pass_ratio", 0.0)) * 25.0
 
     if stress_proxy.get("evaluated"):
         score -= target_shortfall(
@@ -380,6 +475,25 @@ def stress_aware_fitness(item: dict[str, Any]) -> float:
     else:
         score -= 400.0
 
+    return float(score)
+
+
+def early_validation_aware_score(item: dict[str, Any]) -> float:
+    score = float(item.get("score", 0.0))
+    validation_engine = item.get("validation_engine") or {}
+    validation_robustness = item.get("validation_robustness") or build_validation_robustness_profile(validation_engine)
+    validation_gate = validation_engine.get("gate") or {}
+    market_os_gate = ((validation_engine.get("market_operating_system") or {}).get("gate") or {})
+    score += float(validation_robustness.get("score", 0.0)) * 2.0
+    score += float(validation_robustness.get("gate_pass_ratio", 0.0)) * 0.5
+    if bool(validation_gate.get("passed", False)):
+        score += 1.0
+    else:
+        score -= 1.4
+    if bool(market_os_gate.get("passed", False)):
+        score += 0.6
+    else:
+        score -= 0.8
     return float(score)
 
 
@@ -922,6 +1036,10 @@ def main() -> None:
             continue
         seen.add(key)
         windows = eval_fast(candidate)
+        validation_robustness_proxy = fast_validation_robustness_proxy(
+            windows,
+            target_daily_return=target_daily_return,
+        )
         score = candidate_score(
             windows,
             base_2m,
@@ -956,10 +1074,12 @@ def main() -> None:
                     "pair_configs": candidate["pair_configs"],
                     "windows": windows,
                     "score": score,
+                    "validation_robustness_proxy": validation_robustness_proxy,
                 }
             )
     fast_ranked.sort(
         key=lambda item: (
+            item.get("validation_robustness_proxy", float("-inf")),
             -bnb_full_4y_target_shortfall(item["windows"], target_daily_return=target_daily_return),
             -aggregate_target_shortfall(item["windows"], target_daily_return=target_daily_return),
             item["score"],
@@ -970,6 +1090,7 @@ def main() -> None:
     validation_candidates = fast_ranked[: max(int(args.validation_candidate_count), args.top_realistic)]
     validation_frames_by_key = {}
     validation_state_payloads = {}
+    validation_inputs_by_key = {}
     for item in validation_candidates:
         candidate = {"pair_configs": item["pair_configs"]}
         key = candidate_id(candidate, pairs)
@@ -980,25 +1101,55 @@ def main() -> None:
             library=library,
             library_lookup=library_lookup,
         )
+        validation_inputs_by_key[key] = validation_input
         validation_frames_by_key[key] = build_return_frame(validation_input["daily_returns"], validation_input["daily_index"])
         validation_state_payloads[key] = validation_input["state_payload"]
+        item["candidate_id"] = key
+    for item in validation_candidates:
+        key = item["candidate_id"]
+        validation_engine = build_candidate_validation_bundle(
+            key,
+            validation_inputs_by_key[key]["daily_returns"],
+            validation_inputs_by_key[key]["daily_index"],
+            trial_count=max(len(validation_candidates), 1),
+            peer_frames_by_key=validation_frames_by_key,
+            state_payload=validation_state_payloads[key],
+            cost_reference=build_candidate_cost_reference(item["windows"]),
+            cpcv_blocks=args.cpcv_blocks,
+            cpcv_test_blocks=args.cpcv_test_blocks,
+            cpcv_embargo_days=args.cpcv_embargo_days,
+        )
+        item["validation_engine"] = validation_engine
+        item["validation_robustness"] = (
+            validation_engine.get("robustness")
+            or build_validation_robustness_profile(validation_engine)
+        )
+        item["early_validation_score"] = early_validation_aware_score(item)
+    validation_candidates.sort(key=early_validation_aware_score, reverse=True)
 
     realistic_top = []
-    for item in fast_ranked[: args.top_realistic]:
+    for item in validation_candidates[: args.top_realistic]:
         windows = eval_realistic({"pair_configs": item["pair_configs"]})
-        candidate = {"pair_configs": item["pair_configs"]}
-        key = candidate_id(candidate, pairs)
-        validation_input = build_candidate_validation_input(
-            candidate,
-            pairs=pairs,
-            window_cache=window_cache,
-            library=library,
-            library_lookup=library_lookup,
+        key = item["candidate_id"]
+        validation_input = validation_inputs_by_key[key]
+        validation_engine = build_candidate_validation_bundle(
+            key,
+            validation_input["daily_returns"],
+            validation_input["daily_index"],
+            trial_count=max(len(validation_candidates), 1),
+            peer_frames_by_key=validation_frames_by_key,
+            state_payload=validation_state_payloads.get(key, validation_input["state_payload"]),
+            cost_reference=build_candidate_cost_reference(windows),
+            cpcv_blocks=args.cpcv_blocks,
+            cpcv_test_blocks=args.cpcv_test_blocks,
+            cpcv_embargo_days=args.cpcv_embargo_days,
         )
         realistic_top.append(
             {
                 "pair_configs": item["pair_configs"],
                 "windows": windows,
+                "validation_robustness_proxy": item.get("validation_robustness_proxy"),
+                "early_validation_score": item.get("early_validation_score"),
                 "score": candidate_score(
                     windows,
                     base_2m,
@@ -1009,17 +1160,10 @@ def main() -> None:
                     target_daily_return,
                 ),
                 "validation": build_validation_bundle(windows, baseline_summary["selected_candidate"]["windows"]),
-                "validation_engine": build_candidate_validation_bundle(
-                    key,
-                    validation_input["daily_returns"],
-                    validation_input["daily_index"],
-                    trial_count=max(len(validation_candidates), 1),
-                    peer_frames_by_key=validation_frames_by_key,
-                    state_payload=validation_state_payloads.get(key, validation_input["state_payload"]),
-                    cost_reference=build_candidate_cost_reference(windows),
-                    cpcv_blocks=args.cpcv_blocks,
-                    cpcv_test_blocks=args.cpcv_test_blocks,
-                    cpcv_embargo_days=args.cpcv_embargo_days,
+                "validation_engine": validation_engine,
+                "validation_robustness": (
+                    validation_engine.get("robustness")
+                    or build_validation_robustness_profile(validation_engine)
                 ),
                 "candidate_id": key,
             }
@@ -1131,6 +1275,7 @@ def main() -> None:
             "chosen_start_count": len(chosen_starts),
             "repair_candidate_count": len(seen),
             "fast_ranked_count": len(fast_ranked),
+            "validation_candidate_count": len(validation_candidates),
         },
         "selection": {
             "reason": selection_reason,

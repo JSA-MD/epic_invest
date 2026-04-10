@@ -17,7 +17,11 @@ import pandas as pd
 from deap import algorithms, base, creator, tools
 
 import gp_crypto_evolution as gp
-from pairwise_validation_engine import build_candidate_validation_bundle, build_return_frame
+from pairwise_validation_engine import (
+    build_candidate_validation_bundle,
+    build_return_frame,
+    build_validation_robustness_profile,
+)
 from replay_regime_mixture_realistic import resolve_candidate, load_model
 from repair_pair_subset_pairwise_candidate import (
     TARGET_060_DAILY_RETURN,
@@ -27,6 +31,7 @@ from repair_pair_subset_pairwise_candidate import (
     build_candidate_validation_input,
     build_ultra_conservative_stress_proxy,
     candidate_id,
+    fast_validation_robustness_proxy,
     pair_metric_or_default,
     target_shortfall,
     unwrap_window_aggregate,
@@ -116,6 +121,10 @@ def fast_scalar_score(windows: dict[str, Any]) -> float:
     recent_6m = unwrap_window_aggregate(windows["recent_6m"])
     full_4y = unwrap_window_aggregate(windows["full_4y"])
     reserve = fast_stress_proxy_reserve(windows)
+    validation_proxy = fast_validation_robustness_proxy(
+        windows,
+        target_daily_return=TARGET_060_DAILY_RETURN,
+    )
     bnb_full_4y = pair_metric_or_default(
         windows,
         label="full_4y",
@@ -130,6 +139,7 @@ def fast_scalar_score(windows: dict[str, Any]) -> float:
     score += float(full_4y["worst_pair_avg_daily_return"]) * 280000.0
     score += float(bnb_full_4y) * 240000.0
     score += float(full_4y["mean_avg_daily_return"]) * 220000.0
+    score += float(validation_proxy) * 2600.0
     score -= target_shortfall(float(full_4y["worst_pair_avg_daily_return"]), TARGET_060_DAILY_RETURN) * 420000.0
     score -= target_shortfall(float(bnb_full_4y), TARGET_060_DAILY_RETURN) * 520000.0
     score -= abs(float(recent_2m["worst_max_drawdown"])) * 22000.0
@@ -160,6 +170,7 @@ def realistic_stress_aware_score(item: dict[str, Any]) -> float:
     windows = item["windows"]
     validation = item.get("validation") or {}
     validation_engine = item.get("validation_engine") or {}
+    validation_robustness = item.get("validation_robustness") or build_validation_robustness_profile(validation_engine)
     stress_proxy = item.get("stress_proxy") or {}
     target_profile = (validation.get("profiles") or {}).get("target_060") or {}
     progressive_profile = (validation.get("profiles") or {}).get("progressive_improvement") or {}
@@ -170,6 +181,8 @@ def realistic_stress_aware_score(item: dict[str, Any]) -> float:
     score += fast_stress_proxy_reserve(windows) * 380000.0
     score -= aggregate_target_shortfall(windows, target_daily_return=TARGET_060_DAILY_RETURN) * 220000.0
     score -= bnb_full_4y_target_shortfall(windows, target_daily_return=TARGET_060_DAILY_RETURN) * 320000.0
+    score += float(validation_robustness.get("score", 0.0)) * 2400.0
+    score += float(validation_robustness.get("gate_pass_ratio", 0.0)) * 700.0
     if bool(validation_gate.get("passed", False)):
         score += 1800.0
     else:
@@ -196,6 +209,25 @@ def realistic_stress_aware_score(item: dict[str, Any]) -> float:
             score += 3000.0
     else:
         score -= 4000.0
+    return float(score)
+
+
+def early_validation_aware_score(item: dict[str, Any]) -> float:
+    score = float(item.get("scalar_score", 0.0))
+    validation_engine = item.get("validation_engine") or {}
+    validation_robustness = item.get("validation_robustness") or build_validation_robustness_profile(validation_engine)
+    validation_gate = validation_engine.get("gate") or {}
+    market_os_gate = ((validation_engine.get("market_operating_system") or {}).get("gate") or {})
+    score += float(validation_robustness.get("score", 0.0)) * 5200.0
+    score += float(validation_robustness.get("gate_pass_ratio", 0.0)) * 1100.0
+    if bool(validation_gate.get("passed", False)):
+        score += 1500.0
+    else:
+        score -= 2200.0
+    if bool(market_os_gate.get("passed", False)):
+        score += 900.0
+    else:
+        score -= 1200.0
     return float(score)
 
 
@@ -239,7 +271,7 @@ def build_deap_toolbox(
         creator.create(
             "FitnessPairSubsetPairwiseNSGA3StressAware",
             base.Fitness,
-            weights=(1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0),
+            weights=(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0),
         )
     if not hasattr(creator, "IndividualPairSubsetPairwiseNSGA3StressAware"):
         creator.create(
@@ -472,12 +504,17 @@ def main() -> None:
                 default_metric="worst_pair_avg_daily_return",
             )
             reserve = fast_stress_proxy_reserve(windows)
+            validation_proxy = fast_validation_robustness_proxy(
+                windows,
+                target_daily_return=TARGET_060_DAILY_RETURN,
+            )
             objectives = (
                 float(reserve),
                 float(recent_2m["worst_pair_avg_daily_return"]),
                 float(recent_6m["worst_pair_avg_daily_return"]),
                 float(full_4y["worst_pair_avg_daily_return"]),
                 float(bnb_full_4y),
+                float(validation_proxy),
                 float(abs(recent_2m["worst_max_drawdown"])),
                 float(abs(recent_6m["worst_max_drawdown"])),
                 float(abs(full_4y["worst_max_drawdown"])),
@@ -488,11 +525,12 @@ def main() -> None:
                 "objectives": objectives,
                 "scalar_score": fast_scalar_score(windows),
                 "stress_proxy_reserve": reserve,
+                "validation_robustness_proxy": validation_proxy,
             }
             fast_cache[key] = cached
         return cached["objectives"]
 
-    ref_points = tools.uniform_reference_points(nobj=8, p=args.ref_p)
+    ref_points = tools.uniform_reference_points(nobj=9, p=args.ref_p)
     toolbox = build_deap_toolbox(pairs, route_thresholds, subset_indices, rng, ref_points)
     toolbox.register("evaluate", evaluate_fast)
 
@@ -539,23 +577,70 @@ def main() -> None:
     ]
     if not feasible_fast:
         feasible_fast = fast_candidates
-    feasible_fast.sort(key=lambda item: item["scalar_score"], reverse=True)
-    top_fast = [
+    feasible_fast.sort(
+        key=lambda item: (
+            item.get("validation_robustness_proxy", float("-inf")),
+            item["scalar_score"],
+        ),
+        reverse=True,
+    )
+    validation_candidate_count = min(
+        len(feasible_fast),
+        max(int(args.top_k_realistic), int(args.stress_proxy_candidate_count) * 3, 12),
+    )
+    validation_pool = [
         {
             "pair_configs": item["candidate"]["pair_configs"],
             "objectives": item["objectives"],
             "scalar_score": item["scalar_score"],
             "stress_proxy_reserve": item.get("stress_proxy_reserve"),
+            "validation_robustness_proxy": item.get("validation_robustness_proxy"),
             "windows": item["windows"],
         }
-        for item in feasible_fast[: args.top_k_realistic]
+        for item in feasible_fast[:validation_candidate_count]
     ]
 
-    realistic_top = []
-    realistic_started = perf_counter()
     validation_frames_by_key: dict[str, Any] = {}
     validation_state_payloads: dict[str, Any] = {}
     validation_inputs_by_key: dict[str, Any] = {}
+    for item in validation_pool:
+        pair_configs = item["pair_configs"]
+        candidate = {"pair_configs": pair_configs}
+        key = candidate_id(candidate, pairs)
+        validation_input = build_candidate_validation_input(
+            candidate,
+            pairs=pairs,
+            window_cache=window_cache,
+            library=library,
+            library_lookup=library_lookup,
+        )
+        validation_inputs_by_key[key] = validation_input
+        validation_frames_by_key[key] = build_return_frame(validation_input["daily_returns"], validation_input["daily_index"])
+        validation_state_payloads[key] = validation_input["state_payload"]
+        item["candidate_id"] = key
+
+    for item in validation_pool:
+        key = item["candidate_id"]
+        item["validation_engine"] = build_candidate_validation_bundle(
+            key,
+            validation_inputs_by_key[key]["daily_returns"],
+            validation_inputs_by_key[key]["daily_index"],
+            trial_count=max(len(validation_pool), 1),
+            peer_frames_by_key=validation_frames_by_key,
+            state_payload=validation_state_payloads[key],
+            cost_reference=build_candidate_cost_reference(item["windows"]),
+        )
+        item["validation_robustness"] = (
+            item["validation_engine"].get("robustness")
+            or build_validation_robustness_profile(item["validation_engine"])
+        )
+        item["early_validation_score"] = early_validation_aware_score(item)
+    validation_pool.sort(key=early_validation_aware_score, reverse=True)
+
+    top_fast = validation_pool[: max(int(args.top_k_realistic), 1)]
+
+    realistic_top = []
+    realistic_started = perf_counter()
     for item in top_fast:
         pair_configs = item["pair_configs"]
         windows = {}
@@ -579,18 +664,17 @@ def main() -> None:
                 "per_pair": per_pair,
                 "aggregate": aggregate_metrics(per_pair),
             }
-        candidate = {"pair_configs": pair_configs}
-        key = candidate_id(candidate, pairs)
-        validation_input = build_candidate_validation_input(
-            candidate,
-            pairs=pairs,
-            window_cache=window_cache,
-            library=library,
-            library_lookup=library_lookup,
+        key = item["candidate_id"]
+        validation_input = validation_inputs_by_key[key]
+        validation_engine = build_candidate_validation_bundle(
+            key,
+            validation_input["daily_returns"],
+            validation_input["daily_index"],
+            trial_count=max(len(top_fast), 1),
+            peer_frames_by_key=validation_frames_by_key,
+            state_payload=validation_state_payloads[key],
+            cost_reference=build_candidate_cost_reference(windows),
         )
-        validation_inputs_by_key[key] = validation_input
-        validation_frames_by_key[key] = build_return_frame(validation_input["daily_returns"], validation_input["daily_index"])
-        validation_state_payloads[key] = validation_input["state_payload"]
         realistic_top.append(
             {
                 "pair_configs": pair_configs,
@@ -599,20 +683,16 @@ def main() -> None:
                 "scalar_score": item["scalar_score"],
                 "score": item["scalar_score"],
                 "stress_proxy_reserve": item.get("stress_proxy_reserve"),
+                "validation_robustness_proxy": item.get("validation_robustness_proxy"),
+                "early_validation_score": item.get("early_validation_score"),
                 "windows": windows,
                 "validation": build_validation_bundle(windows, baseline_realistic),
+                "validation_engine": validation_engine,
+                "validation_robustness": (
+                    validation_engine.get("robustness")
+                    or build_validation_robustness_profile(validation_engine)
+                ),
             }
-        )
-    for item in realistic_top:
-        validation_input = validation_inputs_by_key[item["candidate_id"]]
-        item["validation_engine"] = build_candidate_validation_bundle(
-            item["candidate_id"],
-            validation_input["daily_returns"],
-            validation_input["daily_index"],
-            trial_count=max(len(realistic_top), 1),
-            peer_frames_by_key=validation_frames_by_key,
-            state_payload=validation_state_payloads[item["candidate_id"]],
-            cost_reference=build_candidate_cost_reference(item["windows"]),
         )
     realistic_seconds = perf_counter() - realistic_started
 
@@ -685,6 +765,7 @@ def main() -> None:
             "route_thresholds": list(route_thresholds),
             "subset_indices": list(subset_indices),
             "ref_points": len(ref_points),
+            "validation_candidate_count": int(validation_candidate_count),
         },
         "pairs": list(pairs),
         "baseline_summary_path": str(args.baseline_summary),

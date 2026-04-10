@@ -20,6 +20,12 @@ def make_windows(
     bnb_full_4y: float,
     recent_6m_mdd: float = -0.10,
     full_4y_mdd: float = -0.14,
+    hit_rate: float = 0.58,
+    win_rate: float = 0.60,
+    sharpe: float = 1.6,
+    worst_day: float = -0.018,
+    n_trades: int = 48,
+    dispersion: float = 0.003,
 ) -> dict[str, object]:
     return {
         "recent_2m": {
@@ -27,10 +33,26 @@ def make_windows(
                 "worst_pair_avg_daily_return": recent_2m,
                 "mean_avg_daily_return": recent_2m + 0.0003,
                 "worst_max_drawdown": recent_6m_mdd,
+                "pair_return_dispersion": dispersion,
+                "positive_pair_count": 2,
             },
             "per_pair": {
-                "BTCUSDT": {"avg_daily_return": recent_2m + 0.0004},
-                "BNBUSDT": {"avg_daily_return": recent_2m},
+                "BTCUSDT": {
+                    "avg_daily_return": recent_2m + 0.0004,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
+                "BNBUSDT": {
+                    "avg_daily_return": recent_2m,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
             },
         },
         "recent_6m": {
@@ -38,10 +60,26 @@ def make_windows(
                 "worst_pair_avg_daily_return": recent_6m,
                 "mean_avg_daily_return": recent_6m + 0.0004,
                 "worst_max_drawdown": recent_6m_mdd,
+                "pair_return_dispersion": dispersion,
+                "positive_pair_count": 2,
             },
             "per_pair": {
-                "BTCUSDT": {"avg_daily_return": recent_6m + 0.0005},
-                "BNBUSDT": {"avg_daily_return": recent_6m},
+                "BTCUSDT": {
+                    "avg_daily_return": recent_6m + 0.0005,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
+                "BNBUSDT": {
+                    "avg_daily_return": recent_6m,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
             },
         },
         "full_4y": {
@@ -49,10 +87,26 @@ def make_windows(
                 "worst_pair_avg_daily_return": full_4y,
                 "mean_avg_daily_return": full_4y_mean,
                 "worst_max_drawdown": full_4y_mdd,
+                "pair_return_dispersion": dispersion,
+                "positive_pair_count": 2,
             },
             "per_pair": {
-                "BTCUSDT": {"avg_daily_return": full_4y_mean},
-                "BNBUSDT": {"avg_daily_return": bnb_full_4y},
+                "BTCUSDT": {
+                    "avg_daily_return": full_4y_mean,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
+                "BNBUSDT": {
+                    "avg_daily_return": bnb_full_4y,
+                    "daily_target_hit_rate": hit_rate,
+                    "daily_win_rate": win_rate,
+                    "sharpe": sharpe,
+                    "worst_day": worst_day,
+                    "n_trades": n_trades,
+                },
             },
         },
     }
@@ -144,6 +198,46 @@ class PairwiseRepairStressAwareTests(unittest.TestCase):
         self.assertGreater(
             repair_pairwise.stress_aware_fitness(passed),
             repair_pairwise.stress_aware_fitness(failed),
+        )
+
+    def test_fast_validation_proxy_penalizes_fragile_tail_profile(self) -> None:
+        robust = make_windows(
+            recent_2m=0.0069,
+            recent_6m=0.0072,
+            full_4y=0.0063,
+            full_4y_mean=0.0067,
+            bnb_full_4y=0.0062,
+            hit_rate=0.61,
+            win_rate=0.63,
+            sharpe=1.8,
+            worst_day=-0.019,
+            n_trades=40,
+            dispersion=0.0025,
+        )
+        fragile = make_windows(
+            recent_2m=0.0069,
+            recent_6m=0.0072,
+            full_4y=0.0063,
+            full_4y_mean=0.0067,
+            bnb_full_4y=0.0062,
+            full_4y_mdd=-0.27,
+            hit_rate=0.41,
+            win_rate=0.44,
+            sharpe=0.5,
+            worst_day=-0.058,
+            n_trades=180,
+            dispersion=0.0130,
+        )
+
+        self.assertGreater(
+            repair_pairwise.fast_validation_robustness_proxy(
+                robust,
+                target_daily_return=repair_pairwise.TARGET_060_DAILY_RETURN,
+            ),
+            repair_pairwise.fast_validation_robustness_proxy(
+                fragile,
+                target_daily_return=repair_pairwise.TARGET_060_DAILY_RETURN,
+            ),
         )
 
 

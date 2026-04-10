@@ -1,0 +1,59 @@
+{
+  "selected_family": "long_only",
+  "selected_key": "long_only:f5_s14_n1_vw5_tv0.80_rt0.02_bt0.50_gc3.00",
+  "params": {
+    "timeframe": "1d",
+    "lookback_fast": 5,
+    "lookback_slow": 14,
+    "top_n": 1,
+    "vol_window": 5,
+    "target_vol_ann": 0.8,
+    "regime_threshold": 0.02,
+    "breadth_threshold": 0.5,
+    "gross_cap": 3.0,
+    "fee_rate": 0.0004
+  },
+  "source": "target_050_incumbent",
+  "metadata": {
+    "promotion_gate": {
+      "passes_test_positive": true,
+      "passes_oos_positive": true,
+      "passes_oos_mdd": true,
+      "passes_stress_survival": true,
+      "passes_fold_positive_rate": true,
+      "passes_cpcv_positive_rate": true,
+      "passes_cpcv_pass_rate": true,
+      "passed": true
+    },
+    "selection_score": 27.858014784330166,
+    "promotion_score": 142.45341634468622
+  },
+  "selected_score": 27.858014784330166,
+  "summary_path": "/Users/jsa/work/epic_invest/models/core_competition_summary.json",
+  "created_at": "2026-04-10T07:25:55.668063+00:00",
+  "search_config": {
+    "population": 60,
+    "generations": 14,
+    "hof_size": 18,
+    "long_short_pool": 24,
+    "seed": 42,
+    "finalists": 12,
+    "fold_days": 30,
+    "fold_step": 15,
+    "base_slippage": 0.0002,
+    "stress_commission_multipliers": [
+      1.0,
+      1.5,
+      2.0
+    ],
+    "stress_slippage_multipliers": [
+      1.0,
+      1.5,
+      2.0
+    ],
+    "cpcv_blocks": 6,
+    "cpcv_test_blocks": 2,
+    "cpcv_embargo_days": 2,
+    "refresh_cache": false
+  }
+}

@@ -60,7 +60,19 @@ PENDING_CONFIRM_TTL_SECONDS = int(os.getenv("TELEGRAM_CONFIRM_TTL_SECONDS", "120
 MESSAGE_LIMIT = 3500
 TRADER_STATE_STALE_SECONDS = int(os.getenv("TRADER_STATE_STALE_SECONDS", "180"))
 BOT_MAX_WORKERS = max(1, int(os.getenv("TELEGRAM_BOT_MAX_WORKERS", "4")))
-ASYNC_READ_COMMANDS = {"status", "plan", "positions", "protection", "killswitch", "logs", "recent"}
+ASYNC_READ_COMMANDS = {
+    "status",
+    "plan",
+    "positions",
+    "protection",
+    "killswitch",
+    "logs",
+    "recent",
+    "why",
+    "rationale",
+    "reason",
+    "exitplan",
+}
 SNAPSHOT_CACHE_STALE_SECONDS = int(os.getenv("TELEGRAM_SNAPSHOT_CACHE_STALE_SECONDS", "180"))
 STATE_LOCK = threading.Lock()
 COMMAND_EXECUTOR = ThreadPoolExecutor(max_workers=BOT_MAX_WORKERS, thread_name_prefix="telegram-bot")
@@ -232,7 +244,7 @@ def send_chat_action(chat_id: int, action: str = "typing") -> None:
 
 
 def processing_notice(state: dict[str, Any], chat_id: int, command: str) -> str | None:
-    if command in {"status", "plan", "positions", "protection", "killswitch", "logs", "recent"}:
+    if command in ASYNC_READ_COMMANDS:
         return (
             f"/{command} 요청을 받았습니다.\n"
             "지금 상태를 확인하는 중입니다. 결과를 곧 보내드리겠습니다."
@@ -418,6 +430,7 @@ def get_runtime_snapshot() -> dict[str, Any]:
         "snapshot_age_seconds": snapshot_cache_age(cached_snapshot),
         "snapshot_captured_at": cached_snapshot.get("captured_at"),
         "snapshot_ready": bool(cached_snapshot.get("captured_at")),
+        "decision": trader_state.get("latest_decision_snapshot"),
     }
     if cached_snapshot:
         snapshot["equity"] = cached_snapshot.get("equity")
@@ -436,6 +449,158 @@ def get_runtime_snapshot() -> dict[str, Any]:
         snapshot["plan_error"] = "트레이더 캐시가 아직 준비되지 않았습니다."
 
     return snapshot
+
+
+def format_pct(value: Any, signed: bool = True) -> str:
+    if value is None:
+        return "-"
+    number = float(value) * 100.0
+    return f"{number:+.2f}%" if signed else f"{number:.2f}%"
+
+
+def format_price(value: Any) -> str:
+    if value is None:
+        return "-"
+    return f"${float(value):,.4f}"
+
+
+def format_qty(value: Any) -> str:
+    if value is None:
+        return "-"
+    return f"{float(value):+.6f}"
+
+
+def side_label(side: str) -> str:
+    return {"LONG": "롱", "SHORT": "숏"}.get(str(side).upper(), str(side))
+
+
+def protection_summary_lines(protections: list[dict[str, Any]]) -> list[str]:
+    if not protections:
+        return ["  서버측 종료 보호주문은 현재 없습니다."]
+    lines = ["  서버측 종료 보호주문:"]
+    for item in protections[:4]:
+        pair = item.get("pair") or item.get("symbol") or "알 수 없음"
+        stop_price = item.get("stop_price")
+        take_price = item.get("take_price")
+        status = item.get("status")
+        if stop_price is not None or take_price is not None:
+            lines.append(
+                f"    {pair}: 상태={status} | 손절 {format_price(stop_price)} | 익절 {format_price(take_price)}"
+            )
+        else:
+            lines.append(f"    {pair}: 상태={status}")
+    return lines
+
+
+def format_decision(snapshot: dict[str, Any]) -> str:
+    decision = snapshot.get("decision") or {}
+    if not decision:
+        if not snapshot.get("snapshot_ready"):
+            return "진입근거 스냅샷을 준비 중입니다. 첫 동기화가 끝나면 /why 로 확인할 수 있습니다."
+        return "아직 진입근거 스냅샷이 없습니다. 트레이더가 한 번 더 루프를 완료한 뒤 다시 시도하세요."
+
+    lines = ["현재 포지션 설명"]
+    if decision.get("captured_at"):
+        lines.append(f"- 데이터 기준시각: {decision['captured_at']}")
+    lines.append(f"- 세션: {str(decision.get('session_type', '')).upper()}")
+    lines.append(f"- 시장 기준일: {decision.get('market_day')}")
+    lines.append(f"- 적용일: {decision.get('effective_day')}")
+
+    positions = decision.get("positions") or []
+    if positions:
+        lines.append("- 현재 포지션:")
+        for pos in positions:
+            lines.append(
+                f"  {pos.get('pair')}: {side_label(str(pos.get('side')))} {format_qty(pos.get('qty'))} | "
+                f"진입가 {format_price(pos.get('entry_price'))} | 현재가 {format_price(pos.get('mark_price'))}"
+            )
+    else:
+        lines.append("- 현재 포지션: 없음")
+
+    rationale = decision.get("entry_rationale") or {}
+    rationale_mode = rationale.get("mode")
+    exit_plan = decision.get("exit_plan") or {}
+    if rationale_mode == "core":
+        core = rationale.get("core_diagnostics") or {}
+        selected_pairs = rationale.get("selected_pairs") or []
+        lines.append("- 진입근거:")
+        lines.append(
+            f"  코어 세션이며 선택 종목은 {', '.join(selected_pairs) if selected_pairs else '없음'} 입니다."
+        )
+        if core:
+            lines.append(
+                f"  BTC 레짐 {format_pct(core.get('btc_regime'))} / 기준 {format_pct(core.get('regime_threshold'), signed=False)}"
+            )
+            lines.append(
+                f"  breadth {format_pct(core.get('breadth'), signed=False)} / 기준 {format_pct(core.get('breadth_threshold'), signed=False)}"
+            )
+            ranked = core.get("positive_ranked") or []
+            if ranked:
+                ranked_preview = ", ".join(
+                    f"{row.get('pair')} {format_pct(row.get('value'))}"
+                    for row in ranked[:4]
+                )
+                lines.append(f"  양의 모멘텀 순위: {ranked_preview}")
+            if selected_pairs:
+                first_pair = selected_pairs[0]
+                unlevered = ((core.get("unlevered_weights") or {}).get(first_pair))
+                levered = ((core.get("levered_weights") or {}).get(first_pair))
+                selected_vol = ((core.get("selected_vol_ann") or {}).get(first_pair))
+                if unlevered is not None and levered is not None:
+                    lines.append(
+                        f"  목표 비중: 비레버리지 {format_pct(unlevered)} -> 레버리지 적용 {format_pct(levered)}"
+                    )
+                if selected_vol is not None:
+                    lines.append(f"  선택 종목 연환산 변동성: {format_pct(selected_vol, signed=False)}")
+        lines.append("- 종료 조건:")
+        kill_switch = exit_plan.get("kill_switch") or {}
+        if kill_switch.get("trigger_equity") is not None:
+            lines.append(
+                "  코어 킬 스위치: "
+                f"기준 자산 {format_price(kill_switch.get('baseline_equity'))}, "
+                f"임계값 {format_pct(kill_switch.get('threshold_pct'), signed=False)}, "
+                f"트리거 {format_price(kill_switch.get('trigger_equity'))}"
+            )
+        lines.append("  다음 리밸런싱에서 목표 비중이 줄거나 0이 되면 감축 또는 청산합니다.")
+        lines.append("  세션이 OVERLAY 또는 FLAT 으로 바뀌면 코어 포지션을 정리합니다.")
+        lines.extend(protection_summary_lines(exit_plan.get("shutdown_protection") or []))
+        return "\n".join(lines)
+
+    if rationale_mode == "overlay":
+        overlay = rationale.get("overlay_signal") or {}
+        lines.append("- 진입근거:")
+        lines.append("  코어가 비활성이어서 BTC 오버레이 세션을 사용합니다.")
+        lines.append(
+            f"  오버레이 방향 {overlay.get('side')} | 신호 {format_pct(float(overlay.get('signal_pct', 0.0)) / 100.0)}"
+        )
+        lines.append(
+            f"  BTC 1일 수익률 {format_pct(overlay.get('btc_ret1'))} | breadth3 {format_pct(overlay.get('breadth3'), signed=False)}"
+        )
+        lines.append("- 종료 조건:")
+        thresholds = exit_plan.get("thresholds") or {}
+        lines.append(
+            f"  기본 손절 {format_pct(thresholds.get('stop_return'))} | 기본 익절 {format_pct(thresholds.get('target_return'))}"
+        )
+        lines.append(
+            "  트레일링: "
+            f"활성화 {format_pct(thresholds.get('trail_activation_return'))}, "
+            f"바닥 {format_pct(thresholds.get('trail_floor_return'))}, "
+            f"거리 {format_pct(thresholds.get('trail_distance_return'), signed=False)}"
+        )
+        price_levels = exit_plan.get("price_levels") or {}
+        if price_levels:
+            lines.append(
+                "  가격 레벨: "
+                f"손절 {format_price(price_levels.get('stop_price'))}, "
+                f"익절 {format_price(price_levels.get('target_price'))}, "
+                f"트레일 활성화 {format_price(price_levels.get('trail_activation_price'))}"
+            )
+        lines.append("  적용일이 바뀌면 오버레이를 강제 청산합니다.")
+        return "\n".join(lines)
+
+    lines.append("- 진입근거: 현재 세션이 FLAT 이라 새 포지션을 잡지 않습니다.")
+    lines.append("- 종료 조건: 현재 열린 포지션이 없어서 적용되지 않습니다.")
+    return "\n".join(lines)
 
 
 def format_status(snapshot: dict[str, Any]) -> str:
@@ -611,6 +776,7 @@ def build_help_text() -> str:
             "/status - 트레이더/자산/세션 요약",
             "/plan - 오늘의 코어 비중과 오버레이 신호",
             "/positions - 열린 포지션 조회",
+            "/why - 현재 포지션의 진입근거와 종료 조건",
             "/protection - 관리 중인 보호주문 조회",
             "/killswitch - 코어 킬 스위치 상태 조회",
             "/logs - 최근 트레이더 로그",
@@ -719,6 +885,8 @@ def handle_read_command(command: str) -> str:
         return format_plan(snapshot)
     if command == "positions":
         return format_positions(snapshot)
+    if command in {"why", "rationale", "reason", "exitplan"}:
+        return format_decision(snapshot)
     if command == "protection":
         return format_protections(snapshot)
     if command == "killswitch":
@@ -735,7 +903,22 @@ def handle_command(state: dict[str, Any], chat_id: int, text: str) -> str:
     if not command:
         return "지원하지 않는 입력입니다. /help 를 사용하세요."
 
-    if command in {"start", "help", "ping", "status", "plan", "positions", "protection", "killswitch", "logs", "recent"}:
+    if command in {
+        "start",
+        "help",
+        "ping",
+        "status",
+        "plan",
+        "positions",
+        "why",
+        "rationale",
+        "reason",
+        "exitplan",
+        "protection",
+        "killswitch",
+        "logs",
+        "recent",
+    }:
         return handle_read_command(command)
 
     if command == "cancel":

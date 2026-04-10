@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import atexit
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -30,11 +31,20 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
-from backtest_cash_filtered_rotation import build_daily_close, build_target_weights
+from backtest_cash_filtered_rotation import build_daily_close
 from backtest_rotation_target_050 import (
     BEST_CORE_PARAMS,
     BEST_OVERLAY_PARAMS,
     MEAN_TARGET_LEVERAGE,
+)
+from core_strategy_registry import (
+    DEFAULT_CORE_CHAMPION_PATH,
+    LONG_ONLY_FAMILY,
+    LONG_SHORT_FAMILY,
+    ResolvedCoreStrategy,
+    build_core_target_weights,
+    load_core_artifact,
+    resolve_core_strategy,
 )
 from gp_crypto_evolution import (
     COMMISSION_PCT,
@@ -57,6 +67,12 @@ PAIR_TO_MARKET = {
 }
 MARKET_TO_PAIR = {v: k for k, v in PAIR_TO_MARKET.items()}
 STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
+DECISION_LOG_PATH = Path(
+    os.getenv(
+        "TRADER_DECISION_LOG_FILE",
+        str(MODELS_DIR.parent / "logs" / "rotation_target_050_decisions.jsonl"),
+    )
+)
 DEFAULT_EXCHANGE_LEVERAGE = 5
 REBALANCE_NOTIONAL_BAND_USD = float(os.getenv("REBALANCE_NOTIONAL_BAND_USD", "25"))
 CORE_KILL_SWITCH_SIGMA_MULTIPLE = 1.5
@@ -75,6 +91,7 @@ RUNTIME_CONTEXT: dict[str, Any] = {
     "shutdown_requested": False,
     "shutdown_reason": None,
 }
+LIVE_CORE_STRATEGY: ResolvedCoreStrategy | None = None
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_NOTIFICATIONS_ENABLED = os.getenv("TELEGRAM_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {
@@ -122,6 +139,37 @@ def resolve_default_leverage() -> float:
     if explicit:
         return float(explicit)
     return MEAN_TARGET_LEVERAGE
+
+
+def resolve_live_core_strategy() -> ResolvedCoreStrategy:
+    global LIVE_CORE_STRATEGY
+    if LIVE_CORE_STRATEGY is not None:
+        return LIVE_CORE_STRATEGY
+
+    resolved: ResolvedCoreStrategy | None = None
+    artifact_path = DEFAULT_CORE_CHAMPION_PATH
+    if artifact_path.exists():
+        try:
+            resolved = load_core_artifact(artifact_path)
+        except Exception as exc:
+            print(f"[WARN] Failed to load core champion artifact {artifact_path}: {exc}")
+            resolved = None
+
+    if resolved is None or resolved.family not in {LONG_ONLY_FAMILY, LONG_SHORT_FAMILY}:
+        if resolved is not None and resolved.family not in {LONG_ONLY_FAMILY, LONG_SHORT_FAMILY}:
+            print(
+                f"[WARN] Unsupported core family {resolved.family!r} in {artifact_path}; "
+                "falling back to legacy long-only core params."
+            )
+        resolved = resolve_core_strategy(
+            LONG_ONLY_FAMILY,
+            BEST_CORE_PARAMS,
+            key="legacy_best_core_params",
+            source="backtest_rotation_target_050.BEST_CORE_PARAMS",
+        )
+
+    LIVE_CORE_STRATEGY = resolved
+    return resolved
 
 
 def parse_args() -> argparse.Namespace:
@@ -471,6 +519,12 @@ def load_state(path: str | Path) -> dict[str, Any]:
             "overlay_completed_day": None,
             "core_day_state": None,
             "shutdown_protection": [],
+            "latest_decision_snapshot": None,
+            "decision_journal": {
+                "last_fingerprint": None,
+                "last_recorded_at": None,
+                "log_path": str(DECISION_LOG_PATH),
+            },
             "latest_runtime_snapshot": {
                 "captured_at": None,
                 "equity": None,
@@ -508,6 +562,11 @@ def load_state(path: str | Path) -> dict[str, Any]:
     state.setdefault("overlay_completed_day", None)
     state.setdefault("core_day_state", None)
     state.setdefault("shutdown_protection", [])
+    state.setdefault("latest_decision_snapshot", None)
+    state.setdefault("decision_journal", {})
+    state["decision_journal"].setdefault("last_fingerprint", None)
+    state["decision_journal"].setdefault("last_recorded_at", None)
+    state["decision_journal"].setdefault("log_path", str(DECISION_LOG_PATH))
     state.setdefault("latest_runtime_snapshot", {})
     state["latest_runtime_snapshot"].setdefault("captured_at", None)
     state["latest_runtime_snapshot"].setdefault("equity", None)
@@ -543,6 +602,29 @@ def update_runtime_health(state: dict[str, Any], **updates: Any) -> dict[str, An
     for key, value in updates.items():
         runtime_health[key] = value
     return runtime_health
+
+
+def json_ready(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): json_ready(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_ready(v) for v in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def append_jsonl(path: str | Path, payload: Any) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "a") as f:
+        f.write(json.dumps(json_ready(payload), ensure_ascii=False) + "\n")
 
 
 def save_state(path: str | Path, state: dict[str, Any]) -> None:
@@ -593,6 +675,145 @@ def compute_overlay_signal(close: pd.DataFrame, market_day: pd.Timestamp) -> dic
     }
 
 
+def pair_rows(series: pd.Series) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for pair, value in series.items():
+        if not np.isfinite(value):
+            continue
+        rows.append({"pair": str(pair), "value": float(value)})
+    return rows
+
+
+def selected_position_rows(weights: pd.Series) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for pair, weight in weights.items():
+        weight_value = float(weight)
+        if abs(weight_value) <= EPSILON:
+            continue
+        rows.append(
+            {
+                "pair": str(pair),
+                "side": side_label_from_qty(weight_value),
+                "weight": weight_value,
+                "abs_weight": abs(weight_value),
+            }
+        )
+    rows.sort(key=lambda item: (-abs(float(item["weight"])), str(item["pair"])))
+    return rows
+
+
+def build_core_selection_diagnostics(
+    close: pd.DataFrame,
+    market_day: pd.Timestamp,
+    leverage: float,
+    strategy: ResolvedCoreStrategy,
+) -> dict[str, Any]:
+    params = strategy.params
+    ret = close.pct_change()
+    momentum = (
+        0.60 * close.pct_change(params.lookback_fast)
+        + 0.40 * close.pct_change(params.lookback_slow)
+    )
+    realized_vol = ret.rolling(params.vol_window).std() * np.sqrt(365.25)
+    btc_regime = (
+        0.50 * close["BTCUSDT"].pct_change(params.lookback_fast)
+        + 0.50 * close["BTCUSDT"].pct_change(params.lookback_slow)
+    )
+    breadth = (momentum > 0.0).mean(axis=1)
+
+    target_weights = build_core_target_weights(close, strategy)
+    base_core = target_weights.loc[market_day].fillna(0.0).astype("float64")
+    levered_core = base_core * float(leverage)
+
+    ranked = momentum.loc[market_day].dropna().sort_values(ascending=False)
+    positive_ranked = ranked[ranked > 0.0]
+    negative_ranked = ranked[ranked < 0.0].sort_values(ascending=True)
+    if base_core.abs().sum() <= EPSILON:
+        selected_mode = "flat"
+        selected = pd.Series(dtype="float64")
+    elif float(base_core.sum()) >= 0.0:
+        selected_mode = "long"
+        selected = positive_ranked.head(params.top_n)
+    else:
+        selected_mode = "short"
+        selected = negative_ranked.head(params.top_n)
+    selected_vol = realized_vol.loc[market_day, selected.index].replace(0.0, np.nan).dropna()
+    selected = selected.loc[selected_vol.index]
+
+    raw_score = pd.Series(dtype="float64")
+    scale = None
+    if not selected.empty:
+        raw_score = (selected / selected_vol).abs()
+        raw_sum = float(raw_score.sum())
+        if raw_sum > 0.0:
+            weights = raw_score / raw_sum
+            port_vol = float(np.sqrt(np.sum(np.square(weights.to_numpy() * selected_vol.to_numpy()))))
+            if np.isfinite(port_vol) and port_vol > 1e-8:
+                scale = min(
+                    float(params.target_vol_ann) / port_vol,
+                    float(params.gross_cap) / max(float(weights.sum()), 1e-8),
+                )
+
+    btc_regime_value = float(btc_regime.loc[market_day])
+    breadth_value = float(breadth.loc[market_day])
+    selected_positions = selected_position_rows(base_core)
+    selected_pairs = [item["pair"] for item in selected_positions]
+    long_pairs = [item["pair"] for item in selected_positions if item["side"] == "롱"]
+    short_pairs = [item["pair"] for item in selected_positions if item["side"] == "숏"]
+    long_gate = bool(np.isfinite(btc_regime_value) and btc_regime_value > float(getattr(params, "regime_threshold", 0.0)))
+    long_breadth_gate = bool(np.isfinite(breadth_value) and breadth_value >= float(getattr(params, "breadth_threshold", 0.50)))
+    short_regime_threshold = float(getattr(params, "short_regime_threshold", getattr(params, "regime_threshold", 0.0)))
+    short_breadth_threshold = float(getattr(params, "short_breadth_threshold", getattr(params, "breadth_threshold", 0.50)))
+    short_gate = bool(np.isfinite(btc_regime_value) and btc_regime_value <= -short_regime_threshold)
+    short_breadth_gate = bool(np.isfinite(breadth_value) and breadth_value <= short_breadth_threshold)
+    return {
+        "family": strategy.family,
+        "strategy_key": strategy.key,
+        "strategy_source": strategy.source,
+        "market_day": market_day.date().isoformat(),
+        "selected_mode": selected_mode,
+        "lookback_fast": int(params.lookback_fast),
+        "lookback_slow": int(params.lookback_slow),
+        "top_n": int(params.top_n),
+        "regime_threshold": float(getattr(params, "regime_threshold", getattr(params, "long_regime_threshold", 0.0))),
+        "breadth_threshold": float(getattr(params, "breadth_threshold", getattr(params, "long_breadth_threshold", 0.50))),
+        "long_regime_threshold": float(getattr(params, "long_regime_threshold", getattr(params, "regime_threshold", 0.0))),
+        "short_regime_threshold": short_regime_threshold,
+        "long_breadth_threshold": float(getattr(params, "long_breadth_threshold", getattr(params, "breadth_threshold", 0.50))),
+        "short_breadth_threshold": short_breadth_threshold,
+        "passed_regime": long_gate,
+        "passed_breadth": long_breadth_gate,
+        "passed_short_regime": short_gate,
+        "passed_short_breadth": short_breadth_gate,
+        "btc_regime": btc_regime_value,
+        "breadth": breadth_value,
+        "selected_positions": selected_positions,
+        "momentum_ranked": pair_rows(ranked.sort_values(ascending=False)),
+        "positive_ranked": pair_rows(positive_ranked),
+        "negative_ranked": pair_rows(negative_ranked),
+        "selected_pairs": selected_pairs,
+        "long_pairs": long_pairs,
+        "short_pairs": short_pairs,
+        "selected_vol_ann": {str(pair): float(value) for pair, value in selected_vol.items()},
+        "raw_score": {str(pair): float(value) for pair, value in raw_score.items()},
+        "scale": float(scale) if scale is not None else None,
+        "unlevered_weights": {str(pair): float(value) for pair, value in base_core.items()},
+        "levered_weights": {str(pair): float(value) for pair, value in levered_core.items()},
+    }
+
+
+def build_overlay_exit_template() -> dict[str, Any]:
+    risk_pct = abs(DAILY_MAX_LOSS_PCT)
+    return {
+        "reward_multiple": float(BEST_OVERLAY_PARAMS.reward_multiple),
+        "stop_return": float(-risk_pct + 2 * COMMISSION_PCT),
+        "target_return": float(BEST_OVERLAY_PARAMS.reward_multiple * risk_pct + 2 * COMMISSION_PCT),
+        "trail_activation_return": float(BEST_OVERLAY_PARAMS.trail_activation_pct + 2 * COMMISSION_PCT),
+        "trail_distance_return": float(BEST_OVERLAY_PARAMS.trail_distance_pct),
+        "trail_floor_return": float(BEST_OVERLAY_PARAMS.trail_floor_pct + 2 * COMMISSION_PCT),
+    }
+
+
 def load_live_close(recent_days: int = 10) -> tuple[pd.DataFrame, dict[str, float]]:
     df_all = load_all_pairs()
     close_series: dict[str, pd.Series] = {}
@@ -629,6 +850,7 @@ def load_live_close(recent_days: int = 10) -> tuple[pd.DataFrame, dict[str, floa
 
 
 def build_strategy_plan(effective_date: str | None, leverage: float) -> dict[str, Any]:
+    core_strategy = resolve_live_core_strategy()
     try:
         close, latest_prices = load_live_close()
     except Exception:
@@ -644,14 +866,15 @@ def build_strategy_plan(effective_date: str | None, leverage: float) -> dict[str
     if effective_day > market_day + pd.Timedelta(days=1):
         raise ValueError("effective_date cannot be more than one day after the latest available daily close")
 
-    target_weights = build_target_weights(close, BEST_CORE_PARAMS)
+    target_weights = build_core_target_weights(close, core_strategy)
     if market_day not in target_weights.index:
         raise ValueError(f"Missing core weights for {market_day.date()}")
 
     base_core = target_weights.loc[market_day].fillna(0.0).astype("float64")
     core_weights = base_core * float(leverage)
-    core_active = bool(core_weights.sum() > 0.0)
+    core_active = bool(core_weights.abs().sum() > EPSILON)
     overlay = compute_overlay_signal(close, market_day)
+    core_diagnostics = build_core_selection_diagnostics(close, market_day, leverage, core_strategy)
     session_type = "core" if core_active else "overlay" if overlay["signal_pct"] != 0.0 else "flat"
 
     return {
@@ -660,13 +883,18 @@ def build_strategy_plan(effective_date: str | None, leverage: float) -> dict[str
         "market_day": market_day.date().isoformat(),
         "effective_day": effective_day.date().isoformat(),
         "leverage": float(leverage),
-        "core_params": asdict(BEST_CORE_PARAMS),
+        "core_strategy_family": core_strategy.family,
+        "core_strategy_key": core_strategy.key,
+        "core_strategy_source": core_strategy.source,
+        "core_params": asdict(core_strategy.params),
         "overlay_params": asdict(BEST_OVERLAY_PARAMS),
         "session_type": session_type,
         "core_active": core_active,
         "core_weights": {pair: float(core_weights[pair]) for pair in core_weights.index},
         "core_gross_leverage": float(core_weights.abs().sum()),
+        "core_diagnostics": core_diagnostics,
         "overlay": overlay,
+        "overlay_exit_template": build_overlay_exit_template(),
         "latest_prices": latest_prices,
     }
 
@@ -678,6 +906,7 @@ def print_plan(plan: dict[str, Any], equity: float) -> None:
     print(f"Market Day       : {plan['market_day']}")
     print(f"Effective Day    : {plan['effective_day']}")
     print(f"Strategy Leverage: {plan['leverage']:.2f}x")
+    print(f"Core Family      : {plan.get('core_strategy_family', 'long_only')}")
     print(f"Session Type     : {plan['session_type'].upper()}")
     print(f"Equity Basis     : ${equity:,.2f}")
     print(f"Core Gross Lev   : {plan['core_gross_leverage']:.3f}x")
@@ -1109,6 +1338,211 @@ def update_snapshot_from_sync_report(
     return snapshot
 
 
+def price_for_signed_return(entry_price: float, side: str, signed_return: float) -> float:
+    direction = 1.0 if str(side).upper() == "LONG" else -1.0
+    return float(entry_price) * (1.0 + direction * float(signed_return))
+
+
+def normalized_positions_for_journal(positions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for pos in positions:
+        normalized.append(
+            {
+                "pair": pos.get("pair"),
+                "side": pos.get("side"),
+                "qty": round(float(pos.get("qty", 0.0)), 8),
+                "entry_price": round(float(pos.get("entry_price", 0.0)), 8),
+            }
+        )
+    return sorted(normalized, key=lambda item: (str(item.get("pair")), str(item.get("side"))))
+
+
+def build_core_exit_plan(plan: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    day_state = state.get("core_day_state") or {}
+    kill_switch_pct = float(day_state.get("kill_switch_pct", compute_core_kill_switch_pct(plan)))
+    baseline_equity = day_state.get("baseline_equity")
+    trigger_equity = None
+    if baseline_equity not in (None, 0):
+        trigger_equity = float(baseline_equity) * (1.0 - kill_switch_pct)
+    active_pairs = [pair for pair, weight in (plan.get("core_weights") or {}).items() if abs(float(weight)) > EPSILON]
+    return {
+        "mode": "core",
+        "active_pairs": active_pairs,
+        "rebalance_notional_band_usd": float(REBALANCE_NOTIONAL_BAND_USD),
+        "kill_switch": {
+            "effective_day": day_state.get("effective_day") or plan.get("effective_day"),
+            "baseline_equity": float(baseline_equity) if baseline_equity not in (None, 0) else None,
+            "threshold_pct": kill_switch_pct,
+            "trigger_equity": trigger_equity,
+            "triggered": bool(day_state.get("kill_triggered", False)),
+        },
+        "shutdown_protection": state.get("shutdown_protection") or [],
+        "rules": [
+            {
+                "code": "core_target_change",
+                "description": "다음 리밸런싱에서 목표 비중이 줄거나 0이 되면 감축 또는 청산합니다.",
+            },
+            {
+                "code": "session_change",
+                "description": "세션이 overlay 또는 flat 으로 바뀌면 코어 포지션을 정리합니다.",
+            },
+            {
+                "code": "kill_switch",
+                "description": "당일 자산이 킬 스위치 임계값 아래로 내려가면 코어 포지션을 전량 정리합니다.",
+            },
+        ],
+    }
+
+
+def build_overlay_exit_plan(plan: dict[str, Any], state: dict[str, Any], positions: list[dict[str, Any]]) -> dict[str, Any]:
+    overlay_state = state.get("overlay") or {}
+    side = str(overlay_state.get("side") or (plan.get("overlay") or {}).get("side") or "FLAT")
+    entry_price = overlay_state.get("entry_price")
+    if entry_price in (None, 0, 0.0):
+        for pos in positions:
+            if pos.get("pair") == "BTCUSDT":
+                entry_price = pos.get("entry_price")
+                break
+    template = dict(plan.get("overlay_exit_template") or build_overlay_exit_template())
+    price_levels = None
+    if entry_price not in (None, 0, 0.0) and side in {"LONG", "SHORT"}:
+        entry_price_value = float(entry_price)
+        price_levels = {
+            "entry_price": entry_price_value,
+            "stop_price": price_for_signed_return(entry_price_value, side, template["stop_return"]),
+            "target_price": price_for_signed_return(entry_price_value, side, template["target_return"]),
+            "trail_activation_price": price_for_signed_return(entry_price_value, side, template["trail_activation_return"]),
+            "trail_floor_price": price_for_signed_return(entry_price_value, side, template["trail_floor_return"]),
+        }
+    return {
+        "mode": "overlay",
+        "side": side,
+        "thresholds": template,
+        "price_levels": price_levels,
+        "rules": [
+            {
+                "code": "overlay_stop",
+                "description": "기본 손절선에 닿으면 오버레이를 종료합니다.",
+            },
+            {
+                "code": "overlay_target",
+                "description": "목표 수익률에 닿으면 오버레이를 종료합니다.",
+            },
+            {
+                "code": "overlay_trailing",
+                "description": "트레일링이 활성화된 뒤 되밀리면 트레일링 손절로 종료합니다.",
+            },
+            {
+                "code": "overlay_eod",
+                "description": "적용일이 바뀌면 일자 종료 규칙으로 강제 청산합니다.",
+            },
+        ],
+    }
+
+
+def build_flat_exit_plan() -> dict[str, Any]:
+    return {
+        "mode": "flat",
+        "rules": [
+            {
+                "code": "flat",
+                "description": "현재는 포지션이 없으므로 종료 규칙도 비활성입니다.",
+            }
+        ],
+    }
+
+
+def build_entry_rationale(plan: dict[str, Any]) -> dict[str, Any]:
+    if plan["session_type"] == "core":
+        diagnostics = plan.get("core_diagnostics") or {}
+        return {
+            "mode": "core",
+            "family": plan.get("core_strategy_family"),
+            "strategy_key": plan.get("core_strategy_key"),
+            "selected_mode": diagnostics.get("selected_mode"),
+            "selected_pairs": [pair for pair, weight in plan["core_weights"].items() if abs(float(weight)) > EPSILON],
+            "selected_positions": diagnostics.get("selected_positions"),
+            "core_diagnostics": diagnostics,
+        }
+    if plan["session_type"] == "overlay":
+        return {
+            "mode": "overlay",
+            "overlay_signal": plan.get("overlay"),
+            "core_active": bool(plan.get("core_active")),
+        }
+    return {
+        "mode": "flat",
+        "overlay_signal": plan.get("overlay"),
+    }
+
+
+def build_decision_snapshot(state: dict[str, Any]) -> dict[str, Any] | None:
+    runtime_snapshot = state.get("latest_runtime_snapshot") or {}
+    plan = runtime_snapshot.get("plan")
+    if not isinstance(plan, dict):
+        state["latest_decision_snapshot"] = None
+        return None
+
+    positions = list(runtime_snapshot.get("positions") or [])
+    protections = list(runtime_snapshot.get("protections") or [])
+    if plan["session_type"] == "core":
+        exit_plan = build_core_exit_plan(plan, state)
+    elif plan["session_type"] == "overlay":
+        exit_plan = build_overlay_exit_plan(plan, state, positions)
+    else:
+        exit_plan = build_flat_exit_plan()
+
+    decision = {
+        "captured_at": runtime_snapshot.get("captured_at") or utc_now().isoformat(),
+        "effective_day": plan.get("effective_day"),
+        "market_day": plan.get("market_day"),
+        "session_type": plan.get("session_type"),
+        "equity": runtime_snapshot.get("equity"),
+        "positions": positions,
+        "protections": protections,
+        "entry_rationale": build_entry_rationale(plan),
+        "exit_plan": exit_plan,
+    }
+    state["latest_decision_snapshot"] = decision
+    return decision
+
+
+def decision_fingerprint(decision: dict[str, Any]) -> str:
+    stable_payload = {
+        "effective_day": decision.get("effective_day"),
+        "market_day": decision.get("market_day"),
+        "session_type": decision.get("session_type"),
+        "positions": normalized_positions_for_journal(decision.get("positions") or []),
+        "entry_rationale": decision.get("entry_rationale"),
+        "exit_plan": decision.get("exit_plan"),
+    }
+    encoded = json.dumps(json_ready(stable_payload), ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha1(encoded).hexdigest()
+
+
+def refresh_decision_snapshot_and_journal(state: dict[str, Any]) -> dict[str, Any] | None:
+    decision = build_decision_snapshot(state)
+    journal_state = state.setdefault("decision_journal", {})
+    journal_state["log_path"] = str(DECISION_LOG_PATH)
+    if decision is None:
+        return None
+
+    fingerprint = decision_fingerprint(decision)
+    decision["fingerprint"] = fingerprint
+    if fingerprint != journal_state.get("last_fingerprint"):
+        recorded_at = utc_now().isoformat()
+        append_jsonl(
+            DECISION_LOG_PATH,
+            {
+                "recorded_at": recorded_at,
+                **decision,
+            },
+        )
+        journal_state["last_fingerprint"] = fingerprint
+        journal_state["last_recorded_at"] = recorded_at
+    return decision
+
+
 def install_shutdown_protection(
     exchange: ccxt.binanceusdm,
     state: dict[str, Any],
@@ -1512,6 +1946,8 @@ def sync_state_command(args: argparse.Namespace) -> None:
     register_runtime_context(args, state, exchange)
     try:
         sync_report = sync_exchange_state(exchange, state, plan, args.execute)
+        update_snapshot_from_sync_report(state, plan, None, sync_report)
+        refresh_decision_snapshot_and_journal(state)
         save_state(args.state_path, state)
         print(json.dumps(sync_report, indent=2))
         print(f"\nState saved: {args.state_path}")
@@ -1525,6 +1961,7 @@ def shutdown_protect_command(args: argparse.Namespace) -> None:
     register_runtime_context(args, state, exchange)
     try:
         report = install_shutdown_protection(exchange, state, args.execute)
+        refresh_decision_snapshot_and_journal(state)
         save_state(args.state_path, state)
         print(json.dumps(report, indent=2))
         print(f"\nState saved: {args.state_path}")
@@ -1575,6 +2012,13 @@ def close_all_positions_command(args: argparse.Namespace) -> None:
 
         if args.execute:
             clear_strategy_state(state)
+            runtime_snapshot = state.setdefault("latest_runtime_snapshot", {})
+            runtime_snapshot["captured_at"] = utc_now().isoformat()
+            runtime_snapshot["positions"] = []
+            runtime_snapshot["protections"] = []
+            runtime_snapshot["plan"] = None
+            state["latest_decision_snapshot"] = None
+            state.setdefault("decision_journal", {})["log_path"] = str(DECISION_LOG_PATH)
             save_state(args.state_path, state)
 
         print(json.dumps(report, indent=2))
@@ -1765,6 +2209,7 @@ def run_once(args: argparse.Namespace) -> None:
                     notifications.append(note)
 
         update_latest_runtime_snapshot(exchange, state, plan, equity_hint=equity)
+        refresh_decision_snapshot_and_journal(state)
         save_state(args.state_path, state)
         print(f"\nState saved: {args.state_path}")
         if args.execute and notifications:

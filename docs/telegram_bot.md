@@ -39,6 +39,7 @@ Default runtime files:
 - bot pid: `/tmp/epic-invest-telegram-bot.pid`
 - bot state: `/tmp/epic-invest-telegram-bot-state.json`
 - bot audit: `/tmp/epic-invest-telegram-audit.jsonl`
+- trader decision journal: `logs/rotation_target_050_decisions.jsonl`
 
 ## Telegram Commands
 
@@ -50,6 +51,7 @@ Default runtime files:
 - `/status`
 - `/plan`
 - `/positions`
+- `/why`
 - `/protection`
 - `/killswitch`
 - `/logs`
@@ -87,6 +89,8 @@ Cancel pending control commands:
 - `close_pair_position()` uses `reduceOnly` market orders for flattening.
 - `/logs` reads `/tmp/epic-invest-trader.log`.
 - `/recent` reads the bot audit file, not the trader log.
+- `/why` explains the current position thesis and the conditions that would close or reduce it.
+- The trader keeps the latest thesis in `rotation_target_050_live_state.json` and appends decision changes to `logs/rotation_target_050_decisions.jsonl`.
 
 ## 자동 알림
 

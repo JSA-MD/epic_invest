@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from backtest_cash_filtered_rotation import StrategyParams, build_target_weights
+from backtest_cash_filtered_rotation import StrategyParams, build_target_weights, json_ready
 from ga_long_short_rotation import LongShortParams, build_long_short_target_weights
 from gp_crypto_evolution import MODELS_DIR
 
@@ -162,7 +162,7 @@ def save_core_artifact(
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump(payload, f, indent=2)
+        json.dump(json_ready(payload), f, indent=2, allow_nan=False)
     return payload
 
 

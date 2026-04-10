@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import itertools
 import json
+import math
 import random
 from dataclasses import asdict
 from pathlib import Path
+from statistics import NormalDist
 from typing import Any
 
 import numpy as np
@@ -37,9 +40,8 @@ from ga_long_short_rotation import (
     decode_individual,
     load_daily_close,
     mutate_individual,
-    pick_candidate_pool,
-    register_creator_types,
 )
+from market_context import load_market_context_dataset
 from gp_crypto_evolution import (
     INITIAL_CASH,
     MODELS_DIR,
@@ -74,6 +76,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cpcv-blocks", type=int, default=6)
     parser.add_argument("--cpcv-test-blocks", type=int, default=2)
     parser.add_argument("--cpcv-embargo-days", type=int, default=2)
+    parser.add_argument("--corr-window", type=int, default=20)
+    parser.add_argument("--corr-state-min-days", type=int, default=10)
+    parser.add_argument("--neighbor-count", type=int, default=4)
+    parser.add_argument("--refresh-market-context", action="store_true")
     parser.add_argument("--refresh-cache", action="store_true")
     return parser.parse_args()
 
@@ -270,18 +276,268 @@ def validation_score_generic(train_metrics: dict[str, Any], val_metrics: dict[st
     return float(score)
 
 
+def safe_calmar(total_return: float, max_drawdown: float) -> float:
+    drawdown = abs(float(max_drawdown))
+    if drawdown <= 1e-8:
+        return 0.0 if total_return <= 0.0 else 10.0
+    return float(np.clip(float(total_return) / drawdown, -10.0, 10.0))
+
+
+def expected_max_sharpe(trial_count: int) -> float:
+    trials = max(1, int(trial_count))
+    if trials <= 1:
+        return 0.0
+    dist = NormalDist()
+    euler_gamma = 0.5772156649015329
+    a = dist.inv_cdf(1.0 - 1.0 / trials)
+    b = dist.inv_cdf(1.0 - 1.0 / (trials * math.e))
+    return float((1.0 - euler_gamma) * a + euler_gamma * b)
+
+
+def compute_dsr_proxy(period_returns: np.ndarray, *, trial_count: int) -> float:
+    returns = np.asarray(period_returns, dtype="float64")
+    if len(returns) < 2:
+        return 0.0
+    std = float(returns.std(ddof=1))
+    if not np.isfinite(std) or std <= 1e-12:
+        return 0.0
+
+    mean = float(returns.mean())
+    sharpe = mean / std * DAY_FACTOR
+    standardized = (returns - mean) / std
+    skew = float(np.mean(np.power(standardized, 3)))
+    kurtosis = float(np.mean(np.power(standardized, 4)))
+    variance_term = 1.0 - skew * sharpe + ((kurtosis - 1.0) / 4.0) * (sharpe**2)
+    sr_std = math.sqrt(max(variance_term, 1e-8) / max(len(returns) - 1, 1))
+    z_score = (sharpe - expected_max_sharpe(trial_count)) / max(sr_std, 1e-8)
+    return float(np.clip(NormalDist().cdf(z_score), 0.0, 1.0))
+
+
+def build_objective_metrics(candidate: dict[str, Any], *, trial_count: int) -> dict[str, Any]:
+    oos = candidate["oos"]
+    train = candidate["train"]
+    validation = candidate["validation"]
+    test = candidate["test"]
+    oos_daily = np.asarray(oos["daily_metrics"]["daily_returns"], dtype="float64")
+    return {
+        "oos_calmar": safe_calmar(oos["total_return"], oos["max_drawdown"]),
+        "oos_dsr_proxy": compute_dsr_proxy(oos_daily, trial_count=trial_count),
+        "oos_cvar": float(oos["daily_metrics"]["cvar"]),
+        "generalization_gap": float(
+            max(0.0, train["total_return"] - oos["total_return"])
+            + max(0.0, validation["total_return"] - test["total_return"])
+        ),
+        "return_stability_gap": float(abs(test["total_return"] - oos["total_return"])),
+    }
+
+
+def summarize_regime_stats(states: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    included = [row for row in states.values() if row.get("days", 0) > 0]
+    if not included:
+        return {
+            "included_states": 0,
+            "positive_rate": 0.0,
+            "avg_total_return": 0.0,
+            "min_total_return": 0.0,
+        }
+
+    returns = np.asarray([row["total_return"] for row in included], dtype="float64")
+    return {
+        "included_states": int(len(included)),
+        "positive_rate": float(np.mean(returns > 0.0)),
+        "avg_total_return": float(np.mean(returns)),
+        "min_total_return": float(np.min(returns)),
+    }
+
+
+LONG_ONLY_PARAM_FIELDS = (
+    "lookback_fast",
+    "lookback_slow",
+    "top_n",
+    "vol_window",
+    "target_vol_ann",
+    "regime_threshold",
+    "breadth_threshold",
+    "gross_cap",
+)
+LONG_SHORT_PARAM_FIELDS = (
+    "lookback_fast",
+    "lookback_slow",
+    "top_n",
+    "vol_window",
+    "target_vol_ann",
+    "long_regime_threshold",
+    "short_regime_threshold",
+    "long_breadth_threshold",
+    "short_breadth_threshold",
+    "gross_cap",
+    "short_vol_mult",
+)
+
+
+def parameter_fields_for_family(family: str) -> tuple[str, ...]:
+    if family == LONG_ONLY_FAMILY:
+        return LONG_ONLY_PARAM_FIELDS
+    return LONG_SHORT_PARAM_FIELDS
+
+
+def build_parameter_stability(rows: list[dict[str, Any]], *, neighbor_count: int) -> dict[str, dict[str, Any]]:
+    by_family: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_family.setdefault(row["family"], []).append(row)
+
+    stability: dict[str, dict[str, Any]] = {}
+    for family, family_rows in by_family.items():
+        fields = parameter_fields_for_family(family)
+        mins = {field: min(float(item["params"][field]) for item in family_rows) for field in fields}
+        maxs = {field: max(float(item["params"][field]) for item in family_rows) for field in fields}
+
+        def distance(left: dict[str, Any], right: dict[str, Any]) -> float:
+            diffs: list[float] = []
+            for field in fields:
+                scale = max(maxs[field] - mins[field], 1e-8)
+                diffs.append(abs(float(left["params"][field]) - float(right["params"][field])) / scale)
+            return float(np.mean(diffs)) if diffs else 0.0
+
+        for row in family_rows:
+            peers = [peer for peer in family_rows if peer["key"] != row["key"]]
+            if not peers:
+                stability[row["key"]] = {
+                    "neighbor_count": 0,
+                    "neighbor_positive_rate": 0.0,
+                    "neighbor_avg_oos_return": 0.0,
+                    "neighbor_min_oos_return": 0.0,
+                    "neighbor_oos_std": 0.0,
+                    "nearest_distance": 0.0,
+                }
+                continue
+
+            ranked_peers = sorted(((distance(row, peer), peer) for peer in peers), key=lambda item: item[0])
+            chosen = ranked_peers[: max(1, int(neighbor_count))]
+            oos_returns = np.asarray([float(peer["oos"]["total_return"]) for _, peer in chosen], dtype="float64")
+            stability[row["key"]] = {
+                "neighbor_count": int(len(chosen)),
+                "neighbor_positive_rate": float(np.mean(oos_returns > 0.0)),
+                "neighbor_avg_oos_return": float(np.mean(oos_returns)),
+                "neighbor_min_oos_return": float(np.min(oos_returns)),
+                "neighbor_oos_std": float(np.std(oos_returns)),
+                "nearest_distance": float(chosen[0][0]),
+            }
+    return stability
+
+
+PARETO_OBJECTIVES: tuple[tuple[str, bool], ...] = (
+    ("oos_total_return", True),
+    ("oos_dsr_proxy", True),
+    ("cpcv_pass_rate", True),
+    ("stress_survival_rate", True),
+    ("corr_positive_rate", True),
+    ("oos_max_drawdown_abs", False),
+    ("oos_cvar_abs", False),
+)
+
+
+def build_pareto_vector(candidate: dict[str, Any]) -> dict[str, float]:
+    return {
+        "oos_total_return": float(candidate["oos"]["total_return"]),
+        "oos_dsr_proxy": float(candidate["objective_metrics"]["oos_dsr_proxy"]),
+        "cpcv_pass_rate": float(candidate["cpcv"]["pass_rate"]),
+        "stress_survival_rate": float(candidate["stress"]["stress_survival_rate"]),
+        "corr_positive_rate": float(candidate["corr_state_robustness"]["summary"]["positive_rate"]),
+        "oos_max_drawdown_abs": float(abs(candidate["oos"]["max_drawdown"])),
+        "oos_cvar_abs": float(abs(candidate["objective_metrics"]["oos_cvar"])),
+    }
+
+
+def dominates(left: dict[str, Any], right: dict[str, Any], *, eps: float = 1e-12) -> bool:
+    better_or_equal = True
+    strictly_better = False
+    left_vec = left["pareto_vector"]
+    right_vec = right["pareto_vector"]
+    for name, maximize in PARETO_OBJECTIVES:
+        lhs = float(left_vec[name])
+        rhs = float(right_vec[name])
+        if maximize:
+            if lhs + eps < rhs:
+                better_or_equal = False
+                break
+            if lhs > rhs + eps:
+                strictly_better = True
+        else:
+            if lhs > rhs + eps:
+                better_or_equal = False
+                break
+            if lhs + eps < rhs:
+                strictly_better = True
+    return better_or_equal and strictly_better
+
+
+def assign_pareto_metadata(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    remaining = list(rows)
+    fronts: list[list[dict[str, Any]]] = []
+    while remaining:
+        front: list[dict[str, Any]] = []
+        for row in remaining:
+            if not any(dominates(other, row) for other in remaining if other["key"] != row["key"]):
+                front.append(row)
+        fronts.append(front)
+        front_keys = {row["key"] for row in front}
+        remaining = [row for row in remaining if row["key"] not in front_keys]
+
+    metadata: dict[str, dict[str, Any]] = {}
+    for rank, front in enumerate(fronts, start=1):
+        distances = {row["key"]: 0.0 for row in front}
+        if len(front) <= 2:
+            for row in front:
+                distances[row["key"]] = math.inf
+        else:
+            for name, _ in PARETO_OBJECTIVES:
+                ordered = sorted(front, key=lambda row: float(row["pareto_vector"][name]))
+                min_value = float(ordered[0]["pareto_vector"][name])
+                max_value = float(ordered[-1]["pareto_vector"][name])
+                distances[ordered[0]["key"]] = math.inf
+                distances[ordered[-1]["key"]] = math.inf
+                scale = max(max_value - min_value, 1e-8)
+                for idx in range(1, len(ordered) - 1):
+                    if math.isinf(distances[ordered[idx]["key"]]):
+                        continue
+                    prev_value = float(ordered[idx - 1]["pareto_vector"][name])
+                    next_value = float(ordered[idx + 1]["pareto_vector"][name])
+                    distances[ordered[idx]["key"]] += (next_value - prev_value) / scale
+
+        for row in front:
+            crowding_distance = float(distances[row["key"]])
+            metadata[row["key"]] = {
+                "rank": int(rank),
+                "is_nondominated": bool(rank == 1),
+                "crowding_distance": crowding_distance,
+                "crowding_sort_value": float(1e9 if math.isinf(crowding_distance) else crowding_distance),
+            }
+    return metadata
+
+
 def promotion_score(candidate: dict[str, Any]) -> float:
     test = candidate["test"]
     oos = candidate["oos"]
     folds = candidate["fold_robustness"]
     cpcv = candidate["cpcv"]
     stress = candidate["stress"]
+    objective_metrics = candidate["objective_metrics"]
+    regime_summary = candidate["regime_breakdown"]["summary"]
+    corr_summary = candidate["corr_state_robustness"]["summary"]
+    stability = candidate["parameter_stability"]
+    pareto = candidate["pareto"]
     return float(
         candidate["selection_score"]
         + test["total_return"] * 50.0
         + oos["total_return"] * 80.0
         + oos["sharpe"] * 8.0
         - abs(oos["max_drawdown"]) * 60.0
+        + objective_metrics["oos_calmar"] * 10.0
+        + objective_metrics["oos_dsr_proxy"] * 35.0
+        - abs(objective_metrics["oos_cvar"]) * 120.0
+        - objective_metrics["generalization_gap"] * 40.0
+        - objective_metrics["return_stability_gap"] * 18.0
         + folds["fold_positive_rate"] * 10.0
         + folds["fold_avg_return"] * 80.0
         - abs(folds["fold_min_return"]) * 25.0
@@ -290,6 +546,18 @@ def promotion_score(candidate: dict[str, Any]) -> float:
         + cpcv["avg_test_return"] * 80.0
         - abs(cpcv["min_test_return"]) * 18.0
         + stress["stress_survival_rate"] * 20.0
+        + regime_summary["positive_rate"] * 12.0
+        + regime_summary["avg_total_return"] * 40.0
+        - abs(regime_summary["min_total_return"]) * 12.0
+        + corr_summary["positive_rate"] * 14.0
+        + corr_summary["avg_total_return"] * 50.0
+        - abs(corr_summary["min_total_return"]) * 14.0
+        + stability["neighbor_positive_rate"] * 12.0
+        + stability["neighbor_avg_oos_return"] * 60.0
+        - abs(stability["neighbor_min_oos_return"]) * 12.0
+        - stability["neighbor_oos_std"] * 20.0
+        + max(0.0, 5.0 - float(pareto["rank"])) * 6.0
+        + min(float(pareto["crowding_sort_value"]), 10.0) * 0.75
     )
 
 
@@ -315,48 +583,19 @@ def summarize_fold_robustness(
     fold_step: int,
     slippage_rate: float = 0.0,
 ) -> dict[str, Any]:
-    windows = build_day_folds(close.loc[VAL_START:TEST_END].index, fold_days=fold_days, fold_step=fold_step)
-    fold_rows: list[dict[str, Any]] = []
-    for start, end in windows:
-        _, _, metrics = evaluate_target_weights_generic(
-            close,
-            target_weights,
-            start,
-            end,
-            fee_rate=fee_rate,
-            slippage_rate=slippage_rate,
-        )
-        fold_rows.append(
-            {
-                "start": start,
-                "end": end,
-                "total_return": float(metrics["total_return"]),
-                "sharpe": float(metrics["sharpe"]),
-                "max_drawdown": float(metrics["max_drawdown"]),
-                "avg_daily_return": float(metrics["daily_metrics"]["avg_daily_return"]),
-            }
-        )
-
-    if not fold_rows:
-        return {
-            "n_folds": 0,
-            "fold_positive_rate": 0.0,
-            "fold_avg_return": 0.0,
-            "fold_min_return": 0.0,
-            "fold_avg_mdd": 0.0,
-            "folds": [],
-        }
-
-    returns = np.asarray([row["total_return"] for row in fold_rows], dtype="float64")
-    mdds = np.asarray([row["max_drawdown"] for row in fold_rows], dtype="float64")
-    return {
-        "n_folds": int(len(fold_rows)),
-        "fold_positive_rate": float(np.mean(returns > 0.0)),
-        "fold_avg_return": float(np.mean(returns)),
-        "fold_min_return": float(np.min(returns)),
-        "fold_avg_mdd": float(np.mean(mdds)),
-        "folds": fold_rows,
-    }
+    portfolio_frame, _ = compute_portfolio_frame(
+        close,
+        target_weights,
+        VAL_START,
+        TEST_END,
+        fee_rate=fee_rate,
+        slippage_rate=slippage_rate,
+    )
+    return summarize_fold_robustness_from_portfolio_frame(
+        portfolio_frame,
+        fold_days=fold_days,
+        fold_step=fold_step,
+    )
 
 
 def evaluate_stress_profiles(
@@ -506,6 +745,110 @@ def summarize_cpcv_lite(
     }
 
 
+def build_btc_regime_labels(
+    close_slice: pd.DataFrame,
+    *,
+    fast_lookback: int = 5,
+    slow_lookback: int = 14,
+    threshold: float = 0.02,
+) -> pd.Series:
+    btc_fast = close_slice["BTCUSDT"].pct_change(fast_lookback)
+    btc_slow = close_slice["BTCUSDT"].pct_change(slow_lookback)
+    regime = 0.5 * btc_fast + 0.5 * btc_slow
+    labels = pd.Series("sideways", index=close_slice.index)
+    labels.loc[regime >= float(threshold)] = "bull"
+    labels.loc[regime <= -float(threshold)] = "bear"
+    return labels
+
+
+def build_regime_breakdown_from_portfolio_frame(
+    close_slice: pd.DataFrame,
+    portfolio_frame: pd.DataFrame,
+    *,
+    fast_lookback: int = 5,
+    slow_lookback: int = 14,
+    threshold: float = 0.02,
+) -> dict[str, Any]:
+    if close_slice.empty or portfolio_frame.empty:
+        return {
+            "summary": {
+                "included_states": 0,
+                "positive_rate": 0.0,
+                "avg_total_return": 0.0,
+                "min_total_return": 0.0,
+            },
+            "states": {},
+        }
+
+    labels = build_btc_regime_labels(
+        close_slice,
+        fast_lookback=fast_lookback,
+        slow_lookback=slow_lookback,
+        threshold=threshold,
+    )
+    net_ret = portfolio_frame["net_return"]
+    states: dict[str, Any] = {}
+    for name in ("bull", "bear", "sideways"):
+        seg = net_ret.loc[labels == name]
+        if seg.empty:
+            states[name] = {"days": 0, "total_return": 0.0, "avg_daily_return": 0.0, "win_rate": 0.0}
+            continue
+        states[name] = {
+            "days": int(len(seg)),
+            "total_return": float(np.prod(1.0 + seg.to_numpy(dtype="float64")) - 1.0),
+            "avg_daily_return": float(seg.mean()),
+            "win_rate": float((seg > 0.0).mean()),
+        }
+    return {
+        "summary": summarize_regime_stats(states),
+        "states": states,
+    }
+
+
+def summarize_fold_robustness_from_portfolio_frame(
+    portfolio_frame: pd.DataFrame,
+    *,
+    fold_days: int,
+    fold_step: int,
+) -> dict[str, Any]:
+    windows = build_day_folds(pd.DatetimeIndex(portfolio_frame.index), fold_days=fold_days, fold_step=fold_step)
+    fold_rows: list[dict[str, Any]] = []
+    for start, end in windows:
+        fold_frame = portfolio_frame.loc[start:end]
+        _, metrics = summarize_portfolio_frame(fold_frame)
+        fold_rows.append(
+            {
+                "start": start,
+                "end": end,
+                "total_return": float(metrics["total_return"]),
+                "sharpe": float(metrics["sharpe"]),
+                "max_drawdown": float(metrics["max_drawdown"]),
+                "avg_daily_return": float(metrics["daily_metrics"]["avg_daily_return"]),
+            }
+        )
+
+    if not fold_rows:
+        return {
+            "n_folds": 0,
+            "fold_positive_rate": 0.0,
+            "fold_avg_return": 0.0,
+            "fold_min_return": 0.0,
+            "fold_avg_mdd": 0.0,
+            "folds": [],
+        }
+
+    returns = np.asarray([row["total_return"] for row in fold_rows], dtype="float64")
+    mdds = np.asarray([row["max_drawdown"] for row in fold_rows], dtype="float64")
+    return {
+        "n_folds": int(len(fold_rows)),
+        "fold_positive_rate": float(np.mean(returns > 0.0)),
+        "fold_avg_return": float(np.mean(returns)),
+        "fold_min_return": float(np.min(returns)),
+        "fold_avg_mdd": float(np.mean(mdds)),
+        "folds": fold_rows,
+    }
+
+
 def build_regime_breakdown(
     close: pd.DataFrame,
     target_weights: pd.DataFrame,
@@ -523,30 +866,129 @@ def build_regime_breakdown(
         slippage_rate=slippage_rate,
     )
     if work_close.empty or portfolio_frame.empty:
-        return {}
+        return {"summary": summarize_regime_stats({}), "states": {}}
+    return build_regime_breakdown_from_portfolio_frame(work_close, portfolio_frame)
 
-    btc_fast = work_close["BTCUSDT"].pct_change(5)
-    btc_slow = work_close["BTCUSDT"].pct_change(14)
-    regime = 0.5 * btc_fast + 0.5 * btc_slow
-    labels = pd.Series("sideways", index=work_close.index)
-    labels.loc[regime >= 0.02] = "bull"
-    labels.loc[regime <= -0.02] = "bear"
 
-    net_ret = portfolio_frame["net_return"]
-
-    breakdown: dict[str, Any] = {}
-    for name in ("bull", "bear", "sideways"):
-        seg = net_ret.loc[labels == name]
-        if seg.empty:
-            breakdown[name] = {"days": 0, "total_return": 0.0, "avg_daily_return": 0.0, "win_rate": 0.0}
-            continue
-        breakdown[name] = {
-            "days": int(len(seg)),
-            "total_return": float(np.prod(1.0 + seg.to_numpy(dtype="float64")) - 1.0),
-            "avg_daily_return": float(seg.mean()),
-            "win_rate": float((seg > 0.0).mean()),
+def build_corr_state_breakdown(
+    close: pd.DataFrame,
+    market_context_close: pd.DataFrame,
+    portfolio_frame: pd.DataFrame,
+    *,
+    corr_window: int,
+    min_state_days: int,
+) -> dict[str, Any]:
+    work_close = close.loc[VAL_START:TEST_END].copy()
+    if work_close.empty or portfolio_frame.empty:
+        return {
+            "summary": {
+                "included_states": 0,
+                "positive_rate": 0.0,
+                "avg_total_return": 0.0,
+                "min_total_return": 0.0,
+                "corr_window": int(corr_window),
+            },
+            "states": {},
         }
-    return breakdown
+
+    btc_ret = work_close["BTCUSDT"].pct_change()
+    net_ret = portfolio_frame["net_return"]
+    context_frame = market_context_close.loc[VAL_START:TEST_END].copy() if not market_context_close.empty else pd.DataFrame()
+    context_names = list(context_frame.columns) if not context_frame.empty else []
+    use_internal_fallback = not context_names
+
+    if use_internal_fallback:
+        alt_cols = [col for col in work_close.columns if col != "BTCUSDT"]
+        if alt_cols:
+            context_frame = pd.DataFrame({"internal_alt_basket": work_close[alt_cols].mean(axis=1)})
+            context_names = ["internal_alt_basket"]
+
+    if not context_names:
+        return {
+            "summary": {
+                "included_states": 0,
+                "positive_rate": 0.0,
+                "avg_total_return": 0.0,
+                "min_total_return": 0.0,
+                "corr_window": int(corr_window),
+                "contexts_used": [],
+                "source_mode": "missing",
+            },
+            "states": {},
+        }
+
+    states_by_context: dict[str, Any] = {}
+    flat_states: dict[str, Any] = {}
+    for context_name in context_names:
+        context_ret = context_frame[context_name].pct_change()
+        rolling_corr = btc_ret.rolling(int(corr_window)).corr(context_ret).replace([np.inf, -np.inf], np.nan)
+        valid_corr = rolling_corr.dropna()
+        if valid_corr.empty:
+            states_by_context[context_name] = {
+                "summary": {
+                    "included_states": 0,
+                    "positive_rate": 0.0,
+                    "avg_total_return": 0.0,
+                    "min_total_return": 0.0,
+                    "corr_window": int(corr_window),
+                    "low_cut": 0.0,
+                    "high_cut": 0.0,
+                },
+                "states": {},
+            }
+            continue
+
+        low_cut = float(valid_corr.quantile(0.33))
+        high_cut = float(valid_corr.quantile(0.67))
+        labels = pd.Series("mid_corr", index=rolling_corr.index)
+        labels.loc[rolling_corr <= low_cut] = "low_corr"
+        labels.loc[rolling_corr >= high_cut] = "high_corr"
+        labels = labels.reindex(portfolio_frame.index)
+
+        context_states: dict[str, Any] = {}
+        for name in ("low_corr", "mid_corr", "high_corr"):
+            seg = net_ret.loc[labels == name]
+            include = bool(len(seg) >= int(min_state_days))
+            if seg.empty:
+                context_states[name] = {
+                    "days": 0,
+                    "included": False,
+                    "corr_mean": 0.0,
+                    "total_return": 0.0,
+                    "avg_daily_return": 0.0,
+                    "win_rate": 0.0,
+                }
+                continue
+            state_corr = rolling_corr.reindex(seg.index).dropna()
+            context_states[name] = {
+                "days": int(len(seg)),
+                "included": include,
+                "corr_mean": float(state_corr.mean()) if not state_corr.empty else 0.0,
+                "total_return": float(np.prod(1.0 + seg.to_numpy(dtype="float64")) - 1.0),
+                "avg_daily_return": float(seg.mean()),
+                "win_rate": float((seg > 0.0).mean()),
+            }
+            if include:
+                flat_states[f"{context_name}:{name}"] = context_states[name]
+
+        states_by_context[context_name] = {
+            "summary": {
+                **summarize_regime_stats({key: value for key, value in context_states.items() if value.get("included")}),
+                "corr_window": int(corr_window),
+                "low_cut": low_cut,
+                "high_cut": high_cut,
+            },
+            "states": context_states,
+        }
+
+    summary = summarize_regime_stats(flat_states)
+    summary["corr_window"] = int(corr_window)
+    summary["contexts_used"] = list(states_by_context.keys())
+    summary["source_mode"] = "internal_fallback" if use_internal_fallback else "market_context"
+    return {
+        "summary": summary,
+        "states": states_by_context,
+    }
 
 
 def build_long_only_candidates() -> list[ResolvedCoreStrategy]:
@@ -558,6 +1000,93 @@ def build_long_only_candidates() -> list[ResolvedCoreStrategy]:
     for strategy in strategies:
         deduped[strategy.key] = strategy
     return list(deduped.values())
+
+
+def ensure_long_short_nsga_types() -> None:
+    if not hasattr(creator, "SearchCoreLongShortFitnessNSGA"):
+        creator.create(
+            "SearchCoreLongShortFitnessNSGA",
+            base.Fitness,
+            weights=(1.0, 1.0, 1.0, -1.0, -1.0, -1.0),
+        )
+    if not hasattr(creator, "SearchCoreLongShortIndividualNSGA"):
+        creator.create(
+            "SearchCoreLongShortIndividualNSGA",
+            list,
+            fitness=creator.SearchCoreLongShortFitnessNSGA,
+        )
+
+
+def long_short_nsga_objectives(
+    close: pd.DataFrame,
+    portfolio_frame: pd.DataFrame,
+    metrics: dict[str, Any],
+) -> tuple[float, float, float, float, float, float]:
+    folds = summarize_fold_robustness_from_portfolio_frame(
+        portfolio_frame,
+        fold_days=30,
+        fold_step=15,
+    )
+    breakdown = build_regime_breakdown_from_portfolio_frame(
+        close.loc[TRAIN_START:TRAIN_END].copy(),
+        portfolio_frame,
+    )
+    bear_return = float(breakdown["states"].get("bear", {}).get("total_return", 0.0))
+    return (
+        float(metrics["total_return"]),
+        float(folds["fold_positive_rate"]),
+        bear_return,
+        float(abs(metrics["max_drawdown"])),
+        float(abs(metrics["daily_metrics"]["cvar"])),
+        float(metrics["avg_turnover"]),
+    )
+
+
+def long_short_candidate_scalar(metrics: dict[str, Any], portfolio_frame: pd.DataFrame, close: pd.DataFrame) -> float:
+    objectives = long_short_nsga_objectives(close, portfolio_frame, metrics)
+    return float(
+        objectives[0] * 120.0
+        + objectives[1] * 18.0
+        + objectives[2] * 60.0
+        - objectives[3] * 140.0
+        - objectives[4] * 120.0
+        - objectives[5] * 10.0
+    )
+
+
+def pick_long_short_candidate_pool_nsga(
+    population: list[Any],
+    pareto_front: tools.ParetoFront,
+    *,
+    limit: int,
+    metric_cache: dict[str, dict[str, Any]],
+    portfolio_cache: dict[str, pd.DataFrame],
+    close: pd.DataFrame,
+) -> list[ResolvedCoreStrategy]:
+    pareto_keys = {decode_individual(list(ind)).key() for ind in pareto_front}
+    ranked = list(pareto_front) + sorted(
+        population,
+        key=lambda ind: long_short_candidate_scalar(
+            metric_cache[decode_individual(list(ind)).key()],
+            portfolio_cache[decode_individual(list(ind)).key()],
+            close,
+        ),
+        reverse=True,
+    )
+
+    pool: list[ResolvedCoreStrategy] = []
+    seen: set[str] = set()
+    for individual in ranked:
+        params = decode_individual(list(individual))
+        key = params.key()
+        if key in seen:
+            continue
+        seen.add(key)
+        source = "ga_long_short_nsga_pareto" if key in pareto_keys else "ga_long_short_nsga_population"
+        pool.append(resolve_core_strategy(LONG_SHORT_FAMILY, params, source=source))
+        if len(pool) >= limit:
+            break
+    return pool
 
 
 def search_long_short_candidate_pool(
@@ -572,18 +1101,19 @@ def search_long_short_candidate_pool(
 ) -> list[ResolvedCoreStrategy]:
     random.seed(seed)
     np.random.seed(seed)
-    register_creator_types()
+    ensure_long_short_nsga_types()
 
     metric_cache: dict[str, dict[str, Any]] = {}
+    portfolio_cache: dict[str, pd.DataFrame] = {}
     weight_cache: dict[str, pd.DataFrame] = {}
 
-    def evaluate_individual(individual: list[int]) -> tuple[float]:
+    def evaluate_individual(individual: list[int]) -> tuple[float, float, float, float, float, float]:
         params = decode_individual(individual)
         key = params.key()
         if key not in metric_cache:
             if key not in weight_cache:
                 weight_cache[key] = build_long_short_target_weights(close, params)
-            _, _, metrics = evaluate_target_weights_generic(
+            portfolio_frame, _ = compute_portfolio_frame(
                 close,
                 weight_cache[key],
                 TRAIN_START,
@@ -591,28 +1121,40 @@ def search_long_short_candidate_pool(
                 fee_rate=params.fee_rate,
                 slippage_rate=base_slippage,
             )
+            portfolio_cache[key] = portfolio_frame
+            _, metrics = summarize_portfolio_frame(portfolio_frame)
             metric_cache[key] = metrics
-        return (train_score_generic(metric_cache[key]),)
+        return long_short_nsga_objectives(close, portfolio_cache[key], metric_cache[key])
 
     toolbox = base.Toolbox()
-    toolbox.register("individual", tools.initIterate, creator.LongShortIndividual, build_candidate_individual)
+    toolbox.register(
+        "individual",
+        tools.initIterate,
+        creator.SearchCoreLongShortIndividualNSGA,
+        build_candidate_individual,
+    )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     toolbox.register("evaluate", evaluate_individual)
     toolbox.register("mate", tools.cxUniform, indpb=0.5)
     toolbox.register("mutate", mutate_individual, indpb=0.25)
-    toolbox.register("select", tools.selTournament, tournsize=3)
+    toolbox.register("select", tools.selNSGA2)
+    toolbox.register("clone", copy.deepcopy)
 
-    pop = toolbox.population(n=population)
-    hof = tools.HallOfFame(hof_size)
-    for generation in range(generations):
-        invalid = [item for item in pop if not item.fitness.valid]
-        for individual, fitness in zip(invalid, map(toolbox.evaluate, invalid)):
-            individual.fitness.values = fitness
-        hof.update(pop)
-        if generation == generations - 1:
-            break
-        offspring = toolbox.select(pop, len(pop))
-        offspring = list(map(toolbox.clone, offspring))
+    pop_size = int(population)
+    if pop_size % 4 != 0:
+        pop_size += 4 - (pop_size % 4)
+
+    pop = toolbox.population(n=pop_size)
+    invalid = [item for item in pop if not item.fitness.valid]
+    for individual, fitness in zip(invalid, map(toolbox.evaluate, invalid)):
+        individual.fitness.values = fitness
+    pop = toolbox.select(pop, len(pop))
+    pareto = tools.ParetoFront(similar=lambda a, b: decode_individual(list(a)).key() == decode_individual(list(b)).key())
+    pareto.update(pop)
+
+    for generation in range(1, generations + 1):
+        offspring = tools.selTournamentDCD(pop, len(pop))
+        offspring = [toolbox.clone(ind) for ind in offspring]
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
             if random.random() < 0.6:
                 toolbox.mate(child1, child2)
@@ -622,10 +1164,20 @@ def search_long_short_candidate_pool(
             if random.random() < 0.25:
                 toolbox.mutate(mutant)
                 del mutant.fitness.values
-        pop = offspring
+        invalid = [item for item in offspring if not item.fitness.valid]
+        for individual, fitness in zip(invalid, map(toolbox.evaluate, invalid)):
+            individual.fitness.values = fitness
+        pop = toolbox.select(pop + offspring, pop_size)
+        pareto.update(pop)
 
-    params_list = pick_candidate_pool(pop, hof, limit=pool_limit)
-    return [resolve_core_strategy(LONG_SHORT_FAMILY, params, source="ga_long_short_pool") for params in params_list]
+    return pick_long_short_candidate_pool_nsga(
+        pop,
+        pareto,
+        limit=pool_limit,
+        metric_cache=metric_cache,
+        portfolio_cache=portfolio_cache,
+        close=close,
+    )
 
 
 def main() -> None:
@@ -639,6 +1191,13 @@ def main() -> None:
     close, data_sources = load_daily_close(refresh_cache=args.refresh_cache)
     print(f"Daily bars: {len(close)} | Range: {close.index[0].date()} -> {close.index[-1].date()}")
     print(f"Sources: {', '.join(data_sources)}")
+    market_context_close, market_context_status = load_market_context_dataset(
+        refresh=args.refresh_market_context,
+        allow_fetch_on_miss=bool(args.refresh_market_context),
+        target_index=close.index,
+    )
+    context_labels = ", ".join(market_context_status.get("usable_columns", [])) or "none"
+    print(f"Market context: {market_context_status.get('status')} | usable={context_labels}")
 
     long_only_candidates = build_long_only_candidates()
     long_short_candidates = search_long_short_candidate_pool(
@@ -658,6 +1217,7 @@ def main() -> None:
 
     weight_cache: dict[str, pd.DataFrame] = {}
     rows: list[dict[str, Any]] = []
+    trial_count = max(1, len(candidates))
     commission_stress = parse_csv_floats(args.stress_commission_multipliers)
     slippage_stress = parse_csv_floats(args.stress_slippage_multipliers)
 
@@ -717,6 +1277,7 @@ def main() -> None:
         strategy = resolve_core_strategy(row["family"], row["params"], key=row["key"], source=row["source"])
         target_weights = weight_cache[strategy.key]
         fee_rate = float(strategy.params.fee_rate)
+        row["objective_metrics"] = build_objective_metrics(row, trial_count=trial_count)
         portfolio_frame, _ = compute_portfolio_frame(
             close,
             target_weights,
@@ -753,6 +1314,22 @@ def main() -> None:
             fee_rate,
             slippage_rate=args.base_slippage,
         )
+        row["corr_state_robustness"] = build_corr_state_breakdown(
+            close,
+            market_context_close,
+            portfolio_frame,
+            corr_window=args.corr_window,
+            min_state_days=args.corr_state_min_days,
+        )
+
+    parameter_stability = build_parameter_stability(rows, neighbor_count=args.neighbor_count)
+    for row in rows:
+        row["parameter_stability"] = parameter_stability[row["key"]]
+        row["pareto_vector"] = build_pareto_vector(row)
+
+    pareto_metadata = assign_pareto_metadata(rows)
+    for row in rows:
+        row["pareto"] = pareto_metadata[row["key"]]
         row["promotion_gate"] = {
             "passes_test_positive": bool(row["test"]["total_return"] > 0.0),
             "passes_oos_positive": bool(row["oos"]["total_return"] > 0.0),
@@ -768,11 +1345,12 @@ def main() -> None:
     ranked = sorted(
         rows,
         key=lambda row: (
-            1 if row["promotion_gate"]["passed"] else 0,
-            row["promotion_score"],
-            row["selection_score"],
+            0 if row["promotion_gate"]["passed"] else 1,
+            row["pareto"]["rank"],
+            -row["promotion_score"],
+            -row["pareto"]["crowding_sort_value"],
+            -row["selection_score"],
         ),
-        reverse=True,
     )
     finalists_sorted = ranked[: max(1, args.finalists)]
     eligible = [row for row in ranked if row["promotion_gate"]["passed"]]
@@ -787,6 +1365,8 @@ def main() -> None:
             "promotion_gate": selected_row["promotion_gate"],
             "selection_score": selected_row["selection_score"],
             "promotion_score": selected_row["promotion_score"],
+            "objective_metrics": selected_row["objective_metrics"],
+            "pareto": selected_row["pareto"],
         },
     )
 
@@ -798,12 +1378,14 @@ def main() -> None:
             "start": str(close.index[0].date()),
             "end": str(close.index[-1].date()),
             "sources": data_sources,
+            "market_context": market_context_status,
         },
         "search_config": {
             "population": args.population,
             "generations": args.generations,
             "hof_size": args.hof_size,
             "long_short_pool": args.long_short_pool,
+            "long_short_engine": "nsga2",
             "seed": args.seed,
             "finalists": args.finalists,
             "fold_days": args.fold_days,
@@ -814,6 +1396,10 @@ def main() -> None:
             "cpcv_blocks": args.cpcv_blocks,
             "cpcv_test_blocks": args.cpcv_test_blocks,
             "cpcv_embargo_days": args.cpcv_embargo_days,
+            "corr_window": args.corr_window,
+            "corr_state_min_days": args.corr_state_min_days,
+            "neighbor_count": args.neighbor_count,
+            "refresh_market_context": bool(args.refresh_market_context),
             "refresh_cache": bool(args.refresh_cache),
         },
         "candidate_counts": {
@@ -829,6 +1415,8 @@ def main() -> None:
             "selection_score": float(selected_row["selection_score"]),
             "promotion_score": float(selected_row["promotion_score"]),
             "promotion_gate": selected_row["promotion_gate"],
+            "objective_metrics": selected_row["objective_metrics"],
+            "pareto": selected_row["pareto"],
         },
         "finalists": finalists_sorted,
         "artifact_path": str(Path(args.artifact_out)),
@@ -853,7 +1441,9 @@ def main() -> None:
         f"| val={selected_row['validation']['total_return']*100:+.2f}% "
         f"| test={selected_row['test']['total_return']*100:+.2f}% "
         f"| oos={selected_row['oos']['total_return']*100:+.2f}% "
-        f"| stress={selected_row['stress']['stress_survival_rate']:.2f}"
+        f"| stress={selected_row['stress']['stress_survival_rate']:.2f} "
+        f"| dsr={selected_row['objective_metrics']['oos_dsr_proxy']:.2f} "
+        f"| pareto={selected_row['pareto']['rank']}"
     )
     print(f"Summary saved: {summary_path}")
     print(f"Artifact saved: {args.artifact_out}")

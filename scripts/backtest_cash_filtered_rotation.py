@@ -82,6 +82,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def json_ready(obj: Any) -> Any:
+    if isinstance(obj, float):
+        return obj if np.isfinite(obj) else None
     if isinstance(obj, dict):
         return {str(k): json_ready(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -89,7 +91,10 @@ def json_ready(obj: Any) -> Any:
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, np.generic):
-        return obj.item()
+        value = obj.item()
+        if isinstance(value, float):
+            return value if np.isfinite(value) else None
+        return value
     if isinstance(obj, Path):
         return str(obj)
     return obj

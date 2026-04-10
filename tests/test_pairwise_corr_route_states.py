@@ -52,6 +52,55 @@ class PairwiseCorrRouteStateTests(unittest.TestCase):
         self.assertEqual(compressed, base_mapping)
         self.assertEqual(len(pairwise_search.route_state_names(pairwise_search.ROUTE_STATE_MODE_EQUITY_CORR)), 12)
 
+    def test_realistic_score_ignores_recent_2m_noise(self) -> None:
+        base_report = {
+            "windows": {
+                "recent_2m": {
+                    "aggregate": {
+                        "worst_pair_avg_daily_return": 0.0200,
+                        "mean_avg_daily_return": 0.0210,
+                        "worst_max_drawdown": -0.01,
+                        "pair_return_dispersion": 0.0010,
+                    }
+                },
+                "recent_6m": {
+                    "aggregate": {
+                        "worst_pair_avg_daily_return": 0.0064,
+                        "mean_avg_daily_return": 0.0068,
+                        "worst_max_drawdown": -0.11,
+                        "pair_return_dispersion": 0.0020,
+                    }
+                },
+                "full_4y": {
+                    "aggregate": {
+                        "worst_pair_avg_daily_return": 0.0048,
+                        "mean_avg_daily_return": 0.0052,
+                        "worst_max_drawdown": -0.14,
+                        "pair_return_dispersion": 0.0030,
+                    }
+                },
+            }
+        }
+        noisy_recent_report = {
+            "windows": {
+                "recent_2m": {
+                    "aggregate": {
+                        "worst_pair_avg_daily_return": -0.0300,
+                        "mean_avg_daily_return": -0.0280,
+                        "worst_max_drawdown": -0.30,
+                        "pair_return_dispersion": 0.0200,
+                    }
+                },
+                "recent_6m": base_report["windows"]["recent_6m"],
+                "full_4y": base_report["windows"]["full_4y"],
+            }
+        }
+
+        self.assertEqual(
+            pairwise_search.score_realistic_candidate(base_report),
+            pairwise_search.score_realistic_candidate(noisy_recent_report),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

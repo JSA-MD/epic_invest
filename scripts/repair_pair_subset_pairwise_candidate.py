@@ -38,6 +38,16 @@ from validate_pair_subset_summary import build_validation_bundle
 
 
 UTC = timezone.utc
+PAIRWISE_PARETO_OBJECTIVES: tuple[tuple[str, bool], ...] = (
+    ("market_os_fitness", True),
+    ("validation_quality_score", True),
+    ("recent_6m_worst_pair_avg_daily_return", True),
+    ("full_4y_worst_pair_avg_daily_return", True),
+    ("corr_state_robustness", True),
+    ("full_4y_worst_max_drawdown_abs", False),
+    ("false_positive_risk", False),
+    ("turnover_cost", False),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,22 +148,18 @@ def replace_base_state_across_blocks(mapping: list[int], base_slot: int, value: 
 
 def candidate_score(
     windows: dict[str, Any],
-    base_2m: float,
     base_6m: float,
     base_4y: float,
     base_4y_mean: float,
 ) -> float:
-    recent_2m = windows["recent_2m"]
     recent_6m = windows["recent_6m"]
     full_4y = windows["full_4y"]
     score = 0.0
-    score += (float(recent_2m["worst_pair_avg_daily_return"]) - base_2m) * 8.0
-    score += (float(recent_6m["worst_pair_avg_daily_return"]) - base_6m) * 12.0
-    score += (float(full_4y["worst_pair_avg_daily_return"]) - base_4y) * 6.0
-    score += (float(full_4y["mean_avg_daily_return"]) - base_4y_mean) * 6.0
-    score -= abs(float(recent_2m["worst_max_drawdown"])) * 0.35
+    score += (float(recent_6m["worst_pair_avg_daily_return"]) - base_6m) * 14.0
+    score += (float(full_4y["worst_pair_avg_daily_return"]) - base_4y) * 10.0
+    score += (float(full_4y["mean_avg_daily_return"]) - base_4y_mean) * 8.0
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 0.45
-    score -= abs(float(full_4y["worst_max_drawdown"])) * 0.30
+    score -= abs(float(full_4y["worst_max_drawdown"])) * 0.40
     return float(score)
 
 
@@ -164,6 +170,7 @@ def candidate_score_with_validation(item: dict[str, Any]) -> float:
     market_os = validation_engine.get("market_operating_system") or {}
     market_fitness = (market_os.get("fitness") or {}).get("score", 0.0)
     gate = validation_engine.get("gate") or {}
+    pareto = item.get("pareto") or {}
     score += float(market_fitness) * 1.35
     score += float(profile.get("validation_quality_score", 0.0)) * 0.35
     score -= float(profile.get("false_positive_risk", 1.0)) * 0.45
@@ -171,7 +178,95 @@ def candidate_score_with_validation(item: dict[str, Any]) -> float:
         score += 0.20
     if gate.get("passed"):
         score += 0.25
+    if pareto:
+        score += max(0.0, 5.0 - float(pareto.get("rank", 99.0))) * 0.12
+        score += min(float(pareto.get("crowding_sort_value", 0.0)), 10.0) * 0.02
     return float(score)
+
+
+def build_pairwise_pareto_vector(item: dict[str, Any]) -> dict[str, float]:
+    validation_engine = item.get("validation_engine") or {}
+    market_os = validation_engine.get("market_operating_system") or {}
+    profile = validation_engine.get("profile") or {}
+    windows = item["windows"]
+    return {
+        "market_os_fitness": float((market_os.get("fitness") or {}).get("score", 0.0)),
+        "validation_quality_score": float(profile.get("validation_quality_score", 0.0)),
+        "recent_6m_worst_pair_avg_daily_return": float(windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"]),
+        "full_4y_worst_pair_avg_daily_return": float(windows["full_4y"]["aggregate"]["worst_pair_avg_daily_return"]),
+        "corr_state_robustness": float((market_os.get("state_summary") or {}).get("corr_state_robustness", 0.0)),
+        "full_4y_worst_max_drawdown_abs": float(abs(windows["full_4y"]["aggregate"]["worst_max_drawdown"])),
+        "false_positive_risk": float(profile.get("false_positive_risk", 1.0)),
+        "turnover_cost": float((market_os.get("fitness") or {}).get("raw", {}).get("turnover_cost", 0.0)),
+    }
+
+
+def pairwise_dominates(left: dict[str, Any], right: dict[str, Any], *, eps: float = 1e-12) -> bool:
+    better_or_equal = True
+    strictly_better = False
+    left_vec = left["pareto_vector"]
+    right_vec = right["pareto_vector"]
+    for name, maximize in PAIRWISE_PARETO_OBJECTIVES:
+        lhs = float(left_vec[name])
+        rhs = float(right_vec[name])
+        if maximize:
+            if lhs + eps < rhs:
+                better_or_equal = False
+                break
+            if lhs > rhs + eps:
+                strictly_better = True
+        else:
+            if lhs > rhs + eps:
+                better_or_equal = False
+                break
+            if lhs + eps < rhs:
+                strictly_better = True
+    return better_or_equal and strictly_better
+
+
+def assign_pairwise_pareto_metadata(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    remaining = list(rows)
+    fronts: list[list[dict[str, Any]]] = []
+    while remaining:
+        front: list[dict[str, Any]] = []
+        for row in remaining:
+            if not any(pairwise_dominates(other, row) for other in remaining if other["candidate_id"] != row["candidate_id"]):
+                front.append(row)
+        fronts.append(front)
+        front_ids = {row["candidate_id"] for row in front}
+        remaining = [row for row in remaining if row["candidate_id"] not in front_ids]
+
+    metadata: dict[str, dict[str, Any]] = {}
+    for rank, front in enumerate(fronts, start=1):
+        distances = {row["candidate_id"]: 0.0 for row in front}
+        if len(front) <= 2:
+            for row in front:
+                distances[row["candidate_id"]] = float("inf")
+        else:
+            for name, _ in PAIRWISE_PARETO_OBJECTIVES:
+                ordered = sorted(front, key=lambda row: float(row["pareto_vector"][name]))
+                min_value = float(ordered[0]["pareto_vector"][name])
+                max_value = float(ordered[-1]["pareto_vector"][name])
+                distances[ordered[0]["candidate_id"]] = float("inf")
+                distances[ordered[-1]["candidate_id"]] = float("inf")
+                scale = max(max_value - min_value, 1e-8)
+                for idx in range(1, len(ordered) - 1):
+                    candidate_id_value = ordered[idx]["candidate_id"]
+                    if np.isinf(distances[candidate_id_value]):
+                        continue
+                    prev_value = float(ordered[idx - 1]["pareto_vector"][name])
+                    next_value = float(ordered[idx + 1]["pareto_vector"][name])
+                    distances[candidate_id_value] += (next_value - prev_value) / scale
+
+        for row in front:
+            crowding_distance = float(distances[row["candidate_id"]])
+            metadata[row["candidate_id"]] = {
+                "rank": int(rank),
+                "is_nondominated": bool(rank == 1),
+                "crowding_distance": crowding_distance,
+                "crowding_sort_value": float(1e9 if np.isinf(crowding_distance) else crowding_distance),
+            }
+    return metadata
 
 
 def build_candidate_validation_input(
@@ -307,7 +402,6 @@ def main() -> None:
     baseline_summary = json.loads(Path(args.baseline_summary).read_text())
     baseline_configs = baseline_pair_configs(pairs, baseline_summary, route_state_mode)
     base_windows = baseline_summary["selected_candidate"]["windows"]
-    base_2m = float(base_windows["recent_2m"]["aggregate"]["worst_pair_avg_daily_return"])
     base_6m = float(base_windows["recent_6m"]["aggregate"]["worst_pair_avg_daily_return"])
     base_4y = float(base_windows["full_4y"]["aggregate"]["worst_pair_avg_daily_return"])
     base_4y_mean = float(base_windows["full_4y"]["aggregate"]["mean_avg_daily_return"])
@@ -446,7 +540,6 @@ def main() -> None:
                 "windows": windows,
                 "score": candidate_score(
                     {k: v["aggregate"] for k, v in windows.items()},
-                    base_2m,
                     base_6m,
                     base_4y,
                     base_4y_mean,
@@ -583,9 +676,9 @@ def main() -> None:
             continue
         seen.add(key)
         windows = eval_fast(candidate)
-        score = candidate_score(windows, base_2m, base_6m, base_4y, base_4y_mean)
+        score = candidate_score(windows, base_6m, base_4y, base_4y_mean)
         if (
-            windows["recent_2m"]["worst_pair_avg_daily_return"] >= base_2m * 0.97
+            windows["recent_6m"]["worst_pair_avg_daily_return"] >= base_6m * 0.97
             and windows["full_4y"]["mean_avg_daily_return"] >= base_4y_mean * 0.995
         ):
             fast_ranked.append(
@@ -631,7 +724,6 @@ def main() -> None:
                 "windows": windows,
                 "score": candidate_score(
                     {k: v["aggregate"] for k, v in windows.items()},
-                    base_2m,
                     base_6m,
                     base_4y,
                     base_4y_mean,
@@ -649,8 +741,14 @@ def main() -> None:
                     cpcv_test_blocks=args.cpcv_test_blocks,
                     cpcv_embargo_days=args.cpcv_embargo_days,
                 ),
+                "candidate_id": key,
             }
         )
+    for item in realistic_top:
+        item["pareto_vector"] = build_pairwise_pareto_vector(item)
+    pareto_metadata = assign_pairwise_pareto_metadata(realistic_top)
+    for item in realistic_top:
+        item["pareto"] = pareto_metadata[item["candidate_id"]]
     realistic_top.sort(key=candidate_score_with_validation, reverse=True)
     selected = None
     selection_reason = "no_candidates"
@@ -667,6 +765,9 @@ def main() -> None:
         for item in validation_pass_candidates
         if item["validation"]["profiles"]["target_060"]["passed"]
     ]
+    final_oos_audit_pass_count = sum(
+        1 for item in validation_pass_candidates if item["validation"]["profiles"]["final_oos"]["passed"]
+    )
     selected = max(target_060_candidates, key=candidate_score_with_validation) if target_060_candidates else None
     selection_reason = "target_060_plus_validation"
     if selected is None and progressive_candidates:
@@ -709,8 +810,12 @@ def main() -> None:
         "selection": {
             "reason": selection_reason,
             "validation_pass_count": len(validation_pass_candidates),
+            "final_oos_audit_pass_count": final_oos_audit_pass_count,
             "progressive_validation_pass_count": len(progressive_candidates),
             "target_060_validation_pass_count": len(target_060_candidates),
+            "selected_final_oos_passed": bool(
+                selected and selected["validation"]["profiles"]["final_oos"]["passed"]
+            ),
         },
         "realistic_top_candidates": realistic_top,
         "selected_candidate": selected,

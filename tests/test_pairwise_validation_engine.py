@@ -93,6 +93,42 @@ class PairwiseValidationEngineTests(unittest.TestCase):
         )
         self.assertGreater(robust["fitness"]["score"], fragile["fitness"]["score"])
 
+    def test_market_operating_system_keeps_final_oos_as_audit_only(self) -> None:
+        index = pd.date_range("2024-01-01", periods=420, freq="D", tz="UTC")
+        returns = np.concatenate(
+            [
+                np.full(359, 0.0030, dtype="float64"),
+                np.full(61, -0.0020, dtype="float64"),
+            ]
+        )
+        frame = engine.build_return_frame(returns, index)
+        cpcv = engine.summarize_cpcv_lite(frame, n_blocks=6, test_blocks=2, embargo_days=1)
+        market_os = engine.build_market_operating_system(
+            frame,
+            trial_count=8,
+            cpcv=cpcv,
+            pbo_profile={"selection_share": 0.8},
+            state_payload={
+                "route_state_returns": {
+                    "equity_aligned:bull_broad": [0.0030, 0.0031, 0.0032],
+                    "equity_mixed:bull_narrow": [0.0028, 0.0029],
+                    "equity_inverse:bear_broad": [0.0018, 0.0019],
+                },
+                "corr_bucket_returns": {
+                    "equity_aligned": [0.0030, 0.0031],
+                    "equity_mixed": [0.0028, 0.0029],
+                    "equity_inverse": [0.0018, 0.0019],
+                },
+                "total_route_states": 12,
+                "total_corr_buckets": 3,
+            },
+            cost_reference={"mean_cost_ratio": 0.02, "mean_n_trades": 40},
+        )
+
+        self.assertIn("audit", market_os)
+        self.assertFalse(market_os["audit"]["passes_final_oos_total_return"])
+        self.assertNotIn("passes_final_oos_total_return", market_os["gate"])
+
     def test_build_candidate_validation_bundle_includes_gate(self) -> None:
         index = pd.date_range("2025-01-01", periods=120, freq="D", tz="UTC")
         returns_a = np.full(120, 0.0035, dtype="float64")
@@ -133,6 +169,7 @@ class PairwiseValidationEngineTests(unittest.TestCase):
         self.assertIn("market_operating_system", bundle)
         self.assertIn("passes_market_os_fitness", bundle["gate"])
         self.assertIn("final_oos", bundle["market_operating_system"]["stages"])
+        self.assertIn("audit", bundle["market_operating_system"])
 
 
 if __name__ == "__main__":

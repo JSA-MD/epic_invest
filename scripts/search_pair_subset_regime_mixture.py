@@ -968,37 +968,32 @@ def realistic_overlay_replay(
     )
 
 
-def score_candidate(agg_2m: dict[str, Any], agg_6m: dict[str, Any]) -> float:
+def score_candidate(agg_6m: dict[str, Any], agg_4y: dict[str, Any]) -> float:
     score = 0.0
-    score -= agg_6m["mean_avg_daily_return"] * 250000.0
-    score -= agg_2m["mean_avg_daily_return"] * 180000.0
-    score -= agg_6m["worst_pair_avg_daily_return"] * 220000.0
-    score -= agg_2m["worst_pair_avg_daily_return"] * 160000.0
-    score -= agg_6m["mean_total_return"] * 12000.0
+    score -= agg_6m["mean_avg_daily_return"] * 220000.0
+    score -= agg_4y["mean_avg_daily_return"] * 180000.0
+    score -= agg_6m["worst_pair_avg_daily_return"] * 240000.0
+    score -= agg_4y["worst_pair_avg_daily_return"] * 180000.0
+    score -= agg_6m["mean_total_return"] * 10000.0
     score += abs(agg_6m["worst_max_drawdown"]) * 18000.0
-    score += abs(agg_2m["worst_max_drawdown"]) * 15000.0
+    score += abs(agg_4y["worst_max_drawdown"]) * 15000.0
     score += agg_6m["pair_return_dispersion"] * 120000.0
-    score += agg_2m["pair_return_dispersion"] * 100000.0
+    score += agg_4y["pair_return_dispersion"] * 100000.0
     return float(score)
 
 
 def score_realistic_candidate(report: dict[str, Any]) -> float:
-    recent_2m = report["windows"]["recent_2m"]["aggregate"]
     recent_6m = report["windows"]["recent_6m"]["aggregate"]
     full_4y = report["windows"]["full_4y"]["aggregate"]
 
     score = 0.0
-    score += float(recent_2m["worst_pair_avg_daily_return"]) * 420000.0
-    score += float(recent_6m["worst_pair_avg_daily_return"]) * 320000.0
-    score += float(full_4y["worst_pair_avg_daily_return"]) * 240000.0
+    score += float(recent_6m["worst_pair_avg_daily_return"]) * 380000.0
+    score += float(full_4y["worst_pair_avg_daily_return"]) * 280000.0
     score += float(full_4y["mean_avg_daily_return"]) * 180000.0
-    score += float(recent_2m["mean_avg_daily_return"]) * 60000.0
-    score += float(recent_6m["mean_avg_daily_return"]) * 40000.0
-    score -= abs(float(recent_2m["worst_max_drawdown"])) * 18000.0
-    score -= abs(float(recent_6m["worst_max_drawdown"])) * 14000.0
+    score += float(recent_6m["mean_avg_daily_return"]) * 50000.0
+    score -= abs(float(recent_6m["worst_max_drawdown"])) * 18000.0
     score -= abs(float(full_4y["worst_max_drawdown"])) * 9000.0
-    score -= float(recent_2m["pair_return_dispersion"]) * 120000.0
-    score -= float(recent_6m["pair_return_dispersion"]) * 90000.0
+    score -= float(recent_6m["pair_return_dispersion"]) * 120000.0
     score -= float(full_4y["pair_return_dispersion"]) * 60000.0
     return float(score)
 
@@ -1166,7 +1161,7 @@ def main() -> None:
     fast_search_started = perf_counter()
     for route_threshold, mapping in candidate_pool:
         windows = {}
-        for label, start, end in DEFAULT_WINDOWS[:2]:
+        for label, start, end in DEFAULT_WINDOWS[1:]:
             window_data = window_cache[label]
             per_pair = {}
             for pair in pairs:
@@ -1183,9 +1178,9 @@ def main() -> None:
                 )
             windows[label] = aggregate_metrics(per_pair)
 
-        recent_2m = windows["recent_2m"]
         recent_6m = windows["recent_6m"]
-        if recent_2m["positive_pair_count"] < len(pairs) or recent_6m["positive_pair_count"] < len(pairs):
+        full_4y = windows["full_4y"]
+        if recent_6m["positive_pair_count"] < len(pairs) or full_4y["positive_pair_count"] < len(pairs):
             continue
 
         scored.append(
@@ -1194,9 +1189,9 @@ def main() -> None:
                 "mapping_indices": list(mapping),
                 "route_state_mode": route_state_mode,
                 "route_state_names": list(route_state_names(route_state_mode)),
-                "recent_2m": recent_2m,
                 "recent_6m": recent_6m,
-                "score": score_candidate(recent_2m, recent_6m),
+                "full_4y": full_4y,
+                "score": score_candidate(recent_6m, full_4y),
             }
         )
     fast_search_seconds = perf_counter() - fast_search_started
@@ -1252,12 +1247,15 @@ def main() -> None:
         for item in realistic_top
         if item["validation"]["profiles"]["target_060"]["passed"]
     ]
+    final_oos_audit_pass_count = sum(
+        1 for item in realistic_top if item["validation"]["profiles"]["final_oos"]["passed"]
+    )
     fallback_best = max(realistic_top, key=score_realistic_candidate) if realistic_top else None
     selected = max(target_060_candidates, key=score_realistic_candidate) if target_060_candidates else None
-    selection_reason = "target_060_pass"
+    selection_reason = "target_060"
     if selected is None and progressive_candidates:
         selected = max(progressive_candidates, key=score_realistic_candidate)
-        selection_reason = "progressive_pass"
+        selection_reason = "progressive_improvement"
     if selected is None:
         selection_reason = "no_gate_pass"
 
@@ -1292,8 +1290,12 @@ def main() -> None:
         "selection": {
             "reason": selection_reason,
             "target_060_pass_count": len(target_060_candidates),
+            "final_oos_audit_pass_count": final_oos_audit_pass_count,
             "progressive_pass_count": len(progressive_candidates),
             "realistic_top_count": len(realistic_top),
+            "selected_final_oos_passed": bool(
+                selected and selected["validation"]["profiles"]["final_oos"]["passed"]
+            ),
         },
         "route_state": {
             "mode": route_state_mode,

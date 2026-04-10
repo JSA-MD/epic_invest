@@ -20,6 +20,7 @@ from deap import base, creator, tools
 
 from backtest_cash_filtered_rotation import (
     StrategyParams,
+    build_daily_close,
     candidate_params,
     json_ready,
 )
@@ -44,15 +45,18 @@ from ga_long_short_rotation import (
     mutate_individual,
 )
 from market_context import load_market_context_dataset
+import pairwise_validation_engine as pairwise_validation
 from gp_crypto_evolution import (
     INITIAL_CASH,
     MODELS_DIR,
+    PAIRS,
     TEST_END,
     TEST_START,
     TRAIN_END,
     TRAIN_START,
     VAL_END,
     VAL_START,
+    load_all_pairs,
     summarize_monthly_returns,
     summarize_period_returns,
 )
@@ -76,6 +80,25 @@ VALIDATION_THRESHOLDS: dict[str, float] = {
     "false_positive_risk_max": 0.45,
     "validation_quality_score_min": 0.55,
 }
+MARKET_OS_THRESHOLD_KEYS = (
+    "market_os_fitness_min",
+    "corr_state_robustness_min",
+    "regime_coverage_min",
+    "parameter_instability_max",
+)
+MARKET_OS_AUDIT_THRESHOLD_KEYS = (
+    "final_oos_total_return_min",
+    "final_oos_max_drawdown_cap",
+)
+MARKET_OS_VALIDATION_THRESHOLDS = {
+    key: pairwise_validation.VALIDATION_THRESHOLDS[key]
+    for key in MARKET_OS_THRESHOLD_KEYS
+}
+MARKET_OS_AUDIT_THRESHOLDS = {
+    key: pairwise_validation.VALIDATION_THRESHOLDS[key]
+    for key in MARKET_OS_AUDIT_THRESHOLD_KEYS
+}
+MARKET_OS_LOOKBACK_YEARS = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -806,6 +829,80 @@ def assign_pareto_metadata(rows: list[dict[str, Any]]) -> dict[str, dict[str, An
     return metadata
 
 
+def ensure_final_selection_nsga_types() -> None:
+    if not hasattr(creator, "SearchCoreFinalSelectionFitnessNSGA2"):
+        creator.create(
+            "SearchCoreFinalSelectionFitnessNSGA2",
+            base.Fitness,
+            weights=tuple(1.0 if maximize else -1.0 for _, maximize in PARETO_OBJECTIVES),
+        )
+    if not hasattr(creator, "SearchCoreFinalSelectionIndividualNSGA2"):
+        creator.create(
+            "SearchCoreFinalSelectionIndividualNSGA2",
+            list,
+            fitness=creator.SearchCoreFinalSelectionFitnessNSGA2,
+        )
+
+
+def final_selection_objectives(row: dict[str, Any]) -> tuple[float, ...]:
+    vector = row["pareto_vector"]
+    return tuple(float(vector[name]) for name, _ in PARETO_OBJECTIVES)
+
+
+def assign_final_selection_nsga2_metadata(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    if not rows:
+        return {}
+
+    ensure_final_selection_nsga_types()
+    row_by_key = {row["key"]: row for row in rows}
+    individuals: list[Any] = []
+    for idx, row in enumerate(rows):
+        individual = creator.SearchCoreFinalSelectionIndividualNSGA2([idx])
+        individual.row_key = row["key"]
+        individual.fitness.values = final_selection_objectives(row)
+        individuals.append(individual)
+
+    nsga_order = {
+        individual.row_key: order
+        for order, individual in enumerate(tools.selNSGA2(individuals, len(individuals)))
+    }
+    fronts = tools.sortNondominated(individuals, len(individuals), first_front_only=False)
+    metadata: dict[str, dict[str, Any]] = {}
+    for rank, front in enumerate(fronts, start=1):
+        tools.emo.assignCrowdingDist(front)
+        for individual in front:
+            row = row_by_key[individual.row_key]
+            crowding_distance = float(getattr(individual.fitness, "crowding_dist", 0.0))
+            metadata[individual.row_key] = {
+                "algorithm": "nsga2",
+                "rank": int(rank),
+                "is_nondominated": bool(rank == 1),
+                "front_size": int(len(front)),
+                "crowding_distance": crowding_distance,
+                "crowding_sort_value": float(1e9 if math.isinf(crowding_distance) else crowding_distance),
+                "selection_order": int(nsga_order.get(individual.row_key, len(individuals))),
+                "objectives": {name: float(row["pareto_vector"][name]) for name, _ in PARETO_OBJECTIVES},
+            }
+    return metadata
+
+
+def rank_candidates_for_selection(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    nsga_metadata = assign_final_selection_nsga2_metadata(rows)
+    for row in rows:
+        row["selection_nsga2"] = nsga_metadata[row["key"]]
+    return sorted(
+        rows,
+        key=lambda row: (
+            0 if row["promotion_gate"]["passed"] else 1,
+            row["selection_nsga2"]["rank"],
+            -row["selection_nsga2"]["crowding_sort_value"],
+            -row["promotion_score"],
+            -row["selection_score"],
+            row["key"],
+        ),
+    )
+
+
 def promotion_score(candidate: dict[str, Any]) -> float:
     test = candidate["test"]
     oos = candidate["oos"]
@@ -818,6 +915,9 @@ def promotion_score(candidate: dict[str, Any]) -> float:
     stability = candidate["parameter_stability"]
     pareto = candidate["pareto"]
     validation_profile = candidate["validation_profile"]
+    market_os = candidate.get("market_operating_system") or {}
+    market_fitness = (market_os.get("fitness") or {})
+    market_raw = market_fitness.get("raw") or {}
     return float(
         candidate["selection_score"]
         + test["total_return"] * 50.0
@@ -853,6 +953,10 @@ def promotion_score(candidate: dict[str, Any]) -> float:
         + stability["neighbor_avg_oos_return"] * 60.0
         - abs(stability["neighbor_min_oos_return"]) * 12.0
         - stability["neighbor_oos_std"] * 20.0
+        + float(market_fitness.get("score", 0.0)) * 28.0
+        + float(market_raw.get("regime_coverage", 0.0)) * 8.0
+        + float(market_raw.get("corr_state_robustness", 0.0)) * 8.0
+        - float(market_raw.get("parameter_instability", 0.0)) * 8.0
         + max(0.0, 5.0 - float(pareto["rank"])) * 6.0
         + min(float(pareto["crowding_sort_value"]), 10.0) * 0.75
     )
@@ -922,6 +1026,11 @@ def build_promotion_gate(candidate: dict[str, Any]) -> dict[str, Any]:
             validation_profile["validation_quality_score"] >= VALIDATION_THRESHOLDS["validation_quality_score_min"]
         ),
     }
+    market_gate = (candidate.get("market_operating_system") or {}).get("gate") or {}
+    for name, passed in market_gate.items():
+        if name in {"failed_checks", "passed"}:
+            continue
+        checks[name] = bool(passed)
     failed_checks = [name for name, passed in checks.items() if not passed]
     return {
         **checks,
@@ -934,13 +1043,14 @@ def build_strategy_validation_context(
     candidate: dict[str, Any],
     candidate_selection_pbo: dict[str, Any],
 ) -> dict[str, Any]:
-    return {
+    context = {
         "promotion_gate": candidate["promotion_gate"],
         "selection_score": float(candidate["selection_score"]),
         "promotion_score": float(candidate["promotion_score"]),
         "objective_metrics": candidate["objective_metrics"],
         "validation_profile": candidate["validation_profile"],
         "cpcv_pbo": candidate["cpcv_pbo"],
+        "selection_nsga2": candidate.get("selection_nsga2"),
         "regime_breakdown_summary": candidate["regime_breakdown"]["summary"],
         "corr_state_summary": candidate["corr_state_robustness"]["summary"],
         "candidate_selection_pbo": {
@@ -950,6 +1060,19 @@ def build_strategy_validation_context(
             "worst_selected_test_percentile": candidate_selection_pbo["worst_selected_test_percentile"],
         },
     }
+    if candidate.get("market_operating_system"):
+        market_os = candidate["market_operating_system"]
+        context["market_operating_system"] = {
+            "stages": market_os["stages"],
+            "state_summary": market_os["state_summary"],
+            "cost_summary": market_os["cost_summary"],
+            "fitness": market_os["fitness"],
+            "gate": market_os["gate"],
+            "audit": market_os.get("audit"),
+        }
+    if candidate.get("market_os_pbo"):
+        context["market_os_pbo"] = candidate["market_os_pbo"]
+    return context
 
 
 def build_day_folds(index: pd.DatetimeIndex, fold_days: int, fold_step: int) -> list[tuple[str, str]]:
@@ -1449,6 +1572,233 @@ def build_corr_state_breakdown(
     }
 
 
+def resolve_market_os_window(close: pd.DataFrame) -> tuple[str, str]:
+    if close.empty:
+        return TRAIN_START, TEST_END
+    end_day = pd.Timestamp(close.index[-1]).normalize()
+    start_day = (end_day - pd.DateOffset(years=MARKET_OS_LOOKBACK_YEARS) + pd.Timedelta(days=1)).normalize()
+    return str(start_day.date()), str(end_day.date())
+
+
+def load_market_os_close(
+    base_close: pd.DataFrame,
+    *,
+    refresh_cache: bool,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    start_day, end_day = resolve_market_os_window(base_close)
+    metadata: dict[str, Any] = {
+        "lookback_years": int(MARKET_OS_LOOKBACK_YEARS),
+        "requested_start": start_day,
+        "requested_end": end_day,
+        "source": "base_search_close",
+        "fallback_used": False,
+        "warning": None,
+    }
+    try:
+        df_all = load_all_pairs(
+            pairs=list(PAIRS),
+            start=start_day,
+            end=end_day,
+            refresh_cache=refresh_cache,
+        )
+        market_close = build_daily_close(df_all)
+        if not market_close.empty:
+            metadata.update(
+                {
+                    "source": "load_all_pairs_daily_close",
+                    "start": str(market_close.index[0].date()),
+                    "end": str(market_close.index[-1].date()),
+                    "n_days": int(len(market_close)),
+                }
+            )
+            if not base_close.empty and market_close.index[0] >= base_close.index[0]:
+                metadata["warning"] = "market_os_cache_did_not_extend_before_search_window"
+            return market_close, metadata
+    except Exception as exc:
+        metadata["warning"] = str(exc)
+
+    fallback = base_close.copy()
+    metadata.update(
+        {
+            "fallback_used": True,
+            "start": None if fallback.empty else str(fallback.index[0].date()),
+            "end": None if fallback.empty else str(fallback.index[-1].date()),
+            "n_days": int(len(fallback)),
+        }
+    )
+    return fallback, metadata
+
+
+def build_market_os_return_frame(portfolio_frame: pd.DataFrame) -> pd.DataFrame:
+    if portfolio_frame.empty or "net_return" not in portfolio_frame:
+        return pd.DataFrame(columns=["net_return"])
+    return pd.DataFrame(
+        {"net_return": portfolio_frame["net_return"].astype("float64")},
+        index=pd.DatetimeIndex(portfolio_frame.index),
+    )
+
+
+def market_profile_thresholds(row: dict[str, Any]) -> dict[str, float | int]:
+    params = row["params"]
+    regime_threshold = float(params.get("regime_threshold", params.get("long_regime_threshold", 0.02)))
+    if row["family"] == LONG_SHORT_FAMILY:
+        regime_threshold = max(
+            abs(float(params.get("long_regime_threshold", regime_threshold))),
+            abs(float(params.get("short_regime_threshold", regime_threshold))),
+        )
+    return {
+        "fast_lookback": int(params.get("lookback_fast", 5)),
+        "slow_lookback": int(params.get("lookback_slow", 14)),
+        "vol_window": int(params.get("vol_window", 5)),
+        "corr_window": 20,
+        "regime_threshold": float(regime_threshold),
+        "breadth_threshold": float(params.get("breadth_threshold", params.get("long_breadth_threshold", 0.50))),
+    }
+
+
+def build_market_os_state_payload(
+    close: pd.DataFrame,
+    market_context_close: pd.DataFrame,
+    portfolio_frame: pd.DataFrame,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    return_frame = build_market_os_return_frame(portfolio_frame)
+    if close.empty or return_frame.empty:
+        return {
+            "route_state_returns": {},
+            "corr_bucket_returns": {},
+            "total_route_states": 4,
+            "total_corr_buckets": 0,
+        }
+
+    index = pd.DatetimeIndex(return_frame.index)
+    work_close = close.reindex(index).dropna(how="all")
+    if work_close.empty:
+        return {
+            "route_state_returns": {},
+            "corr_bucket_returns": {},
+            "total_route_states": 4,
+            "total_corr_buckets": 0,
+        }
+
+    profile_args = market_profile_thresholds(row)
+    context_frame = (
+        market_context_close.loc[str(work_close.index[0].date()): str(work_close.index[-1].date())].copy()
+        if not market_context_close.empty
+        else pd.DataFrame()
+    )
+    market_profile = build_core_market_profile(
+        work_close,
+        context_frame,
+        fast_lookback=int(profile_args["fast_lookback"]),
+        slow_lookback=int(profile_args["slow_lookback"]),
+        vol_window=int(profile_args["vol_window"]),
+        corr_window=int(profile_args["corr_window"]),
+        regime_threshold=float(profile_args["regime_threshold"]),
+        breadth_threshold=float(profile_args["breadth_threshold"]),
+    )
+    route_buckets = market_profile["route_buckets"].reindex(index)
+    net_ret = return_frame["net_return"].reindex(index)
+    corr_profiles = (market_profile["corr_state_profiles"].get("profiles") or {})
+    selected_context = next(iter(corr_profiles.keys()), None)
+    selected_labels = (
+        corr_profiles[selected_context]["labels"].reindex(index)
+        if selected_context is not None
+        else pd.Series(dtype="object")
+    )
+    has_corr_labels = bool(not selected_labels.dropna().empty)
+
+    route_state_returns: dict[str, list[float]] = {}
+    corr_bucket_returns: dict[str, list[float]] = {}
+    if selected_context is None or not has_corr_labels:
+        for day, ret in net_ret.items():
+            route = route_buckets.get(day)
+            if pd.isna(route) or not np.isfinite(float(ret)):
+                continue
+            route_state_returns.setdefault(str(route), []).append(float(ret))
+        return {
+            "route_state_returns": route_state_returns,
+            "corr_bucket_returns": corr_bucket_returns,
+            "total_route_states": 4,
+            "total_corr_buckets": 0,
+            "source_mode": str(market_profile["corr_state_profiles"].get("source_mode", "missing")),
+            "context": None if selected_context is None else str(selected_context),
+        }
+
+    for day, ret in net_ret.items():
+        route = route_buckets.get(day)
+        corr_label = selected_labels.get(day)
+        if pd.isna(route) or corr_label is None or pd.isna(corr_label) or not np.isfinite(float(ret)):
+            continue
+        state_name = f"{selected_context}:{corr_label}:{route}"
+        bucket_name = f"{selected_context}:{corr_label}"
+        route_state_returns.setdefault(state_name, []).append(float(ret))
+        corr_bucket_returns.setdefault(bucket_name, []).append(float(ret))
+
+    return {
+        "route_state_returns": route_state_returns,
+        "corr_bucket_returns": corr_bucket_returns,
+        "total_route_states": 12,
+        "total_corr_buckets": 3,
+        "source_mode": str(market_profile["corr_state_profiles"].get("source_mode", "missing")),
+        "context": str(selected_context),
+    }
+
+
+def build_market_os_cost_reference(
+    portfolio_frame: pd.DataFrame,
+    *,
+    fee_rate: float,
+    slippage_rate: float,
+) -> dict[str, float]:
+    if portfolio_frame.empty or "turnover" not in portfolio_frame:
+        return {"mean_cost_ratio": 0.0, "max_cost_ratio": 0.0, "mean_n_trades": 0.0}
+    turnover = portfolio_frame["turnover"].astype("float64").fillna(0.0).abs()
+    daily_cost = turnover * (float(fee_rate) + float(slippage_rate))
+    net_abs = portfolio_frame["net_return"].astype("float64").fillna(0.0).abs() if "net_return" in portfolio_frame else daily_cost
+    ratio = daily_cost / (net_abs + daily_cost + 1e-12)
+    return {
+        "mean_cost_ratio": float(ratio.mean()) if len(ratio) else 0.0,
+        "max_cost_ratio": float(ratio.max()) if len(ratio) else 0.0,
+        "mean_n_trades": float((turnover > 1e-12).sum()),
+    }
+
+
+def build_core_market_operating_system(
+    close: pd.DataFrame,
+    market_context_close: pd.DataFrame,
+    portfolio_frame: pd.DataFrame,
+    row: dict[str, Any],
+    *,
+    trial_count: int,
+    cpcv_blocks: int,
+    cpcv_test_blocks: int,
+    cpcv_embargo_days: int,
+    pbo_profile: dict[str, Any],
+    fee_rate: float,
+    slippage_rate: float,
+) -> dict[str, Any]:
+    return_frame = build_market_os_return_frame(portfolio_frame)
+    cpcv = pairwise_validation.summarize_cpcv_lite(
+        return_frame,
+        n_blocks=cpcv_blocks,
+        test_blocks=cpcv_test_blocks,
+        embargo_days=cpcv_embargo_days,
+    )
+    return pairwise_validation.build_market_operating_system(
+        return_frame,
+        trial_count=trial_count,
+        cpcv=cpcv,
+        pbo_profile=pbo_profile,
+        state_payload=build_market_os_state_payload(close, market_context_close, portfolio_frame, row),
+        cost_reference=build_market_os_cost_reference(
+            portfolio_frame,
+            fee_rate=fee_rate,
+            slippage_rate=slippage_rate,
+        ),
+    )
+
+
 def build_long_only_candidates() -> list[ResolvedCoreStrategy]:
     strategies = [resolve_core_strategy(LONG_ONLY_FAMILY, params, source="long_only_grid") for params in candidate_params()]
     incumbent = resolve_core_strategy(LONG_ONLY_FAMILY, BEST_CORE_PARAMS, source="target_050_incumbent")
@@ -1649,10 +1999,17 @@ def main() -> None:
     close, data_sources = load_daily_close(refresh_cache=args.refresh_cache)
     print(f"Daily bars: {len(close)} | Range: {close.index[0].date()} -> {close.index[-1].date()}")
     print(f"Sources: {', '.join(data_sources)}")
+    market_os_close, market_os_dataset = load_market_os_close(close, refresh_cache=args.refresh_cache)
+    if not market_os_close.empty:
+        print(
+            "Market OS range: "
+            f"{market_os_close.index[0].date()} -> {market_os_close.index[-1].date()} "
+            f"| days={len(market_os_close)} | source={market_os_dataset['source']}"
+        )
     market_context_close, market_context_status = load_market_context_dataset(
         refresh=args.refresh_market_context,
         allow_fetch_on_miss=bool(args.refresh_market_context),
-        target_index=close.index,
+        target_index=market_os_close.index if not market_os_close.empty else close.index,
     )
     context_labels = ", ".join(market_context_status.get("usable_columns", [])) or "none"
     print(f"Market context: {market_context_status.get('status')} | usable={context_labels}")
@@ -1675,6 +2032,8 @@ def main() -> None:
 
     weight_cache: dict[str, pd.DataFrame] = {}
     portfolio_frames_by_key: dict[str, pd.DataFrame] = {}
+    market_os_portfolio_frames_by_key: dict[str, pd.DataFrame] = {}
+    market_os_return_frames_by_key: dict[str, pd.DataFrame] = {}
     rows: list[dict[str, Any]] = []
     trial_count = max(1, len(candidates))
     commission_stress = parse_csv_floats(args.stress_commission_multipliers)
@@ -1746,6 +2105,20 @@ def main() -> None:
             slippage_rate=args.base_slippage,
         )
         portfolio_frames_by_key[row["key"]] = portfolio_frame
+        if market_os_close.empty:
+            market_os_portfolio_frame = pd.DataFrame()
+        else:
+            market_os_target_weights = build_core_target_weights(market_os_close, strategy)
+            market_os_portfolio_frame, _ = compute_portfolio_frame(
+                market_os_close,
+                market_os_target_weights,
+                str(market_os_close.index[0].date()),
+                str(market_os_close.index[-1].date()),
+                fee_rate=fee_rate,
+                slippage_rate=args.base_slippage,
+            )
+        market_os_portfolio_frames_by_key[row["key"]] = market_os_portfolio_frame
+        market_os_return_frames_by_key[row["key"]] = build_market_os_return_frame(market_os_portfolio_frame)
         row["fold_robustness"] = summarize_fold_robustness(
             close,
             target_weights,
@@ -1788,8 +2161,32 @@ def main() -> None:
         test_blocks=args.cpcv_test_blocks,
         embargo_days=args.cpcv_embargo_days,
     )
+    market_os_pbo = pairwise_validation.summarize_cpcv_candidate_selection_pbo(
+        market_os_return_frames_by_key,
+        n_blocks=args.cpcv_blocks,
+        test_blocks=args.cpcv_test_blocks,
+        embargo_days=args.cpcv_embargo_days,
+    )
     for row in rows:
         row["cpcv_pbo"] = cpcv_pbo["profiles"].get(row["key"], empty_candidate_pbo_profile())
+        row["market_os_pbo"] = market_os_pbo["profiles"].get(
+            row["key"],
+            pairwise_validation.empty_candidate_pbo_profile(),
+        )
+        strategy = resolve_core_strategy(row["family"], row["params"], key=row["key"], source=row["source"])
+        row["market_operating_system"] = build_core_market_operating_system(
+            market_os_close,
+            market_context_close,
+            market_os_portfolio_frames_by_key[row["key"]],
+            row,
+            trial_count=trial_count,
+            cpcv_blocks=args.cpcv_blocks,
+            cpcv_test_blocks=args.cpcv_test_blocks,
+            cpcv_embargo_days=args.cpcv_embargo_days,
+            pbo_profile=row["market_os_pbo"],
+            fee_rate=float(strategy.params.fee_rate),
+            slippage_rate=args.base_slippage,
+        )
         row["validation_profile"] = build_validation_profile(row)
 
     parameter_stability = build_parameter_stability(rows, neighbor_count=args.neighbor_count)
@@ -1805,16 +2202,7 @@ def main() -> None:
 
     rows_by_key = {row["key"]: row for row in rows}
 
-    ranked = sorted(
-        rows,
-        key=lambda row: (
-            0 if row["promotion_gate"]["passed"] else 1,
-            row["pareto"]["rank"],
-            -row["promotion_score"],
-            -row["pareto"]["crowding_sort_value"],
-            -row["selection_score"],
-        ),
-    )
+    ranked = rank_candidates_for_selection(rows)
     finalists_sorted = ranked[: max(1, args.finalists)]
     eligible = [row for row in ranked if row["promotion_gate"]["passed"]]
     selected_row = eligible[0] if eligible else ranked[0]
@@ -1864,6 +2252,7 @@ def main() -> None:
             "end": str(close.index[-1].date()),
             "sources": data_sources,
             "market_context": market_context_status,
+            "market_operating_system": market_os_dataset,
         },
         "search_config": {
             "population": args.population,
@@ -1885,6 +2274,8 @@ def main() -> None:
             "corr_state_min_days": args.corr_state_min_days,
             "neighbor_count": args.neighbor_count,
             "validation_thresholds": VALIDATION_THRESHOLDS,
+            "market_os_thresholds": MARKET_OS_VALIDATION_THRESHOLDS,
+            "market_os_audit_thresholds": MARKET_OS_AUDIT_THRESHOLDS,
             "refresh_market_context": bool(args.refresh_market_context),
             "refresh_cache": bool(args.refresh_cache),
         },
@@ -1899,7 +2290,22 @@ def main() -> None:
                 "pbo": cpcv_pbo["pbo"],
                 "avg_selected_test_percentile": cpcv_pbo["avg_selected_test_percentile"],
                 "worst_selected_test_percentile": cpcv_pbo["worst_selected_test_percentile"],
-            }
+            },
+            "market_os_candidate_selection_pbo": {
+                "n_splits": market_os_pbo["n_splits"],
+                "pbo": market_os_pbo["pbo"],
+                "avg_selected_test_percentile": market_os_pbo["avg_selected_test_percentile"],
+                "worst_selected_test_percentile": market_os_pbo["worst_selected_test_percentile"],
+            },
+            "final_selection": {
+                "algorithm": "nsga2",
+                "objectives": [
+                    {"name": name, "direction": "maximize" if maximize else "minimize"}
+                    for name, maximize in PARETO_OBJECTIVES
+                ],
+                "gate_priority": "passed_promotion_gate_first",
+                "tie_breakers": ["crowding_distance", "promotion_score", "selection_score", "key"],
+            },
         },
         "selected": {
             "family": selected_strategy.family,
@@ -1912,7 +2318,10 @@ def main() -> None:
             "objective_metrics": selected_row["objective_metrics"],
             "validation_profile": selected_row["validation_profile"],
             "cpcv_pbo": selected_row["cpcv_pbo"],
+            "market_os_pbo": selected_row["market_os_pbo"],
+            "market_operating_system": selected_row["market_operating_system"],
             "pareto": selected_row["pareto"],
+            "selection_nsga2": selected_row["selection_nsga2"],
         },
         "promotion_decision": {
             "promoted": promoted,
@@ -1950,8 +2359,9 @@ def main() -> None:
             f"| stress={selected_row['stress']['stress_survival_rate']:.2f} "
             f"| dsr={selected_row['objective_metrics']['oos_dsr_proxy']:.2f} "
             f"| risk={selected_row['validation_profile']['false_positive_risk']:.2f} "
+            f"| mos={selected_row['market_operating_system']['fitness']['score']:.2f} "
             f"| pbo={cpcv_pbo['pbo']:.2f} "
-            f"| pareto={selected_row['pareto']['rank']}"
+            f"| nsga2={selected_row['selection_nsga2']['rank']}"
         )
     else:
         failed = ", ".join(selected_row["promotion_gate"]["failed_checks"]) or "unknown"
@@ -1959,7 +2369,9 @@ def main() -> None:
             f"No promotion: {selected_strategy.family} | {selected_strategy.key} "
             f"| dsr={selected_row['objective_metrics']['oos_dsr_proxy']:.2f} "
             f"| risk={selected_row['validation_profile']['false_positive_risk']:.2f} "
+            f"| mos={selected_row['market_operating_system']['fitness']['score']:.2f} "
             f"| pbo={cpcv_pbo['pbo']:.2f} "
+            f"| nsga2={selected_row['selection_nsga2']['rank']} "
             f"| blocked_by={failed}"
         )
         print(f"Retained champion: {active_strategy.family} | {active_strategy.key}")

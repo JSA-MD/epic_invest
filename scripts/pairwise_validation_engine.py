@@ -652,17 +652,19 @@ def build_market_operating_system(
     cost_summary = summarize_cost_reference(cost_reference)
     median_fold_expectancy = compute_median_fold_expectancy(cpcv)
     parameter_instability = compute_parameter_instability(cpcv, pbo_profile)
+    recent_adaptation = stages["recent_adaptation"]
+    final_oos = stages["final_oos"]
     normalized = {
-        "dsr_oos": float(stages["final_oos"]["dsr_proxy"]),
-        "calmar_oos": normalize_positive_metric(stages["final_oos"]["calmar"], 3.0),
+        "dsr_oos": float(recent_adaptation["dsr_proxy"]),
+        "calmar_oos": normalize_positive_metric(recent_adaptation["calmar"], 3.0),
         "median_fold_expectancy": normalize_positive_metric(median_fold_expectancy, 0.002),
         "regime_coverage": float(state_summary["regime_coverage"]),
         "corr_state_robustness": float(state_summary["corr_state_robustness"]),
         "max_drawdown": normalize_negative_metric(
-            min(float(stages["structure_train"]["max_drawdown"]), float(stages["final_oos"]["max_drawdown"])),
+            min(float(stages["structure_train"]["max_drawdown"]), float(recent_adaptation["max_drawdown"])),
             0.25,
         ),
-        "cvar_95": normalize_negative_metric(min(float(stages["final_oos"]["cvar_95"]), 0.0), 0.03),
+        "cvar_95": normalize_negative_metric(min(float(recent_adaptation["cvar_95"]), 0.0), 0.03),
         "turnover_cost": normalize_negative_metric(cost_summary["mean_cost_ratio"], 0.20),
         "parameter_instability": float(parameter_instability),
     }
@@ -674,25 +676,19 @@ def build_market_operating_system(
         "weights": OPERATING_SYSTEM_FITNESS_WEIGHTS,
         "normalized": normalized,
         "raw": {
-            "dsr_oos": float(stages["final_oos"]["dsr_proxy"]),
-            "calmar_oos": float(stages["final_oos"]["calmar"]),
+            "dsr_oos": float(recent_adaptation["dsr_proxy"]),
+            "calmar_oos": float(recent_adaptation["calmar"]),
             "median_fold_expectancy": float(median_fold_expectancy),
             "regime_coverage": float(state_summary["regime_coverage"]),
             "corr_state_robustness": float(state_summary["corr_state_robustness"]),
-            "max_drawdown": float(min(stages["structure_train"]["max_drawdown"], stages["final_oos"]["max_drawdown"])),
-            "cvar_95": float(stages["final_oos"]["cvar_95"]),
+            "max_drawdown": float(min(stages["structure_train"]["max_drawdown"], recent_adaptation["max_drawdown"])),
+            "cvar_95": float(recent_adaptation["cvar_95"]),
             "turnover_cost": float(cost_summary["mean_cost_ratio"]),
             "parameter_instability": float(parameter_instability),
         },
     }
     gate = {
         "passes_market_os_fitness": bool(fitness["score"] >= VALIDATION_THRESHOLDS["market_os_fitness_min"]),
-        "passes_final_oos_total_return": bool(
-            stages["final_oos"]["total_return"] >= VALIDATION_THRESHOLDS["final_oos_total_return_min"]
-        ),
-        "passes_final_oos_max_drawdown": bool(
-            abs(stages["final_oos"]["max_drawdown"]) <= VALIDATION_THRESHOLDS["final_oos_max_drawdown_cap"]
-        ),
         "passes_corr_state_robustness": bool(
             state_summary["corr_state_robustness"] >= VALIDATION_THRESHOLDS["corr_state_robustness_min"]
         ),
@@ -705,12 +701,23 @@ def build_market_operating_system(
     }
     gate["failed_checks"] = [name for name, passed in gate.items() if name != "failed_checks" and not passed]
     gate["passed"] = bool(not gate["failed_checks"])
+    audit = {
+        "passes_final_oos_total_return": bool(
+            final_oos["total_return"] >= VALIDATION_THRESHOLDS["final_oos_total_return_min"]
+        ),
+        "passes_final_oos_max_drawdown": bool(
+            abs(final_oos["max_drawdown"]) <= VALIDATION_THRESHOLDS["final_oos_max_drawdown_cap"]
+        ),
+    }
+    audit["failed_checks"] = [name for name, passed in audit.items() if name != "failed_checks" and not passed]
+    audit["passed"] = bool(not audit["failed_checks"])
     return {
         "stages": stages,
         "state_summary": state_summary,
         "cost_summary": cost_summary,
         "fitness": fitness,
         "gate": gate,
+        "audit": audit,
     }
 
 

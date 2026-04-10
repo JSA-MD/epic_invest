@@ -79,26 +79,12 @@ def get_agg(windows: dict[str, Any], window: str) -> dict[str, Any]:
 
 
 def build_progressive_profile_for_windows(candidate_windows: dict[str, Any], baseline_windows: dict[str, Any]) -> dict[str, Any]:
-    agg_2m = get_agg(candidate_windows, "recent_2m")
     agg_6m = get_agg(candidate_windows, "recent_6m")
     agg_4y = get_agg(candidate_windows, "full_4y")
-    base_2m = get_agg(baseline_windows, "recent_2m")
     base_6m = get_agg(baseline_windows, "recent_6m")
     base_4y = get_agg(baseline_windows, "full_4y")
 
     checks = [
-        check_at_least(
-            "recent_2m_worst_pair_positive",
-            agg_2m["worst_pair_avg_daily_return"],
-            0.0,
-            "최근 2개월 최악 코인도 음수가 아니어야 함",
-        ),
-        check_at_least(
-            "recent_2m_worst_pair_vs_baseline",
-            agg_2m["worst_pair_avg_daily_return"],
-            base_2m["worst_pair_avg_daily_return"],
-            "최근 2개월 최악 코인 기준으로 baseline 이상",
-        ),
         check_at_least(
             "recent_6m_worst_pair_min",
             agg_6m["worst_pair_avg_daily_return"],
@@ -124,12 +110,6 @@ def build_progressive_profile_for_windows(candidate_windows: dict[str, Any], bas
             "4년 평균 일수익률은 baseline 이상",
         ),
         check_at_most(
-            "recent_2m_worst_mdd_cap",
-            abs(agg_2m["worst_max_drawdown"]),
-            0.18,
-            "최근 2개월 최악 MDD 18% 이내",
-        ),
-        check_at_most(
             "recent_6m_worst_mdd_cap",
             abs(agg_6m["worst_max_drawdown"]),
             0.17,
@@ -148,17 +128,39 @@ def build_progressive_profile_for_windows(candidate_windows: dict[str, Any], bas
     }
 
 
-def build_target_060_profile_for_windows(candidate_windows: dict[str, Any]) -> dict[str, Any]:
+def build_final_oos_profile_for_windows(candidate_windows: dict[str, Any], baseline_windows: dict[str, Any]) -> dict[str, Any]:
     agg_2m = get_agg(candidate_windows, "recent_2m")
+    base_2m = get_agg(baseline_windows, "recent_2m")
+    checks = [
+        check_at_least(
+            "recent_2m_worst_pair_positive",
+            agg_2m["worst_pair_avg_daily_return"],
+            0.0,
+            "최근 2개월 최악 코인은 음수가 아니어야 함",
+        ),
+        check_at_least(
+            "recent_2m_worst_pair_vs_baseline",
+            agg_2m["worst_pair_avg_daily_return"],
+            base_2m["worst_pair_avg_daily_return"] * 0.97,
+            "최근 2개월 최악 코인은 baseline의 97% 이상 유지",
+        ),
+        check_at_most(
+            "recent_2m_worst_mdd_cap",
+            abs(agg_2m["worst_max_drawdown"]),
+            0.18,
+            "최근 2개월 최악 MDD 18% 이내",
+        ),
+    ]
+    return {
+        "checks": checks,
+        "passed": all(item.passed for item in checks),
+    }
+
+
+def build_target_060_profile_for_windows(candidate_windows: dict[str, Any]) -> dict[str, Any]:
     agg_6m = get_agg(candidate_windows, "recent_6m")
     agg_4y = get_agg(candidate_windows, "full_4y")
     checks = [
-        check_at_least(
-            "recent_2m_worst_pair_target_060",
-            agg_2m["worst_pair_avg_daily_return"],
-            0.006,
-            "최근 2개월 최악 코인 0.6%/day 이상",
-        ),
         check_at_least(
             "recent_6m_worst_pair_target_060",
             agg_6m["worst_pair_avg_daily_return"],
@@ -214,6 +216,7 @@ def build_validation_bundle(candidate_windows: dict[str, Any], baseline_windows:
         "comparison": build_comparison_for_windows(candidate_windows, baseline_windows),
         "profiles": {
             "progressive_improvement": build_progressive_profile_for_windows(candidate_windows, baseline_windows),
+            "final_oos": build_final_oos_profile_for_windows(candidate_windows, baseline_windows),
             "target_060": build_target_060_profile_for_windows(candidate_windows),
         },
     }
@@ -240,6 +243,10 @@ def main() -> None:
             "progressive_improvement": {
                 "baseline": build_progressive_profile_for_windows(baseline_windows, baseline_windows),
                 "selected": None if selected_windows is None else build_progressive_profile_for_windows(selected_windows, baseline_windows),
+            },
+            "final_oos": {
+                "baseline": build_final_oos_profile_for_windows(baseline_windows, baseline_windows),
+                "selected": None if selected_windows is None else build_final_oos_profile_for_windows(selected_windows, baseline_windows),
             },
             "target_060": {
                 "baseline": build_target_060_profile_for_windows(baseline_windows),

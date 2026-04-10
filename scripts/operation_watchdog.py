@@ -25,6 +25,7 @@ MODELS_DIR = ROOT_DIR / "models"
 RUNTIME_PROFILE_PATH = MODELS_DIR / "active_runtime_profile.json"
 CORE_STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
 PAIRWISE_STATE_PATH = Path(os.getenv("PAIRWISE_LIVE_STATE_PATH", str(MODELS_DIR / "pairwise_regime_live_state.json")))
+PAIRWISE_SHADOW_STATE_PATH = Path(os.getenv("PAIRWISE_SHADOW_STATE_PATH", str(MODELS_DIR / "pairwise_regime_shadow_state.json")))
 BOT_STATE_PATH = Path(os.getenv("TELEGRAM_BOT_STATE_PATH", "/tmp/epic-invest-telegram-bot-state.json"))
 BOT_PID_PATH = Path(os.getenv("TELEGRAM_BOT_PID_FILE", "/tmp/epic-invest-telegram-bot.pid"))
 CORE_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
@@ -46,6 +47,8 @@ PYTHON_BIN = ROOT_DIR / ".venv" / "bin" / "python"
 CORE_TRADER_SCRIPT = ROOT_DIR / "scripts" / "rotation_target_050_live.py"
 PAIRWISE_TRADER_SCRIPT = ROOT_DIR / "scripts" / "pairwise_regime_live.py"
 PAIRWISE_SERVICE_SCRIPT = ROOT_DIR / "scripts" / "pairwise_live_service.sh"
+PAIRWISE_SHADOW_LOAD_SCRIPT = ROOT_DIR / "pairwise_shadow_launchd_load.sh"
+PAIRWISE_SHADOW_UNLOAD_SCRIPT = ROOT_DIR / "pairwise_shadow_launchd_unload.sh"
 
 UTC = timezone.utc
 DOMAIN = f"gui/{os.getuid()}"
@@ -248,6 +251,10 @@ def read_runtime_profile() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def write_runtime_profile(active_trader: str, mode: str, force_execute: bool, **extra: Any) -> dict[str, Any]:
     payload = {
         "active_trader": str(active_trader),
@@ -276,15 +283,19 @@ def active_trader_profile() -> dict[str, Any]:
     runtime_profile = read_runtime_profile()
     key = resolve_active_trader_key()
     if key == "pairwise":
+        runtime_force_requested = truthy(runtime_profile.get("force_execute"))
+        force_execute = runtime_force_requested and truthy(os.getenv("PAIRWISE_FORCE_EXECUTE"))
         stale_threshold = max(WATCHDOG_TRADER_STALE_SECONDS, PAIRWISE_POLL_SECONDS + WATCHDOG_TRADER_GRACE_SECONDS)
         protect_threshold = max(WATCHDOG_PROTECT_STALE_SECONDS, stale_threshold + WATCHDOG_TRADER_GRACE_SECONDS)
         return {
             "key": "pairwise",
             "state_path": PAIRWISE_STATE_PATH,
+            "shadow_state_path": PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": PAIRWISE_PID_PATH,
             "log_path": PAIRWISE_LOG_PATH,
             "mode": str(runtime_profile.get("mode") or os.getenv("PAIRWISE_LIVE_MODE", os.getenv("BINANCE_MODE", "demo"))),
-            "force_execute": bool(runtime_profile.get("force_execute", False)),
+            "force_execute": force_execute,
+            "runtime_force_execute_requested": runtime_force_requested,
             "stale_threshold_seconds": stale_threshold,
             "protect_threshold_seconds": protect_threshold,
         }
@@ -397,11 +408,40 @@ def evaluate_trader() -> dict[str, Any]:
     consecutive_errors = int(runtime.get("consecutive_errors", 0) or 0)
     last_error_message = runtime.get("last_error_message")
     reasons: list[str] = []
+    shadow_last_progress_at = None
+    shadow_stale_seconds = None
+    shadow_signal_timestamp = None
+    shadow_signal_stale_seconds = None
+
+    if profile["key"] == "pairwise":
+        shadow_state = read_json(profile["shadow_state_path"], {})
+        shadow_runtime = shadow_state.get("runtime_health") or {}
+        shadow_paper = shadow_state.get("shadow_paper") or {}
+        shadow_last_progress_at = latest_signal(
+            [
+                shadow_runtime.get("last_success_at"),
+                shadow_runtime.get("last_loop_started_at"),
+                shadow_runtime.get("last_loop_completed_at"),
+                shadow_state.get("updated_at"),
+            ]
+        )
+        shadow_stale_seconds = age_seconds(shadow_last_progress_at)
+        shadow_signal_timestamp = shadow_paper.get("last_signal_timestamp")
+        shadow_signal_stale_seconds = age_seconds(shadow_signal_timestamp)
 
     if stale_seconds is None:
         reasons.append("no_recent_success_signal")
     elif stale_seconds > float(profile["stale_threshold_seconds"]):
         reasons.append("state_stale")
+    if profile["key"] == "pairwise":
+        if shadow_stale_seconds is None:
+            reasons.append("shadow_state_missing")
+        elif shadow_stale_seconds > float(profile["stale_threshold_seconds"]):
+            reasons.append("shadow_state_stale")
+        if shadow_signal_stale_seconds is None:
+            reasons.append("shadow_signal_missing")
+        elif shadow_signal_stale_seconds > float(profile["stale_threshold_seconds"]):
+            reasons.append("shadow_signal_stale")
     if consecutive_errors >= WATCHDOG_ERROR_ESCALATION_COUNT:
         reasons.append("consecutive_errors")
     if not pid_verified:
@@ -409,6 +449,8 @@ def evaluate_trader() -> dict[str, Any]:
 
     status = "ok"
     if "state_stale" in reasons or "consecutive_errors" in reasons or "no_recent_success_signal" in reasons:
+        status = "critical"
+    if any(reason in reasons for reason in ("shadow_state_stale", "shadow_state_missing", "shadow_signal_stale", "shadow_signal_missing")):
         status = "critical"
 
     return {
@@ -428,6 +470,10 @@ def evaluate_trader() -> dict[str, Any]:
         "consecutive_errors": consecutive_errors,
         "last_error_at": runtime.get("last_error_at"),
         "last_error_message": last_error_message,
+        "shadow_state_updated_at": shadow_last_progress_at,
+        "shadow_stale_seconds": None if shadow_stale_seconds is None else round(shadow_stale_seconds, 1),
+        "shadow_signal_timestamp": shadow_signal_timestamp,
+        "shadow_signal_stale_seconds": None if shadow_signal_stale_seconds is None else round(shadow_signal_stale_seconds, 1),
         "log_age_seconds": file_age_seconds(profile["log_path"]),
         "reasons": reasons,
     }
@@ -513,6 +559,8 @@ def restart_active_trader(profile: dict[str, Any]) -> dict[str, Any]:
     if profile["key"] == "pairwise":
         actions = [
             run_command([str(PAIRWISE_SERVICE_SCRIPT), "stop"], timeout=60),
+            run_command([str(PAIRWISE_SHADOW_UNLOAD_SCRIPT)], timeout=60),
+            run_command([str(PAIRWISE_SHADOW_LOAD_SCRIPT)], timeout=60),
             run_command(
                 [str(PAIRWISE_SERVICE_SCRIPT), "start"],
                 timeout=60,

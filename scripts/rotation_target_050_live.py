@@ -88,6 +88,8 @@ SHUTDOWN_PROTECTION_RISK_PCT = abs(DAILY_MAX_LOSS_PCT)
 SHUTDOWN_PROTECTION_REWARD_MULTIPLE = 2.5
 SHUTDOWN_PROTECTION_WORKING_TYPE = "MARK_PRICE"
 PROTECTION_CLIENT_PREFIX = "epiP"
+PROTECTION_PRICE_REPLACE_BAND = float(os.getenv("PROTECTION_PRICE_REPLACE_BAND", "0.0005"))
+PROTECTION_AMOUNT_REPLACE_BAND = float(os.getenv("PROTECTION_AMOUNT_REPLACE_BAND", "0.0005"))
 UTC = timezone.utc
 EPSILON = 1e-12
 RUNTIME_CONTEXT: dict[str, Any] = {
@@ -515,6 +517,87 @@ def extract_client_order_id(order: dict[str, Any]) -> str:
 def is_managed_protection_order(order: dict[str, Any]) -> bool:
     client_order_id = extract_client_order_id(order)
     return client_order_id.startswith(PROTECTION_CLIENT_PREFIX)
+
+
+def protection_tag_from_order(order: dict[str, Any]) -> str | None:
+    client_order_id = extract_client_order_id(order)
+    if client_order_id.startswith(f"{PROTECTION_CLIENT_PREFIX}SL"):
+        return "SL"
+    if client_order_id.startswith(f"{PROTECTION_CLIENT_PREFIX}TP"):
+        return "TP"
+
+    info = order.get("info", {}) if isinstance(order.get("info"), dict) else {}
+    text = " ".join(
+        str(value)
+        for value in (
+            order.get("type"),
+            info.get("type"),
+            info.get("origType"),
+            info.get("strategyType"),
+        )
+        if value is not None
+    ).upper()
+    if "TAKE" in text:
+        return "TP"
+    if "STOP" in text:
+        return "SL"
+    return None
+
+
+def protection_order_float(order: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    info = order.get("info", {}) if isinstance(order.get("info"), dict) else {}
+    for key in keys:
+        value = order.get(key)
+        if value not in (None, ""):
+            try:
+                parsed = float(value)
+                if parsed > 0.0:
+                    return parsed
+            except (TypeError, ValueError):
+                pass
+        value = info.get(key)
+        if value not in (None, ""):
+            try:
+                parsed = float(value)
+                if parsed > 0.0:
+                    return parsed
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def values_materially_same(actual: float | None, target: float, rel_band: float) -> bool:
+    if actual is None:
+        return False
+    tolerance = max(EPSILON, abs(float(target)) * float(rel_band))
+    return abs(float(actual) - float(target)) <= tolerance
+
+
+def protection_order_matches_desired(order: dict[str, Any], desired: dict[str, Any]) -> bool:
+    if str(order.get("symbol")) != str(desired["symbol"]):
+        return False
+    if str(order.get("side", "")).lower() != str(desired["side"]).lower():
+        return False
+    if protection_tag_from_order(order) != str(desired["tag"]):
+        return False
+
+    amount = protection_order_float(order, ("amount", "origQty", "quantity", "qty"))
+    trigger_price = protection_order_float(
+        order,
+        (
+            "stopPrice",
+            "triggerPrice",
+            "stopLossPrice",
+            "takeProfitPrice",
+            "activationPrice",
+            "price",
+        ),
+    )
+    return values_materially_same(amount, float(desired["amount"]), PROTECTION_AMOUNT_REPLACE_BAND) and values_materially_same(
+        trigger_price,
+        float(desired["stop_price"]),
+        PROTECTION_PRICE_REPLACE_BAND,
+    )
 
 
 def load_state(path: str | Path) -> dict[str, Any]:
@@ -1133,10 +1216,9 @@ def build_shutdown_protection_prices(side: str, reference_price: float) -> tuple
     return stop_price, take_price
 
 
-def place_shutdown_protection_for_position(
+def build_shutdown_protection_plan(
     exchange: ccxt.binanceusdm,
     position: dict[str, Any],
-    execute: bool,
 ) -> dict[str, Any]:
     symbol = str(position["symbol"])
     pair = str(position["pair"])
@@ -1167,40 +1249,88 @@ def place_shutdown_protection_for_position(
         "status": "planned",
         "orders": [],
     }
+    result["desired_orders"] = [
+        {
+            "tag": "SL",
+            "pair": pair,
+            "symbol": symbol,
+            "side": close_side,
+            "amount": amount,
+            "stop_price": stop_price,
+            "param_key": "stopLossPrice",
+        },
+        {
+            "tag": "TP",
+            "pair": pair,
+            "symbol": symbol,
+            "side": close_side,
+            "amount": amount,
+            "stop_price": take_price,
+            "param_key": "takeProfitPrice",
+        },
+    ]
+    return result
+
+
+def place_shutdown_protection_order(
+    exchange: ccxt.binanceusdm,
+    desired: dict[str, Any],
+    execute: bool,
+) -> dict[str, Any]:
+    order_report = {
+        "tag": desired["tag"],
+        "pair": desired["pair"],
+        "symbol": desired["symbol"],
+        "side": desired["side"],
+        "amount": float(desired["amount"]),
+        "stop_price": float(desired["stop_price"]),
+        "status": "planned",
+    }
+    if not execute:
+        return order_report
+
+    params = {
+        desired["param_key"]: float(desired["stop_price"]),
+        "reduceOnly": True,
+        "workingType": SHUTDOWN_PROTECTION_WORKING_TYPE,
+        "clientOrderId": build_exit_client_id(str(desired["tag"]), str(desired["pair"])),
+    }
+    order = exchange.create_order(
+        str(desired["symbol"]),
+        "market",
+        str(desired["side"]),
+        float(desired["amount"]),
+        None,
+        params,
+    )
+    order_report.update(
+        {
+            "id": order.get("id"),
+            "client_order_id": extract_client_order_id(order),
+            "type": order.get("type"),
+            "status": "placed",
+        }
+    )
+    return order_report
+
+
+def place_shutdown_protection_for_position(
+    exchange: ccxt.binanceusdm,
+    position: dict[str, Any],
+    execute: bool,
+) -> dict[str, Any]:
+    result = build_shutdown_protection_plan(exchange, position)
+    if result.get("status") == "skipped":
+        return result
     if not execute:
         return result
 
-    stop_params = {
-        "stopLossPrice": stop_price,
-        "reduceOnly": True,
-        "workingType": SHUTDOWN_PROTECTION_WORKING_TYPE,
-        "clientOrderId": build_exit_client_id("SL", pair),
-    }
-    take_params = {
-        "takeProfitPrice": take_price,
-        "reduceOnly": True,
-        "workingType": SHUTDOWN_PROTECTION_WORKING_TYPE,
-        "clientOrderId": build_exit_client_id("TP", pair),
-    }
-    stop_order = exchange.create_order(symbol, "market", close_side, amount, None, stop_params)
-    take_order = exchange.create_order(symbol, "market", close_side, amount, None, take_params)
-    result["status"] = "placed"
-    result["orders"] = [
-        {
-            "id": stop_order.get("id"),
-            "client_order_id": extract_client_order_id(stop_order),
-            "type": stop_order.get("type"),
-            "side": stop_order.get("side"),
-            "stop_price": stop_price,
-        },
-        {
-            "id": take_order.get("id"),
-            "client_order_id": extract_client_order_id(take_order),
-            "type": take_order.get("type"),
-            "side": take_order.get("side"),
-            "stop_price": take_price,
-        },
+    placed_orders = [
+        place_shutdown_protection_order(exchange, desired, execute=True)
+        for desired in result.get("desired_orders", [])
     ]
+    result["status"] = "placed"
+    result["orders"] = placed_orders
     return result
 
 
@@ -1583,15 +1713,90 @@ def install_shutdown_protection(
 ) -> dict[str, Any]:
     positions = fetch_open_position_map(exchange)
     existing_orders = fetch_strategy_protection_orders(exchange)
-    cancel_actions = cancel_strategy_protection_orders(exchange, existing_orders, execute)
-    installed = [
-        place_shutdown_protection_for_position(exchange, position, execute)
-        for _, position in positions.items()
-    ]
+    installed: list[dict[str, Any]] = []
+    desired_orders: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for _, position in positions.items():
+        plan = build_shutdown_protection_plan(exchange, position)
+        installed.append(plan)
+        if plan.get("status") == "skipped":
+            continue
+        for desired in plan.get("desired_orders", []):
+            desired_orders.append((plan, desired))
+
+    retained_order_ids: set[int] = set()
+    retained_reports_by_plan: dict[int, list[dict[str, Any]]] = {}
+    orders_to_place: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for plan, desired in desired_orders:
+        match: dict[str, Any] | None = None
+        for order in existing_orders:
+            order_identity = id(order)
+            if order_identity in retained_order_ids:
+                continue
+            if protection_order_matches_desired(order, desired):
+                match = order
+                retained_order_ids.add(order_identity)
+                break
+        if match is None:
+            orders_to_place.append((plan, desired))
+            continue
+        retained_reports_by_plan.setdefault(id(plan), []).append(
+            {
+                "tag": desired["tag"],
+                "pair": desired["pair"],
+                "symbol": desired["symbol"],
+                "side": desired["side"],
+                "amount": float(desired["amount"]),
+                "stop_price": float(desired["stop_price"]),
+                "id": match.get("id"),
+                "client_order_id": extract_client_order_id(match),
+                "type": match.get("type"),
+                "status": "retained",
+            }
+        )
+
+    orders_to_cancel = [order for order in existing_orders if id(order) not in retained_order_ids]
+    cancel_actions = cancel_strategy_protection_orders(exchange, orders_to_cancel, execute)
+
+    for plan in installed:
+        if plan.get("status") == "skipped":
+            continue
+        retained_orders = retained_reports_by_plan.get(id(plan), [])
+        planned_orders = [
+            {
+                "tag": desired["tag"],
+                "pair": desired["pair"],
+                "symbol": desired["symbol"],
+                "side": desired["side"],
+                "amount": float(desired["amount"]),
+                "stop_price": float(desired["stop_price"]),
+                "status": "planned",
+            }
+            for candidate_plan, desired in orders_to_place
+            if candidate_plan is plan and not execute
+        ]
+        placed_orders = [
+            place_shutdown_protection_order(exchange, desired, execute=True)
+            for candidate_plan, desired in orders_to_place
+            if candidate_plan is plan and execute
+        ]
+        plan["orders"] = [*retained_orders, *placed_orders, *planned_orders]
+        if execute:
+            plan["status"] = "retained" if retained_orders and not placed_orders else "placed"
+        else:
+            plan["status"] = "planned"
+
     if execute:
         state["shutdown_protection"] = installed
+    status = "planned"
+    if execute:
+        if orders_to_place:
+            status = "placed"
+        elif cancel_actions:
+            status = "cancelled"
+        else:
+            status = "retained"
     return {
-        "status": "placed" if execute else "planned",
+        "status": status,
         "positions": [
             {
                 "pair": pair,
@@ -1606,6 +1811,10 @@ def install_shutdown_protection(
         ],
         "cancel_actions": cancel_actions,
         "protections": installed,
+        "retained_count": int(len(retained_order_ids)),
+        "placed_count": int(len(orders_to_place)) if execute else 0,
+        "planned_place_count": int(len(orders_to_place)) if not execute else 0,
+        "cancelled_count": int(sum(1 for action in cancel_actions if action.get("cancelled"))),
     }
 
 

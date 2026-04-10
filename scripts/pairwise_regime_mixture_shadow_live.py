@@ -55,7 +55,7 @@ DECISION_LOG_PATH = Path(
         str(gp.MODELS_DIR.parent / "logs" / "pairwise_regime_mixture_shadow_decisions.jsonl"),
     )
 )
-DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"
+DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
 DEFAULT_BASE_SUMMARY_PATH = gp.MODELS_DIR / "gp_regime_mixture_search_summary.json"
 DEFAULT_MODEL_PATH = gp.MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill"
 DEFAULT_PROMOTION_REPORT_PATH = gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_stress_report.json"

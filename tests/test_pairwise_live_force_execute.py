@@ -13,6 +13,10 @@ if str(SCRIPTS_DIR) not in sys.path:
 import pairwise_regime_live as pairwise_live
 
 
+REPAIR_SUMMARY_NAME = "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"
+VALIDATED_SUMMARY_NAME = "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
+
+
 def make_args(*, execute: bool, force_execute: bool) -> Namespace:
     return Namespace(
         command="run-once",
@@ -31,6 +35,17 @@ def make_args(*, execute: bool, force_execute: bool) -> Namespace:
 
 
 class PairwiseLiveForceExecuteTests(unittest.TestCase):
+    def test_operational_defaults_use_validated_pairwise_summary(self) -> None:
+        self.assertEqual(pairwise_live.DEFAULT_SUMMARY_PATH, ROOT_DIR / "models" / VALIDATED_SUMMARY_NAME)
+
+        shadow_live_source = (SCRIPTS_DIR / "pairwise_regime_mixture_shadow_live.py").read_text()
+        self.assertIn(f'DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "{VALIDATED_SUMMARY_NAME}"', shadow_live_source)
+        self.assertNotIn(f'DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "{REPAIR_SUMMARY_NAME}"', shadow_live_source)
+
+        launchd_source = (SCRIPTS_DIR / "pairwise_shadow_launchd_entry.sh").read_text()
+        self.assertIn(f"SUMMARY_PATH=\"${{PAIRWISE_SHADOW_SUMMARY_PATH:-$ROOT_DIR/models/{VALIDATED_SUMMARY_NAME}}}\"", launchd_source)
+        self.assertNotIn(REPAIR_SUMMARY_NAME, launchd_source)
+
     def test_compute_requested_weight_de_risks_when_equity_corr_is_inverse(self) -> None:
         params = MagicMock(
             signal_span=2,
@@ -104,6 +119,34 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         bridge.fetch_equity.assert_called_once()
         bridge.reconcile_target_positions.assert_called_once()
         bridge.install_shutdown_protection.assert_called_once()
+
+    def test_live_execute_blocks_forced_order_when_shadow_feed_is_stale(self) -> None:
+        args = make_args(execute=True, force_execute=True)
+        bridge = MagicMock()
+
+        with (
+            patch.object(pairwise_live, "load_state", side_effect=[{}, {}]),
+            patch.object(pairwise_live, "build_pairwise_plan", return_value={"target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5}}),
+            patch.object(pairwise_live, "default_promotion_eval_args", return_value=Namespace()),
+            patch.object(
+                pairwise_live,
+                "build_shadow_evaluation",
+                return_value={
+                    "promotion_ready": False,
+                    "shadow_feed_stale": True,
+                    "shadow_signal_stale": False,
+                    "reasons": ["shadow feed stale 30.0m > cap 20.0m"],
+                },
+            ),
+            patch.object(pairwise_live, "record_runtime_success"),
+            patch.object(pairwise_live, "append_jsonl"),
+            patch.object(pairwise_live, "save_state"),
+            patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
+        ):
+            result = pairwise_live.run_live_once(args)
+
+        self.assertEqual(result, 2)
+        bridge.get_exchange.assert_not_called()
 
 
 if __name__ == "__main__":

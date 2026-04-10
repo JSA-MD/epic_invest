@@ -41,7 +41,7 @@ PAIR_TO_MARKET = {
     "BNBUSDT": "BNB/USDT:USDT",
 }
 
-DEFAULT_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"
+DEFAULT_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
 DEFAULT_MODEL_PATH = ROOT / "models" / "recent_6m_gp_vectorized_big_capped_rerun.dill"
 DEFAULT_STATE_PATH = ROOT / "models" / "pairwise_regime_live_state.json"
 DEFAULT_DECISION_LOG_PATH = ROOT / "logs" / "pairwise_regime_decisions.jsonl"
@@ -76,6 +76,25 @@ def utc_now() -> datetime:
 
 def iso_now() -> str:
     return utc_now().isoformat()
+
+
+def parse_utc_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def minutes_since(value: Any) -> float:
+    parsed = parse_utc_datetime(value)
+    if parsed is None:
+        return math.inf
+    return max(0.0, (utc_now() - parsed).total_seconds() / 60.0)
 
 
 def json_ready(value: Any) -> Any:
@@ -522,16 +541,14 @@ def build_shadow_evaluation(state: Mapping[str, Any], args: argparse.Namespace) 
     max_drawdown = float(shadow.get("max_drawdown", 0.0))
     return_pct = float(shadow.get("return_pct", 0.0))
     last_updated_at_raw = shadow.get("last_updated_at") or state.get("updated_at")
-    if last_updated_at_raw:
-        last_updated_at = datetime.fromisoformat(last_updated_at_raw)
-        if last_updated_at.tzinfo is None:
-            last_updated_at = last_updated_at.replace(tzinfo=UTC)
-    else:
-        last_updated_at = None
-    stale_minutes = (
-        (utc_now() - last_updated_at).total_seconds() / 60.0 if last_updated_at is not None else math.inf
-    )
+    last_updated_at = parse_utc_datetime(last_updated_at_raw)
+    stale_minutes = minutes_since(last_updated_at_raw)
+    last_signal_timestamp_raw = shadow.get("last_signal_timestamp")
+    signal_stale_minutes = minutes_since(last_signal_timestamp_raw)
+    shadow_feed_stale = bool(stale_minutes > args.max_stale_minutes)
+    shadow_signal_stale = bool(signal_stale_minutes > args.max_stale_minutes)
     runtime_health = state.get("runtime_health", {})
+
     def evaluate_gate(min_observations: int) -> Dict[str, Any]:
         passed = True
         reasons: List[str] = []
@@ -544,9 +561,12 @@ def build_shadow_evaluation(state: Mapping[str, Any], args: argparse.Namespace) 
         if return_pct < args.min_return:
             passed = False
             reasons.append(f"shadow return {return_pct:.2f}% < floor {args.min_return:.2f}%")
-        if stale_minutes > args.max_stale_minutes:
+        if shadow_feed_stale:
             passed = False
             reasons.append(f"shadow feed stale {stale_minutes:.1f}m > cap {args.max_stale_minutes:.1f}m")
+        if shadow_signal_stale:
+            passed = False
+            reasons.append(f"shadow signal stale {signal_stale_minutes:.1f}m > cap {args.max_stale_minutes:.1f}m")
         if int(runtime_health.get("consecutive_errors", 0)) > 0:
             passed = False
             reasons.append("runtime health has consecutive errors")
@@ -605,7 +625,11 @@ def build_shadow_evaluation(state: Mapping[str, Any], args: argparse.Namespace) 
         "max_drawdown": max_drawdown,
         "return_pct": return_pct,
         "stale_minutes": stale_minutes,
+        "signal_stale_minutes": signal_stale_minutes,
+        "shadow_feed_stale": shadow_feed_stale,
+        "shadow_signal_stale": shadow_signal_stale,
         "last_updated_at": last_updated_at.isoformat() if last_updated_at else None,
+        "last_signal_timestamp": str(last_signal_timestamp_raw) if last_signal_timestamp_raw else None,
         "runtime_health": runtime_health,
     }
 
@@ -755,9 +779,16 @@ def run_live_once(args: argparse.Namespace) -> int:
     if args.execute:
         shadow_state = load_state(args.shadow_state_path)
         evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
+        state["promotion_gate"] = evaluation
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
-        if not evaluation["promotion_ready"] and not force_execute:
+        force_blocked_by_stale_shadow = bool(
+            force_execute
+            and not evaluation["promotion_ready"]
+            and (evaluation.get("shadow_feed_stale") or evaluation.get("shadow_signal_stale"))
+        )
+        if not evaluation["promotion_ready"] and (not force_execute or force_blocked_by_stale_shadow):
+            blocked_mode = "live-force-blocked" if force_blocked_by_stale_shadow else "live-blocked"
             record_runtime_success(
                 state,
                 plan,
@@ -767,6 +798,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "blocked": True,
                         "mode": args.mode,
                         "promotion_gate": evaluation,
+                        "force_requested": force_execute,
+                        "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
                     }
                 },
             )
@@ -774,14 +807,29 @@ def run_live_once(args: argparse.Namespace) -> int:
                 args.decision_log_path,
                 {
                     "at": iso_now(),
-                    "mode": "live-blocked",
+                    "mode": blocked_mode,
                     "execute": True,
                     "plan": plan,
                     "promotion_gate": evaluation,
+                    "force_requested": force_execute,
+                    "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
                 },
             )
             save_state(args.state_path, state)
-            print(json.dumps(json_ready({"plan": plan, "promotion_gate": evaluation}), indent=2, sort_keys=True))
+            print(
+                json.dumps(
+                    json_ready(
+                        {
+                            "plan": plan,
+                            "promotion_gate": evaluation,
+                            "force_requested": force_execute,
+                            "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
+                        }
+                    ),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 2
 
         bridge = load_execution_bridge()

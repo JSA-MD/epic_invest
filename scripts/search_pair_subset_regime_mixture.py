@@ -238,6 +238,7 @@ def build_fast_context(
         "open": df[f"{pair}_open"].to_numpy(dtype="float64"),
         "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
         "bucket_codes": bucket_codes,
+        "bar_day_index": pd.DatetimeIndex(day_index),
         "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),

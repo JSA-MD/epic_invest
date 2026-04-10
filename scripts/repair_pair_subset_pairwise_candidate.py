@@ -161,9 +161,14 @@ def candidate_score_with_validation(item: dict[str, Any]) -> float:
     score = float(item["score"])
     validation_engine = item.get("validation_engine") or {}
     profile = validation_engine.get("profile") or {}
+    market_os = validation_engine.get("market_operating_system") or {}
+    market_fitness = (market_os.get("fitness") or {}).get("score", 0.0)
     gate = validation_engine.get("gate") or {}
+    score += float(market_fitness) * 1.35
     score += float(profile.get("validation_quality_score", 0.0)) * 0.35
     score -= float(profile.get("false_positive_risk", 1.0)) * 0.45
+    if (market_os.get("gate") or {}).get("passed"):
+        score += 0.20
     if gate.get("passed"):
         score += 0.25
     return float(score)
@@ -176,14 +181,14 @@ def build_candidate_validation_input(
     window_cache: dict[str, Any],
     library: list[Any],
     library_lookup: dict[str, Any],
-) -> tuple[np.ndarray, pd.DatetimeIndex]:
-    daily_returns_by_pair: list[np.ndarray] = []
-    daily_index: pd.DatetimeIndex | None = None
+) -> dict[str, Any]:
+    pair_payloads: list[dict[str, Any]] = []
     window_pairs = window_cache["full_4y"]["pairs"]
     for pair in pairs:
         cfg = candidate["pair_configs"][pair]
+        fast_context = window_pairs[pair]["fast_context"]
         result = fast_overlay_replay_from_context(
-            window_pairs[pair]["fast_context"],
+            fast_context,
             library,
             library_lookup,
             tuple(int(v) for v in cfg["mapping_indices"]),
@@ -191,16 +196,100 @@ def build_candidate_validation_input(
             "python",
         )
         pair_daily_returns = np.asarray(result["daily_metrics"]["daily_returns"], dtype="float64")
-        pair_daily_index = pd.DatetimeIndex(window_pairs[pair]["fast_context"]["validation_daily_index"])
-        daily_returns_by_pair.append(pair_daily_returns)
-        daily_index = pair_daily_index if daily_index is None else daily_index
-    if not daily_returns_by_pair:
-        return np.asarray([], dtype="float64"), pd.DatetimeIndex([])
-    common_len = min(len(values) for values in daily_returns_by_pair)
-    if daily_index is None:
-        return np.asarray([], dtype="float64"), pd.DatetimeIndex([])
-    aligned = np.vstack([values[:common_len] for values in daily_returns_by_pair])
-    return np.mean(aligned, axis=0), pd.DatetimeIndex(daily_index[:common_len])
+        pair_daily_index = pd.DatetimeIndex(fast_context["validation_daily_index"])
+        daily_state_codes = (
+            pd.Series(
+                np.asarray(fast_context["bucket_codes"][float(cfg["route_breadth_threshold"])], dtype="int64"),
+                index=pd.DatetimeIndex(fast_context["bar_day_index"]),
+            )
+            .groupby(level=0)
+            .last()
+            .reindex(pair_daily_index, method="ffill")
+            .fillna(0)
+            .astype("int64")
+            .to_numpy(dtype="int64")
+        )
+        pair_payloads.append(
+            {
+                "pair": pair,
+                "daily_returns": pair_daily_returns,
+                "daily_index": pair_daily_index,
+                "daily_state_codes": daily_state_codes,
+                "route_state_names": list(fast_context["route_state_names"]),
+            }
+        )
+    if not pair_payloads:
+        return {
+            "daily_returns": np.asarray([], dtype="float64"),
+            "daily_index": pd.DatetimeIndex([]),
+            "state_payload": {
+                "route_state_returns": {},
+                "corr_bucket_returns": {},
+                "total_route_states": 0,
+                "total_corr_buckets": 0,
+            },
+        }
+    common_len = min(len(item["daily_returns"]) for item in pair_payloads)
+    daily_index = pd.DatetimeIndex(pair_payloads[0]["daily_index"][:common_len])
+    aligned = np.vstack([item["daily_returns"][:common_len] for item in pair_payloads])
+    route_state_returns: dict[str, list[float]] = {}
+    corr_bucket_returns: dict[str, list[float]] = {}
+    total_route_states = max(len(item["route_state_names"]) for item in pair_payloads)
+    total_corr_buckets = max(
+        len(
+            {
+                name.split(":", 1)[0]
+                for payload in pair_payloads
+                for name in payload["route_state_names"]
+            }
+        ),
+        1,
+    )
+    for item in pair_payloads:
+        codes = item["daily_state_codes"][:common_len]
+        returns = item["daily_returns"][:common_len]
+        names = item["route_state_names"]
+        for code, value in zip(codes, returns, strict=False):
+            route_state_name = names[int(code)] if 0 <= int(code) < len(names) else f"state_{int(code)}"
+            route_state_returns.setdefault(route_state_name, []).append(float(value))
+            corr_bucket = route_state_name.split(":", 1)[0] if ":" in route_state_name else "base"
+            corr_bucket_returns.setdefault(corr_bucket, []).append(float(value))
+    return {
+        "daily_returns": np.mean(aligned, axis=0),
+        "daily_index": daily_index,
+        "state_payload": {
+            "route_state_returns": route_state_returns,
+            "corr_bucket_returns": corr_bucket_returns,
+            "total_route_states": int(total_route_states),
+            "total_corr_buckets": int(total_corr_buckets),
+        },
+    }
+
+
+def build_candidate_cost_reference(windows: dict[str, Any]) -> dict[str, Any]:
+    per_pair = (windows.get("full_4y") or {}).get("per_pair") or {}
+    if not per_pair:
+        return {
+            "mean_cost_ratio": 0.0,
+            "max_cost_ratio": 0.0,
+            "mean_n_trades": 0.0,
+        }
+    cost_ratios = []
+    trades = []
+    for metrics in per_pair.values():
+        total_cost = (
+            abs(float(metrics.get("fee_paid", 0.0)))
+            + abs(float(metrics.get("slippage_paid", 0.0)))
+            + abs(float(metrics.get("funding_paid", 0.0)))
+        )
+        capital_base = max(float(metrics.get("final_equity", gp.INITIAL_CASH)), float(gp.INITIAL_CASH), 1.0)
+        cost_ratios.append(total_cost / capital_base)
+        trades.append(float(metrics.get("n_trades", 0.0)))
+    return {
+        "mean_cost_ratio": float(np.mean(np.asarray(cost_ratios, dtype="float64"))),
+        "max_cost_ratio": float(np.max(np.asarray(cost_ratios, dtype="float64"))),
+        "mean_n_trades": float(np.mean(np.asarray(trades, dtype="float64"))),
+    }
 
 
 def main() -> None:
@@ -510,24 +599,26 @@ def main() -> None:
 
     validation_candidates = fast_ranked[: max(int(args.validation_candidate_count), args.top_realistic)]
     validation_frames_by_key = {}
+    validation_state_payloads = {}
     for item in validation_candidates:
         candidate = {"pair_configs": item["pair_configs"]}
         key = candidate_id(candidate, pairs)
-        composite_returns, composite_index = build_candidate_validation_input(
+        validation_input = build_candidate_validation_input(
             candidate,
             pairs=pairs,
             window_cache=window_cache,
             library=library,
             library_lookup=library_lookup,
         )
-        validation_frames_by_key[key] = build_return_frame(composite_returns, composite_index)
+        validation_frames_by_key[key] = build_return_frame(validation_input["daily_returns"], validation_input["daily_index"])
+        validation_state_payloads[key] = validation_input["state_payload"]
 
     realistic_top = []
     for item in fast_ranked[: args.top_realistic]:
         windows = eval_realistic({"pair_configs": item["pair_configs"]})
         candidate = {"pair_configs": item["pair_configs"]}
         key = candidate_id(candidate, pairs)
-        composite_returns, composite_index = build_candidate_validation_input(
+        validation_input = build_candidate_validation_input(
             candidate,
             pairs=pairs,
             window_cache=window_cache,
@@ -548,10 +639,12 @@ def main() -> None:
                 "validation": build_validation_bundle(windows, baseline_summary["selected_candidate"]["windows"]),
                 "validation_engine": build_candidate_validation_bundle(
                     key,
-                    composite_returns,
-                    composite_index,
+                    validation_input["daily_returns"],
+                    validation_input["daily_index"],
                     trial_count=max(len(validation_candidates), 1),
                     peer_frames_by_key=validation_frames_by_key,
+                    state_payload=validation_state_payloads.get(key, validation_input["state_payload"]),
+                    cost_reference=build_candidate_cost_reference(windows),
                     cpcv_blocks=args.cpcv_blocks,
                     cpcv_test_blocks=args.cpcv_test_blocks,
                     cpcv_embargo_days=args.cpcv_embargo_days,

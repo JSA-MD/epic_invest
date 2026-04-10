@@ -26,6 +26,25 @@ VALIDATION_THRESHOLDS = {
     "pbo_selection_share_min": 0.04,
     "false_positive_risk_max": 0.45,
     "validation_quality_score_min": 0.55,
+    "market_os_fitness_min": 0.50,
+    "corr_state_robustness_min": 0.40,
+    "regime_coverage_min": 0.35,
+    "parameter_instability_max": 0.85,
+    "final_oos_total_return_min": 0.0,
+    "final_oos_max_drawdown_cap": 0.18,
+}
+RECENT_VALIDATION_DAYS = 182
+FINAL_OOS_DAYS = 61
+OPERATING_SYSTEM_FITNESS_WEIGHTS = {
+    "dsr_oos": 0.25,
+    "calmar_oos": 0.20,
+    "median_fold_expectancy": 0.15,
+    "regime_coverage": 0.10,
+    "corr_state_robustness": 0.10,
+    "max_drawdown": -0.10,
+    "cvar_95": -0.05,
+    "turnover_cost": -0.03,
+    "parameter_instability": -0.02,
 }
 
 
@@ -37,6 +56,20 @@ def threshold_shortfall(actual: float, minimum: float) -> float:
 def threshold_excess(actual: float, maximum: float) -> float:
     scale = max(abs(float(maximum)), 1e-8)
     return float(np.clip(max(0.0, float(actual) - float(maximum)) / scale, 0.0, 1.0))
+
+
+def clip01(value: float) -> float:
+    return float(np.clip(float(value), 0.0, 1.0))
+
+
+def normalize_positive_metric(value: float, target: float) -> float:
+    scale = max(abs(float(target)), 1e-8)
+    return clip01(float(value) / scale)
+
+
+def normalize_negative_metric(value: float, cap: float) -> float:
+    scale = max(abs(float(cap)), 1e-8)
+    return clip01(abs(float(value)) / scale)
 
 
 def expected_max_sharpe(trial_count: int) -> float:
@@ -119,6 +152,76 @@ def summarize_return_frame(frame: pd.DataFrame, *, initial_cash: float = gp.INIT
         "sharpe": sharpe,
         "daily_metrics": gp.summarize_period_returns(daily_values),
         "monthly_metrics": gp.summarize_monthly_returns(daily_values, pd.DatetimeIndex(net_ret.index)),
+    }
+
+
+def compute_annualized_return(total_return: float, periods: int) -> float:
+    period_years = max(float(periods) / 365.25, 1.0 / 365.25)
+    base = 1.0 + float(total_return)
+    if base <= 0.0:
+        return -1.0
+    return float(base ** (1.0 / period_years) - 1.0)
+
+
+def compute_calmar_ratio(total_return: float, max_drawdown: float, periods: int) -> float:
+    drawdown = abs(float(max_drawdown))
+    if drawdown <= 1e-8:
+        return 0.0
+    return float(compute_annualized_return(total_return, periods) / drawdown)
+
+
+def compute_cvar_95(period_returns: np.ndarray) -> float:
+    returns = np.asarray(period_returns, dtype="float64")
+    if len(returns) == 0:
+        return 0.0
+    tail_count = max(1, int(math.ceil(len(returns) * 0.05)))
+    tail = np.sort(returns)[:tail_count]
+    return float(np.mean(tail))
+
+
+def split_market_os_frames(
+    return_frame: pd.DataFrame,
+    *,
+    recent_validation_days: int = RECENT_VALIDATION_DAYS,
+    final_oos_days: int = FINAL_OOS_DAYS,
+) -> dict[str, pd.DataFrame]:
+    if return_frame.empty:
+        empty = return_frame.iloc[0:0].copy()
+        return {
+            "structure_train": empty,
+            "recent_adaptation": empty,
+            "final_oos": empty,
+        }
+    total_len = len(return_frame)
+    final_len = max(1, min(int(final_oos_days), total_len))
+    adaptation_len = max(0, min(max(int(recent_validation_days) - final_len, 0), total_len - final_len))
+    structure_end = max(total_len - final_len - adaptation_len, 0)
+    adaptation_end = total_len - final_len
+    return {
+        "structure_train": return_frame.iloc[:structure_end].copy(),
+        "recent_adaptation": return_frame.iloc[structure_end:adaptation_end].copy(),
+        "final_oos": return_frame.iloc[adaptation_end:].copy(),
+    }
+
+
+def summarize_stage_frame(
+    frame: pd.DataFrame,
+    *,
+    trial_count: int,
+    initial_cash: float = gp.INITIAL_CASH,
+) -> dict[str, Any]:
+    returns = frame["net_return"].to_numpy(dtype="float64") if not frame.empty else np.asarray([], dtype="float64")
+    _, metrics = summarize_return_frame(frame, initial_cash=initial_cash)
+    return {
+        "days": int(len(frame)),
+        "total_return": float(metrics["total_return"]),
+        "max_drawdown": float(metrics["max_drawdown"]),
+        "sharpe": float(metrics["sharpe"]),
+        "avg_daily_return": float(metrics["daily_metrics"]["avg_daily_return"]),
+        "daily_target_hit_rate": float(metrics["daily_metrics"]["daily_target_hit_rate"]),
+        "cvar_95": float(compute_cvar_95(returns)),
+        "calmar": float(compute_calmar_ratio(metrics["total_return"], metrics["max_drawdown"], len(frame))),
+        "dsr_proxy": float(compute_dsr_proxy(returns, trial_count=trial_count)),
     }
 
 
@@ -432,6 +535,185 @@ def compute_cpcv_overfit_rate(cpcv: dict[str, Any]) -> float:
     return float(np.mean(signals))
 
 
+def compute_median_fold_expectancy(cpcv: dict[str, Any]) -> float:
+    splits = list(cpcv.get("splits") or [])
+    if not splits:
+        return 0.0
+    expectancies = [
+        float(row.get("test_total_return", 0.0)) / max(int(row.get("test_days", 0)), 1)
+        for row in splits
+    ]
+    return float(np.median(np.asarray(expectancies, dtype="float64")))
+
+
+def summarize_state_payload(state_payload: dict[str, Any] | None) -> dict[str, Any]:
+    payload = state_payload or {}
+    route_state_returns = {
+        str(name): np.asarray(values, dtype="float64")
+        for name, values in (payload.get("route_state_returns") or {}).items()
+        if values
+    }
+    corr_bucket_returns = {
+        str(name): np.asarray(values, dtype="float64")
+        for name, values in (payload.get("corr_bucket_returns") or {}).items()
+        if values
+    }
+    total_states = max(int(payload.get("total_route_states", 0)), 1)
+    observed_states = len(route_state_returns)
+    state_mean_returns = {
+        name: float(values.mean())
+        for name, values in route_state_returns.items()
+    }
+    positive_states = int(sum(1 for value in state_mean_returns.values() if value >= 0.0))
+    coverage_share = float(observed_states / total_states)
+    positive_share = float(positive_states / max(observed_states, 1))
+    regime_coverage = clip01(0.55 * coverage_share + 0.45 * positive_share)
+
+    bucket_mean_returns = {
+        name: float(values.mean())
+        for name, values in corr_bucket_returns.items()
+    }
+    if bucket_mean_returns:
+        bucket_values = np.asarray(list(bucket_mean_returns.values()), dtype="float64")
+        corr_bucket_count = int(payload.get("total_corr_buckets", max(len(bucket_mean_returns), 1)))
+        corr_coverage = float(len(bucket_mean_returns) / max(corr_bucket_count, 1))
+        corr_positive_share = float(np.mean(bucket_values >= 0.0))
+        corr_worst_bucket = float(np.min(bucket_values))
+        corr_dispersion = float(np.std(bucket_values))
+        corr_state_robustness = clip01(
+            0.35 * corr_coverage
+            + 0.30 * corr_positive_share
+            + 0.20 * normalize_positive_metric(corr_worst_bucket + 0.002, 0.004)
+            + 0.15 * (1.0 - normalize_negative_metric(corr_dispersion, 0.004))
+        )
+    else:
+        corr_state_robustness = 0.0
+        corr_worst_bucket = 0.0
+        corr_dispersion = 0.0
+
+    return {
+        "route_state_mean_returns": state_mean_returns,
+        "corr_bucket_mean_returns": bucket_mean_returns,
+        "observed_state_count": int(observed_states),
+        "positive_state_count": int(positive_states),
+        "state_coverage_share": float(coverage_share),
+        "regime_coverage": float(regime_coverage),
+        "corr_state_robustness": float(corr_state_robustness),
+        "corr_worst_bucket_return": float(corr_worst_bucket),
+        "corr_bucket_dispersion": float(corr_dispersion),
+    }
+
+
+def summarize_cost_reference(cost_reference: dict[str, Any] | None) -> dict[str, Any]:
+    reference = cost_reference or {}
+    mean_cost_ratio = float(reference.get("mean_cost_ratio", 0.0))
+    max_cost_ratio = float(reference.get("max_cost_ratio", mean_cost_ratio))
+    mean_n_trades = float(reference.get("mean_n_trades", 0.0))
+    return {
+        "mean_cost_ratio": mean_cost_ratio,
+        "max_cost_ratio": max_cost_ratio,
+        "mean_n_trades": mean_n_trades,
+    }
+
+
+def compute_parameter_instability(cpcv: dict[str, Any], pbo_profile: dict[str, Any]) -> float:
+    splits = list(cpcv.get("splits") or [])
+    if not splits:
+        return 1.0
+    test_scores = np.asarray([float(row.get("score", 0.0)) for row in splits], dtype="float64")
+    expectancies = np.asarray(
+        [
+            float(row.get("test_total_return", 0.0)) / max(int(row.get("test_days", 0)), 1)
+            for row in splits
+        ],
+        dtype="float64",
+    )
+    score_penalty = normalize_negative_metric(float(np.std(test_scores)), 40.0)
+    expectancy_penalty = normalize_negative_metric(float(np.std(expectancies)), 0.0025)
+    selection_penalty = clip01(1.0 - float(pbo_profile.get("selection_share", 0.0)))
+    return clip01(0.40 * selection_penalty + 0.35 * expectancy_penalty + 0.25 * score_penalty)
+
+
+def build_market_operating_system(
+    return_frame: pd.DataFrame,
+    *,
+    trial_count: int,
+    cpcv: dict[str, Any],
+    pbo_profile: dict[str, Any],
+    state_payload: dict[str, Any] | None,
+    cost_reference: dict[str, Any] | None,
+) -> dict[str, Any]:
+    staged_frames = split_market_os_frames(return_frame)
+    stages = {
+        name: summarize_stage_frame(frame, trial_count=trial_count)
+        for name, frame in staged_frames.items()
+    }
+    state_summary = summarize_state_payload(state_payload)
+    cost_summary = summarize_cost_reference(cost_reference)
+    median_fold_expectancy = compute_median_fold_expectancy(cpcv)
+    parameter_instability = compute_parameter_instability(cpcv, pbo_profile)
+    normalized = {
+        "dsr_oos": float(stages["final_oos"]["dsr_proxy"]),
+        "calmar_oos": normalize_positive_metric(stages["final_oos"]["calmar"], 3.0),
+        "median_fold_expectancy": normalize_positive_metric(median_fold_expectancy, 0.002),
+        "regime_coverage": float(state_summary["regime_coverage"]),
+        "corr_state_robustness": float(state_summary["corr_state_robustness"]),
+        "max_drawdown": normalize_negative_metric(
+            min(float(stages["structure_train"]["max_drawdown"]), float(stages["final_oos"]["max_drawdown"])),
+            0.25,
+        ),
+        "cvar_95": normalize_negative_metric(min(float(stages["final_oos"]["cvar_95"]), 0.0), 0.03),
+        "turnover_cost": normalize_negative_metric(cost_summary["mean_cost_ratio"], 0.20),
+        "parameter_instability": float(parameter_instability),
+    }
+    score = 0.0
+    for name, weight in OPERATING_SYSTEM_FITNESS_WEIGHTS.items():
+        score += float(normalized[name]) * float(weight)
+    fitness = {
+        "score": float(score),
+        "weights": OPERATING_SYSTEM_FITNESS_WEIGHTS,
+        "normalized": normalized,
+        "raw": {
+            "dsr_oos": float(stages["final_oos"]["dsr_proxy"]),
+            "calmar_oos": float(stages["final_oos"]["calmar"]),
+            "median_fold_expectancy": float(median_fold_expectancy),
+            "regime_coverage": float(state_summary["regime_coverage"]),
+            "corr_state_robustness": float(state_summary["corr_state_robustness"]),
+            "max_drawdown": float(min(stages["structure_train"]["max_drawdown"], stages["final_oos"]["max_drawdown"])),
+            "cvar_95": float(stages["final_oos"]["cvar_95"]),
+            "turnover_cost": float(cost_summary["mean_cost_ratio"]),
+            "parameter_instability": float(parameter_instability),
+        },
+    }
+    gate = {
+        "passes_market_os_fitness": bool(fitness["score"] >= VALIDATION_THRESHOLDS["market_os_fitness_min"]),
+        "passes_final_oos_total_return": bool(
+            stages["final_oos"]["total_return"] >= VALIDATION_THRESHOLDS["final_oos_total_return_min"]
+        ),
+        "passes_final_oos_max_drawdown": bool(
+            abs(stages["final_oos"]["max_drawdown"]) <= VALIDATION_THRESHOLDS["final_oos_max_drawdown_cap"]
+        ),
+        "passes_corr_state_robustness": bool(
+            state_summary["corr_state_robustness"] >= VALIDATION_THRESHOLDS["corr_state_robustness_min"]
+        ),
+        "passes_regime_coverage": bool(
+            state_summary["regime_coverage"] >= VALIDATION_THRESHOLDS["regime_coverage_min"]
+        ),
+        "passes_parameter_instability": bool(
+            parameter_instability <= VALIDATION_THRESHOLDS["parameter_instability_max"]
+        ),
+    }
+    gate["failed_checks"] = [name for name, passed in gate.items() if name != "failed_checks" and not passed]
+    gate["passed"] = bool(not gate["failed_checks"])
+    return {
+        "stages": stages,
+        "state_summary": state_summary,
+        "cost_summary": cost_summary,
+        "fitness": fitness,
+        "gate": gate,
+    }
+
+
 def build_validation_profile(dsr_proxy: float, cpcv: dict[str, Any], pbo_profile: dict[str, Any]) -> dict[str, Any]:
     risk_components = {
         "dsr_shortfall": threshold_shortfall(dsr_proxy, VALIDATION_THRESHOLDS["dsr_proxy_min"]),
@@ -476,7 +758,12 @@ def build_validation_profile(dsr_proxy: float, cpcv: dict[str, Any], pbo_profile
     }
 
 
-def build_validation_gate(dsr_proxy: float, cpcv: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+def build_validation_gate(
+    dsr_proxy: float,
+    cpcv: dict[str, Any],
+    profile: dict[str, Any],
+    market_operating_system: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     checks = {
         "passes_dsr_proxy": bool(dsr_proxy >= VALIDATION_THRESHOLDS["dsr_proxy_min"]),
         "passes_cpcv_positive_rate": bool(cpcv["test_positive_rate"] >= VALIDATION_THRESHOLDS["cpcv_positive_rate_min"]),
@@ -499,6 +786,11 @@ def build_validation_gate(dsr_proxy: float, cpcv: dict[str, Any], profile: dict[
             profile["validation_quality_score"] >= VALIDATION_THRESHOLDS["validation_quality_score_min"]
         ),
     }
+    market_gate = (market_operating_system or {}).get("gate") or {}
+    for name, passed in market_gate.items():
+        if name in {"failed_checks", "passed"}:
+            continue
+        checks[name] = bool(passed)
     failed_checks = [name for name, passed in checks.items() if not passed]
     return {
         **checks,
@@ -514,6 +806,8 @@ def build_candidate_validation_bundle(
     *,
     trial_count: int,
     peer_frames_by_key: dict[str, pd.DataFrame],
+    state_payload: dict[str, Any] | None = None,
+    cost_reference: dict[str, Any] | None = None,
     cpcv_blocks: int = 6,
     cpcv_test_blocks: int = 2,
     cpcv_embargo_days: int = 2,
@@ -535,7 +829,15 @@ def build_candidate_validation_bundle(
     )
     pbo_profile = candidate_selection_pbo["profiles"].get(candidate_key, empty_candidate_pbo_profile())
     profile = build_validation_profile(dsr_proxy, cpcv, pbo_profile)
-    gate = build_validation_gate(dsr_proxy, cpcv, profile)
+    market_operating_system = build_market_operating_system(
+        frame,
+        trial_count=trial_count,
+        cpcv=cpcv,
+        pbo_profile=pbo_profile,
+        state_payload=state_payload,
+        cost_reference=cost_reference,
+    )
+    gate = build_validation_gate(dsr_proxy, cpcv, profile, market_operating_system)
     daily_metrics = metrics["daily_metrics"]
     return {
         "metrics": {
@@ -557,5 +859,6 @@ def build_candidate_validation_bundle(
         },
         "pbo_profile": pbo_profile,
         "profile": profile,
+        "market_operating_system": market_operating_system,
         "gate": gate,
     }

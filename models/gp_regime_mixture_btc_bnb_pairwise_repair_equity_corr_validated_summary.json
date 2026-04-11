@@ -19,7 +19,7 @@
     "BTCUSDT",
     "BNBUSDT"
   ],
-  "baseline_summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_nsga3_summary.json",
+  "baseline_summary_path": "models/gp_regime_mixture_btc_bnb_nsga3_summary.json",
   "baseline_candidate": {
     "pair_configs": {
       "BTCUSDT": {
@@ -9753,15 +9753,15 @@
       "recent_2m": {
         "start": "2026-02-06",
         "end": "2026-04-06",
-        "bars": 16993,
+        "bars": 17280,
         "per_pair": {
           "BTCUSDT": {
-            "avg_daily_return": 0.006432872049878131,
-            "total_return": 0.4478322178572056,
+            "avg_daily_return": 0.006325673435801806,
+            "total_return": 0.44783359785720567,
             "max_drawdown": -0.08754519212960143,
-            "sharpe": 6.384474603417383,
-            "daily_target_hit_rate": 0.23728813559322035,
-            "daily_win_rate": 0.3050847457627119,
+            "sharpe": 6.331222637677093,
+            "daily_target_hit_rate": 0.23333333333333334,
+            "daily_win_rate": 0.31666666666666665,
             "worst_day": -0.01784955722295145,
             "best_day": 0.06519147941303238,
             "n_trades": 63,
@@ -9769,15 +9769,15 @@
             "slippage_paid": 545.08495658,
             "funding_paid": -43.07986698366895,
             "funding_events": 56,
-            "final_equity": 144783.22178572055
+            "final_equity": 144783.35978572056
           },
           "BNBUSDT": {
-            "avg_daily_return": 0.007037516392887332,
+            "avg_daily_return": 0.006920224453005878,
             "total_return": 0.5002358526294819,
             "max_drawdown": -0.10106613140556708,
-            "sharpe": 6.441155204714314,
-            "daily_target_hit_rate": 0.3389830508474576,
-            "daily_win_rate": 0.5932203389830508,
+            "sharpe": 6.387414155864169,
+            "daily_target_hit_rate": 0.3333333333333333,
+            "daily_win_rate": 0.6,
             "worst_day": -0.02179041847561758,
             "best_day": 0.05083555608408008,
             "n_trades": 4058,
@@ -9789,28 +9789,28 @@
           }
         },
         "aggregate": {
-          "mean_avg_daily_return": 0.0067351942213827315,
-          "worst_pair_avg_daily_return": 0.006432872049878131,
-          "best_pair_avg_daily_return": 0.007037516392887332,
+          "mean_avg_daily_return": 0.006622948944403842,
+          "worst_pair_avg_daily_return": 0.006325673435801806,
+          "best_pair_avg_daily_return": 0.006920224453005878,
           "positive_pair_count": 2,
-          "mean_total_return": 0.47403403524334375,
-          "worst_pair_total_return": 0.4478322178572056,
+          "mean_total_return": 0.4740347252433438,
+          "worst_pair_total_return": 0.44783359785720567,
           "worst_max_drawdown": -0.10106613140556708,
-          "pair_return_dispersion": 0.0003023221715046003
+          "pair_return_dispersion": 0.000297275508602036
         }
       },
       "recent_6m": {
         "start": "2025-10-06",
         "end": "2026-04-06",
-        "bars": 52417,
+        "bars": 52704,
         "per_pair": {
           "BTCUSDT": {
-            "avg_daily_return": 0.007766655669712473,
+            "avg_daily_return": 0.0077242149283479255,
             "total_return": 2.9476011848924717,
             "max_drawdown": -0.08753173310886864,
-            "sharpe": 6.439632296569635,
-            "daily_target_hit_rate": 0.3021978021978022,
-            "daily_win_rate": 0.489010989010989,
+            "sharpe": 6.422067269608604,
+            "daily_target_hit_rate": 0.3005464480874317,
+            "daily_win_rate": 0.4918032786885246,
             "worst_day": -0.0619368872066558,
             "best_day": 0.10755973344474556,
             "n_trades": 6212,
@@ -9821,12 +9821,12 @@
             "final_equity": 394760.11848924716
           },
           "BNBUSDT": {
-            "avg_daily_return": 0.007424653703392884,
+            "avg_daily_return": 0.007384081825232269,
             "total_return": 2.6943626148785067,
             "max_drawdown": -0.10107155614846863,
-            "sharpe": 5.982111937299776,
-            "daily_target_hit_rate": 0.3021978021978022,
-            "daily_win_rate": 0.4835164835164835,
+            "sharpe": 5.965795740795878,
+            "daily_target_hit_rate": 0.3005464480874317,
+            "daily_win_rate": 0.48633879781420764,
             "worst_day": -0.04456842622465562,
             "best_day": 0.12538891683048892,
             "n_trades": 11578,
@@ -9838,28 +9838,28 @@
           }
         },
         "aggregate": {
-          "mean_avg_daily_return": 0.007595654686552678,
-          "worst_pair_avg_daily_return": 0.007424653703392884,
-          "best_pair_avg_daily_return": 0.007766655669712473,
+          "mean_avg_daily_return": 0.0075541483767900975,
+          "worst_pair_avg_daily_return": 0.007384081825232269,
+          "best_pair_avg_daily_return": 0.0077242149283479255,
           "positive_pair_count": 2,
           "mean_total_return": 2.8209818998854894,
           "worst_pair_total_return": 2.6943626148785067,
           "worst_max_drawdown": -0.10107155614846863,
-          "pair_return_dispersion": 0.0001710009831597946
+          "pair_return_dispersion": 0.00017006655155782846
         }
       },
       "full_4y": {
         "start": "2022-04-06",
         "end": "2026-04-06",
-        "bars": 420769,
+        "bars": 421056,
         "per_pair": {
           "BTCUSDT": {
-            "avg_daily_return": 0.005290341077334962,
-            "total_return": 1858.5898896827114,
+            "avg_daily_return": 0.00528672251298658,
+            "total_return": 1858.589889682712,
             "max_drawdown": -0.11953942795216,
-            "sharpe": 5.491753466292775,
-            "daily_target_hit_rate": 0.20670773442847365,
-            "daily_win_rate": 0.5099247091033539,
+            "sharpe": 5.489880958664402,
+            "daily_target_hit_rate": 0.20656634746922026,
+            "daily_win_rate": 0.5102599179206566,
             "worst_day": -0.061423657800173226,
             "best_day": 0.2003118916377422,
             "n_trades": 30565,
@@ -9867,15 +9867,15 @@
             "slippage_paid": 2483781.582065311,
             "funding_paid": 545573.6205159932,
             "funding_events": 2588,
-            "final_equity": 185958988.96827114
+            "final_equity": 185958988.9682712
           },
           "BNBUSDT": {
-            "avg_daily_return": 0.0049276170693737555,
+            "avg_daily_return": 0.004924246606262009,
             "total_return": 979.7283080930619,
             "max_drawdown": -0.11171162565802417,
-            "sharpe": 5.0120894842583965,
-            "daily_target_hit_rate": 0.22861054072553047,
-            "daily_win_rate": 0.4531143052703628,
+            "sharpe": 5.010380608087298,
+            "daily_target_hit_rate": 0.22845417236662108,
+            "daily_win_rate": 0.45348837209302323,
             "worst_day": -0.08864101855039264,
             "best_day": 0.15673040450610065,
             "n_trades": 85756,
@@ -9887,49 +9887,49 @@
           }
         },
         "aggregate": {
-          "mean_avg_daily_return": 0.005108979073354359,
-          "worst_pair_avg_daily_return": 0.0049276170693737555,
-          "best_pair_avg_daily_return": 0.005290341077334962,
+          "mean_avg_daily_return": 0.005105484559624294,
+          "worst_pair_avg_daily_return": 0.004924246606262009,
+          "best_pair_avg_daily_return": 0.00528672251298658,
           "positive_pair_count": 2,
-          "mean_total_return": 1419.1590988878866,
+          "mean_total_return": 1419.159098887887,
           "worst_pair_total_return": 979.7283080930619,
           "worst_max_drawdown": -0.11953942795216,
-          "pair_return_dispersion": 0.0001813620039806032
+          "pair_return_dispersion": 0.0001812379533622857
         }
       }
     },
-    "score": -0.07699325613152799,
+    "score": -106.1969868934245,
     "validation": {
       "comparison": {
         "recent_2m": {
           "baseline_mean_avg_daily_return": 0.005881351649554788,
-          "selected_mean_avg_daily_return": 0.0067351942213827315,
-          "delta_mean_avg_daily_return": 0.0008538425718279431,
+          "selected_mean_avg_daily_return": 0.006622948944403842,
+          "delta_mean_avg_daily_return": 0.0007415972948490532,
           "baseline_worst_pair_avg_daily_return": 0.005627224824874446,
-          "selected_worst_pair_avg_daily_return": 0.006432872049878131,
-          "delta_worst_pair_avg_daily_return": 0.0008056472250036854,
+          "selected_worst_pair_avg_daily_return": 0.006325673435801806,
+          "delta_worst_pair_avg_daily_return": 0.0006984486109273599,
           "baseline_worst_max_drawdown": -0.10496191286058987,
           "selected_worst_max_drawdown": -0.10106613140556708,
           "delta_worst_max_drawdown": 0.0038957814550227843
         },
         "recent_6m": {
           "baseline_mean_avg_daily_return": 0.008615411189725256,
-          "selected_mean_avg_daily_return": 0.007595654686552678,
-          "delta_mean_avg_daily_return": -0.0010197565031725784,
+          "selected_mean_avg_daily_return": 0.0075541483767900975,
+          "delta_mean_avg_daily_return": -0.0010612628129351587,
           "baseline_worst_pair_avg_daily_return": 0.007199890465284453,
-          "selected_worst_pair_avg_daily_return": 0.007424653703392884,
-          "delta_worst_pair_avg_daily_return": 0.00022476323810843076,
+          "selected_worst_pair_avg_daily_return": 0.007384081825232269,
+          "delta_worst_pair_avg_daily_return": 0.0001841913599478157,
           "baseline_worst_max_drawdown": -0.1503013161615735,
           "selected_worst_max_drawdown": -0.10107155614846863,
           "delta_worst_max_drawdown": 0.04922976001310486
         },
         "full_4y": {
           "baseline_mean_avg_daily_return": 0.004405309109093952,
-          "selected_mean_avg_daily_return": 0.005108979073354359,
-          "delta_mean_avg_daily_return": 0.0007036699642604064,
+          "selected_mean_avg_daily_return": 0.005105484559624294,
+          "delta_mean_avg_daily_return": 0.0007001754505303421,
           "baseline_worst_pair_avg_daily_return": 0.004174750042519195,
-          "selected_worst_pair_avg_daily_return": 0.0049276170693737555,
-          "delta_worst_pair_avg_daily_return": 0.0007528670268545602,
+          "selected_worst_pair_avg_daily_return": 0.004924246606262009,
+          "delta_worst_pair_avg_daily_return": 0.0007494965637428134,
           "baseline_worst_max_drawdown": -0.16301004522773743,
           "selected_worst_max_drawdown": -0.11953942795216,
           "delta_worst_max_drawdown": 0.04347061727557744
@@ -9941,7 +9941,7 @@
             {
               "name": "recent_6m_worst_pair_min",
               "passed": true,
-              "actual": 0.007424653703392884,
+              "actual": 0.007384081825232269,
               "target": 0.006,
               "comparator": ">=",
               "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
@@ -9949,7 +9949,7 @@
             {
               "name": "recent_6m_worst_pair_vs_baseline",
               "passed": true,
-              "actual": 0.007424653703392884,
+              "actual": 0.007384081825232269,
               "target": 0.007199890465284453,
               "comparator": ">=",
               "note": "최근 6개월 최악 코인 기준 baseline 이상"
@@ -9957,7 +9957,7 @@
             {
               "name": "full_4y_worst_pair_positive",
               "passed": true,
-              "actual": 0.0049276170693737555,
+              "actual": 0.004924246606262009,
               "target": 0.0,
               "comparator": ">=",
               "note": "4년 전체 최악 코인도 음수가 아니어야 함"
@@ -9965,7 +9965,7 @@
             {
               "name": "full_4y_mean_vs_baseline",
               "passed": true,
-              "actual": 0.005108979073354359,
+              "actual": 0.005105484559624294,
               "target": 0.004405309109093952,
               "comparator": ">=",
               "note": "4년 평균 일수익률은 baseline 이상"
@@ -9994,7 +9994,7 @@
             {
               "name": "recent_2m_worst_pair_positive",
               "passed": true,
-              "actual": 0.006432872049878131,
+              "actual": 0.006325673435801806,
               "target": 0.0,
               "comparator": ">=",
               "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
@@ -10002,7 +10002,7 @@
             {
               "name": "recent_2m_worst_pair_vs_baseline",
               "passed": true,
-              "actual": 0.006432872049878131,
+              "actual": 0.006325673435801806,
               "target": 0.005458408080128212,
               "comparator": ">=",
               "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
@@ -10023,7 +10023,7 @@
             {
               "name": "recent_6m_worst_pair_target_060",
               "passed": true,
-              "actual": 0.007424653703392884,
+              "actual": 0.007384081825232269,
               "target": 0.006,
               "comparator": ">=",
               "note": "최근 6개월 최악 코인 0.6%/day 이상"
@@ -10031,7 +10031,7 @@
             {
               "name": "full_4y_worst_pair_target_060",
               "passed": false,
-              "actual": 0.0049276170693737555,
+              "actual": 0.004924246606262009,
               "target": 0.006,
               "comparator": ">=",
               "note": "4년 전체 최악 코인 0.6%/day 이상"
@@ -10054,6 +10054,18 @@
             }
           ],
           "passed": false
+        },
+        "pair_repair_1y": {
+          "repair_pair": null,
+          "checks": [],
+          "passed": false,
+          "skipped": true
+        },
+        "joint_repair_market_os": {
+          "repair_pair": null,
+          "checks": [],
+          "passed": false,
+          "skipped": true
         }
       }
     },
@@ -10478,5 +10490,6 @@
       "crowding_sort_value": 1000000000.0
     }
   },
-  "created_at": "2026-04-10T14:56:24.458543+00:00"
+  "created_at": "2026-04-11T15:02:11.940804+00:00",
+  "model_path": "models/recent_6m_gp_vectorized_big_capped_rerun.dill"
 }

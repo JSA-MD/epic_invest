@@ -18,6 +18,7 @@ MODELS_DIR = ROOT / "models"
 
 PIPELINE_MODE_LEGACY_SHARED = "legacy_shared"
 PIPELINE_MODE_PAIRWISE_MARKET_OS = "pairwise_market_os"
+PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL = "pairwise_market_os_fractal"
 
 PAIRWISE_DEFAULT_SEARCH_SUMMARY = MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_market_os_candidate_summary.json"
 PAIRWISE_DEFAULT_VALIDATION_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_market_os_validation_report.json"
@@ -38,12 +39,22 @@ LEGACY_DEFAULT_VALIDATION_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_valid
 LEGACY_DEFAULT_STRESS_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_stress_report.json"
 LEGACY_DEFAULT_PIPELINE_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_promotion_pipeline_report.json"
 
+FRACTAL_DEFAULT_SEARCH_SUMMARY = MODELS_DIR / "gp_regime_mixture_btc_bnb_fractal_genome_market_os_pipeline_search_summary.json"
+FRACTAL_DEFAULT_VALIDATION_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_fractal_genome_market_os_validation_report.json"
+FRACTAL_DEFAULT_STRESS_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_fractal_genome_market_os_stress_report.json"
+FRACTAL_DEFAULT_PIPELINE_REPORT = MODELS_DIR / "gp_regime_mixture_btc_bnb_fractal_genome_market_os_pipeline_report.json"
+FRACTAL_DEFAULT_BASELINE_SUMMARY = MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run search, validation, and stress gates for subset-pair promotion.",
     )
-    parser.add_argument("--pipeline-mode", default=PIPELINE_MODE_PAIRWISE_MARKET_OS, choices=(PIPELINE_MODE_LEGACY_SHARED, PIPELINE_MODE_PAIRWISE_MARKET_OS))
+    parser.add_argument(
+        "--pipeline-mode",
+        default=PIPELINE_MODE_PAIRWISE_MARKET_OS,
+        choices=(PIPELINE_MODE_LEGACY_SHARED, PIPELINE_MODE_PAIRWISE_MARKET_OS, PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL),
+    )
     parser.add_argument("--pairs", default="BTCUSDT,BNBUSDT")
     parser.add_argument("--candidate-summaries", default=None)
     parser.add_argument("--baseline-summary", default=None)
@@ -80,6 +91,15 @@ def resolve_mode_defaults(mode: str) -> dict[str, Any]:
             "pipeline_report_out": PAIRWISE_DEFAULT_PIPELINE_REPORT,
             "candidate_summaries": PAIRWISE_DEFAULT_CANDIDATE_SUMMARIES,
             "baseline_summary": PAIRWISE_DEFAULT_BASELINE_SUMMARY,
+        }
+    if mode == PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL:
+        return {
+            "search_summary_out": FRACTAL_DEFAULT_SEARCH_SUMMARY,
+            "validation_report_out": FRACTAL_DEFAULT_VALIDATION_REPORT,
+            "stress_report_out": FRACTAL_DEFAULT_STRESS_REPORT,
+            "pipeline_report_out": FRACTAL_DEFAULT_PIPELINE_REPORT,
+            "candidate_summaries": PAIRWISE_DEFAULT_CANDIDATE_SUMMARIES,
+            "baseline_summary": FRACTAL_DEFAULT_BASELINE_SUMMARY,
         }
     return {
         "search_summary_out": LEGACY_DEFAULT_SEARCH_SUMMARY,
@@ -136,6 +156,82 @@ def build_pairwise_validation_report(search_summary: dict[str, Any]) -> dict[str
         "market_os_audit": market_os_audit,
         "final_oos_audit": final_oos,
         "selection": search_summary.get("selection"),
+    }
+
+
+def build_fractal_validation_report(search_summary: dict[str, Any]) -> dict[str, Any]:
+    selected = search_summary.get("selected_candidate") or {}
+    validation = selected.get("validation") or {}
+    profiles = validation.get("profiles") or {}
+    robustness = selected.get("robustness") or {}
+    return {
+        "pairs": search_summary.get("pairs"),
+        "summary_path": search_summary.get("summary_path"),
+        "selected_candidate": {
+            "candidate_kind": selected.get("candidate_kind", "fractal_tree"),
+            "tree_key": selected.get("tree_key"),
+            "observation_mode": selected.get("observation_mode"),
+            "label_horizon": selected.get("label_horizon"),
+            "tree_depth": selected.get("tree_depth"),
+            "logic_depth": selected.get("logic_depth"),
+        },
+        "validation_engine": {
+            "candidate_kind": selected.get("candidate_kind", "fractal_tree"),
+            "observation_mode": selected.get("observation_mode"),
+            "label_horizon": selected.get("label_horizon"),
+            "tree_key": selected.get("tree_key"),
+            "robustness": robustness,
+        },
+        "validation_gate": profiles.get("progressive_improvement", {}),
+        "market_os_gate": profiles.get("target_060", {}),
+        "market_os_audit": robustness,
+        "final_oos_audit": profiles.get("final_oos", {}),
+        "selection": search_summary.get("selection"),
+    }
+
+
+def build_fractal_stress_report(search_summary: dict[str, Any]) -> dict[str, Any]:
+    selected = search_summary.get("selected_candidate") or {}
+    robustness = selected.get("robustness") or {}
+    validation = selected.get("validation") or {}
+    profiles = validation.get("profiles") or {}
+    wf1 = robustness.get("wf_1") or {}
+    full_gate_passed = bool(robustness.get("gate_passed", False))
+    shadow_live_ready = bool(wf1.get("passed", False))
+    if full_gate_passed:
+        status = "ready_for_merge"
+    elif shadow_live_ready:
+        status = "shadow_ready_only"
+    else:
+        status = "stress_fail"
+    return {
+        "selected_candidate": {
+            "candidate_kind": selected.get("candidate_kind", "fractal_tree"),
+            "tree_key": selected.get("tree_key"),
+            "observation_mode": selected.get("observation_mode"),
+            "label_horizon": selected.get("label_horizon"),
+        },
+        "robustness": robustness,
+        "validation_profiles": profiles,
+        "promotion_decision": {
+            "status": status,
+            "validation_gate": profiles.get("progressive_improvement", {}),
+            "market_os_gate": profiles.get("target_060", {}),
+            "final_oos_audit": profiles.get("final_oos", {}),
+            "robustness_gate": {
+                "passed": full_gate_passed,
+                "wf_1_passed": shadow_live_ready,
+                "stress_survival_rate_mean": robustness.get("stress_survival_rate_mean"),
+                "stress_survival_rate_min": robustness.get("stress_survival_rate_min"),
+                "stress_survival_threshold": robustness.get("stress_survival_threshold"),
+                "latest_fold_stress_reserve_score": robustness.get("latest_fold_stress_reserve_score"),
+            },
+            "ready_for_merge": full_gate_passed,
+            "ready_for_live": shadow_live_ready,
+            "selected_candidate_ready_for_merge": full_gate_passed,
+            "selected_candidate_ready_for_live": shadow_live_ready,
+            "failed_checks": [] if full_gate_passed else ["robustness_gate"] if not shadow_live_ready else ["full_robustness_gate"],
+        },
     }
 
 
@@ -223,10 +319,16 @@ def build_final_report(
             "stress_report": str(paths["stress_report_out"]),
         },
         "selected_candidate": None if selected is None else {
+            "candidate_kind": selected.get("candidate_kind"),
             "route_breadth_threshold": selected.get("route_breadth_threshold"),
             "mapping_indices": selected.get("mapping_indices"),
             "pair_configs": selected.get("pair_configs"),
             "candidate_id": selected.get("candidate_id"),
+            "tree_key": selected.get("tree_key"),
+            "observation_mode": selected.get("observation_mode"),
+            "label_horizon": selected.get("label_horizon"),
+            "tree_depth": selected.get("tree_depth"),
+            "logic_depth": selected.get("logic_depth"),
         },
         "selection": search_summary.get("selection"),
         "validation_engine": validation_engine,
@@ -291,6 +393,26 @@ def run_pipeline_step(mode: str, paths: dict[str, Path], args: argparse.Namespac
             run_step(cmd, ROOT)
             return
         raise ValueError(f"Unsupported step for pairwise_market_os: {step}")
+    if mode == PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL:
+        if step == "search":
+            cmd = [
+                python,
+                "-u",
+                str(SCRIPTS_DIR / "search_pair_subset_fractal_genome.py"),
+                "--pairs",
+                args.pairs,
+                "--expert-summaries",
+                str(paths["candidate_summaries"]),
+                "--baseline-summary",
+                str(paths["baseline_summary"]),
+                "--summary-out",
+                str(paths["search_summary_out"]),
+            ]
+            run_step(cmd, ROOT)
+            return
+        if step in {"validation", "stress"}:
+            return
+        raise ValueError(f"Unsupported step for pairwise_market_os_fractal: {step}")
 
     if step == "search":
         cmd = [
@@ -355,6 +477,25 @@ def main() -> None:
             executed_steps.append({"step": "validation", "status": "embedded"})
         else:
             executed_steps.append({"step": "validation", "status": "skipped"})
+        if not args.skip_stress:
+            run_pipeline_step(mode, paths, args, "stress")
+            executed_steps.append({"step": "stress", "status": "executed"})
+        else:
+            executed_steps.append({"step": "stress", "status": "skipped"})
+        stress_report = load_json(paths["stress_report_out"])
+    elif mode == PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL:
+        validation_report = build_fractal_validation_report(search_summary)
+        stress_report = build_fractal_stress_report(search_summary)
+        if not args.skip_validation:
+            write_json(paths["validation_report_out"], validation_report)
+            executed_steps.append({"step": "validation", "status": "embedded"})
+        else:
+            executed_steps.append({"step": "validation", "status": "skipped"})
+        if not args.skip_stress:
+            write_json(paths["stress_report_out"], stress_report)
+            executed_steps.append({"step": "stress", "status": "embedded"})
+        else:
+            executed_steps.append({"step": "stress", "status": "skipped"})
     else:
         if not args.skip_validation:
             run_pipeline_step(mode, paths, args, "validation")
@@ -362,14 +503,12 @@ def main() -> None:
         else:
             executed_steps.append({"step": "validation", "status": "skipped"})
         validation_report = load_json(paths["validation_report_out"])
-
-    if not args.skip_stress:
-        run_pipeline_step(mode, paths, args, "stress")
-        executed_steps.append({"step": "stress", "status": "executed"})
-    else:
-        executed_steps.append({"step": "stress", "status": "skipped"})
-
-    stress_report = load_json(paths["stress_report_out"])
+        if not args.skip_stress:
+            run_pipeline_step(mode, paths, args, "stress")
+            executed_steps.append({"step": "stress", "status": "executed"})
+        else:
+            executed_steps.append({"step": "stress", "status": "skipped"})
+        stress_report = load_json(paths["stress_report_out"])
     if mode == PIPELINE_MODE_LEGACY_SHARED:
         validation_report = build_legacy_validation_report(validation_report)
 

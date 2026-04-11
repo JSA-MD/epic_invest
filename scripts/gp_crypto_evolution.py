@@ -77,6 +77,12 @@ TRAIL_ACTIVATION_PCT = 0.005
 TRAIL_DISTANCE_PCT = 0.005
 TRAIL_FLOOR_PCT = 0.0025
 DC_THRESHOLD_PCT = 0.005
+DC_FEATURE_CONFIGS = (
+    ("015", 0.0015),
+    ("03", 0.0030),
+    ("05", DC_THRESHOLD_PCT),
+    ("10", 0.0100),
+)
 
 API_BASE = "https://fapi.binance.com"
 
@@ -91,10 +97,21 @@ INTERVAL_MS = {
     "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000,
 }
 RAW_OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
-DERIVED_FEATURE_COLUMNS = tuple(
-    c for c in BASIC_FEATURES if c not in {"open", "high", "low", "close"}
+RAW_EVENT_COLUMNS = ("taker_base", "taker_quote")
+RAW_CACHE_COLUMNS = RAW_OHLCV_COLUMNS + RAW_EVENT_COLUMNS
+DC_DERIVED_FEATURE_COLUMNS = tuple(
+    f"dc_{metric}_{suffix}"
+    for suffix, _ in DC_FEATURE_CONFIGS
+    for metric in ("trend", "event", "overshoot", "run")
 )
-CACHE_COLUMNS = RAW_OHLCV_COLUMNS + DERIVED_FEATURE_COLUMNS
+DERIVED_FEATURE_COLUMNS = tuple(
+    dict.fromkeys(
+        tuple(c for c in BASIC_FEATURES if c not in {"open", "high", "low", "close"})
+        + ("buy_volume_share", "order_imbalance")
+        + DC_DERIVED_FEATURE_COLUMNS
+    )
+)
+CACHE_COLUMNS = RAW_CACHE_COLUMNS + DERIVED_FEATURE_COLUMNS
 
 
 def fetch_klines(symbol: str, interval: str,
@@ -163,33 +180,26 @@ def fetch_klines(symbol: str, interval: str,
         "close_time", "quote_volume", "trade_count",
         "taker_base", "taker_quote", "ignore",
     ])
-    for c in ("open", "high", "low", "close", "volume"):
+    for c in ("open", "high", "low", "close", "volume", "taker_base", "taker_quote"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     df = (df.drop_duplicates(subset=["open_time"])
             .sort_values("open_time")
             .set_index("open_time"))
-    df = df[["open", "high", "low", "close", "volume"]]
+    df = df[list(RAW_CACHE_COLUMNS)]
 
     return enrich_features(df)
 
 
-def add_directional_change_features(
-    df: pd.DataFrame,
-    threshold: float = DC_THRESHOLD_PCT,
-) -> pd.DataFrame:
-    """Add event-based directional-change features using close prices."""
-    if df.empty:
-        for c in ("dc_trend_05", "dc_event_05", "dc_overshoot_05", "dc_run_05"):
-            df[c] = 0.0
-        return df
-
-    close = df["close"].to_numpy(dtype="float64")
-    trend = np.zeros(len(df), dtype="float64")
-    event = np.zeros(len(df), dtype="float64")
-    overshoot = np.zeros(len(df), dtype="float64")
-    run_mag = np.zeros(len(df), dtype="float64")
+def add_directional_change_arrays(
+    close: np.ndarray,
+    threshold: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    trend = np.zeros(len(close), dtype="float64")
+    event = np.zeros(len(close), dtype="float64")
+    overshoot = np.zeros(len(close), dtype="float64")
+    run_mag = np.zeros(len(close), dtype="float64")
 
     state = 0.0
     last_extreme = float(close[0])
@@ -197,14 +207,13 @@ def add_directional_change_features(
 
     for i, price in enumerate(close):
         if state == 0.0:
-            up_move = price / last_extreme - 1.0
-            down_move = price / last_extreme - 1.0
-            if up_move >= threshold:
+            move = price / last_extreme - 1.0
+            if move >= threshold:
                 state = 1.0
                 event[i] = 1.0
                 confirm_price = float(price)
                 last_extreme = float(price)
-            elif down_move <= -threshold:
+            elif move <= -threshold:
                 state = -1.0
                 event[i] = -1.0
                 confirm_price = float(price)
@@ -236,19 +245,46 @@ def add_directional_change_features(
         else:
             run_mag[i] = 0.0
 
-    df["dc_trend_05"] = trend
-    df["dc_event_05"] = event
-    df["dc_overshoot_05"] = overshoot
-    df["dc_run_05"] = run_mag
+    return trend, event, overshoot, run_mag
+
+
+def add_directional_change_features(
+    df: pd.DataFrame,
+    threshold: float = DC_THRESHOLD_PCT,
+    suffix: str = "05",
+) -> pd.DataFrame:
+    """Add event-based directional-change features using close prices."""
+    column_names = tuple(f"dc_{metric}_{suffix}" for metric in ("trend", "event", "overshoot", "run"))
+    if df.empty:
+        for c in column_names:
+            df[c] = 0.0
+        return df
+
+    close = df["close"].to_numpy(dtype="float64")
+    trend, event, overshoot, run_mag = add_directional_change_arrays(close, threshold)
+    df[column_names[0]] = trend
+    df[column_names[1]] = event
+    df[column_names[2]] = overshoot
+    df[column_names[3]] = run_mag
     return df
 
 
 def enrich_features(df: pd.DataFrame) -> pd.DataFrame:
     """Recompute technical and event-based features from OHLCV."""
-    base_cols = [c for c in ("open", "high", "low", "close", "volume") if c in df.columns]
+    base_cols = [c for c in RAW_CACHE_COLUMNS if c in df.columns]
     base = df[base_cols].copy()
     if "volume" not in base.columns:
         base["volume"] = 0.0
+    if "taker_base" not in base.columns:
+        base["taker_base"] = base["volume"] * 0.5
+    else:
+        base["taker_base"] = base["taker_base"].replace([np.inf, -np.inf], np.nan)
+        base["taker_base"] = base["taker_base"].fillna(base["volume"] * 0.5)
+    if "taker_quote" not in base.columns:
+        base["taker_quote"] = base["taker_base"] * base["close"]
+    else:
+        base["taker_quote"] = base["taker_quote"].replace([np.inf, -np.inf], np.nan)
+        base["taker_quote"] = base["taker_quote"].fillna(base["taker_base"] * base["close"])
     for c in ("rsi_14", "atr_14", "macd_h", "bb_p", "vol_sma", "cci_14", "mfi_14"):
         if c in df.columns and c not in base.columns:
             base[c] = df[c]
@@ -291,13 +327,28 @@ def enrich_features(df: pd.DataFrame) -> pd.DataFrame:
         if c not in base.columns:
             base[c] = fallback
 
-    base = add_directional_change_features(base)
-    for c in BASIC_FEATURES:
+    volume_scale = base["volume"].replace(0.0, np.nan)
+    buy_volume_share = (
+        base["taker_base"] / volume_scale
+        if "taker_base" in base.columns
+        else pd.Series(0.5, index=base.index, dtype="float64")
+    )
+    buy_volume_share = buy_volume_share.replace([np.inf, -np.inf], np.nan).clip(0.0, 1.0)
+    base["buy_volume_share"] = buy_volume_share
+    base["order_imbalance"] = (2.0 * buy_volume_share - 1.0).replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
+
+    for suffix, threshold in DC_FEATURE_CONFIGS:
+        base = add_directional_change_features(base, threshold=threshold, suffix=suffix)
+    for c in CACHE_COLUMNS:
         if c not in base.columns:
             base[c] = 0.0
 
     base.bfill(inplace=True)
     base.fillna(0, inplace=True)
+    base["taker_base"] = base["taker_base"].replace([np.inf, -np.inf], np.nan).fillna(base["volume"] * 0.5)
+    base["taker_quote"] = base["taker_quote"].replace([np.inf, -np.inf], np.nan).fillna(base["taker_base"] * base["close"])
+    base["buy_volume_share"] = base["buy_volume_share"].replace([np.inf, -np.inf], np.nan).fillna(0.5).clip(0.0, 1.0)
+    base["order_imbalance"] = base["order_imbalance"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(-1.0, 1.0)
     return base[list(CACHE_COLUMNS)]
 
 
@@ -316,7 +367,7 @@ def _normalize_cache_frame(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out.index = pd.to_datetime(out.index, utc=True)
     out = out[~out.index.duplicated(keep="last")].sort_index()
-    for col in RAW_OHLCV_COLUMNS:
+    for col in RAW_CACHE_COLUMNS:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce")
     return out
@@ -377,7 +428,7 @@ def _write_cache_frame(path: Path, df: pd.DataFrame) -> None:
 
 
 def _raw_cache_view(df: pd.DataFrame) -> pd.DataFrame:
-    cols = [col for col in RAW_OHLCV_COLUMNS if col in df.columns]
+    cols = [col for col in RAW_CACHE_COLUMNS if col in df.columns]
     if not cols:
         return pd.DataFrame()
     return _normalize_cache_frame(df[cols])
@@ -462,6 +513,10 @@ def _sync_pair_cache(
         if cached_df.empty:
             print(f"  {symbol}: cache miss")
         else:
+            if all(col in cached_df.columns for col in RAW_OHLCV_COLUMNS) and not all(
+                col in cached_df.columns for col in CACHE_COLUMNS
+            ):
+                cached_df = enrich_features(cached_df)
             print(f"  {symbol}: cache-only hit")
         return cached_df
 

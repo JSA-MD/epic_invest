@@ -23,6 +23,7 @@ from fractal_genome_core import (
     AndCell,
     ConditionNode,
     ConditionSpec,
+    deserialize_tree,
     FilterDecision,
     LeafGene,
     LeafNode,
@@ -59,6 +60,8 @@ from search_pair_subset_regime_mixture import (
     build_library_lookup,
     build_overlay_inputs,
     json_safe,
+    normalize_mapping_indices,
+    normalize_route_state_mode,
     parse_csv_tuple,
     resolve_fast_engine,
     score_realistic_candidate,
@@ -78,9 +81,46 @@ FEATURE_SET_NAME = "fractal_market_feature_v3"
 FEATURE_SET_DESCRIPTION = (
     "Expanded single-asset and pairwise inputs covering returns, momentum, "
     "RSI, ATR, MACD, Bollinger, MFI, CCI, Donchian, drawdown, volatility, "
-    "volume, session, and cross-asset spread features."
+    "volume, multi-threshold directional-change, order-imbalance, session, "
+    "and cross-asset spread features."
 )
 WINDOW_COMPAT_LABEL_FULL = "full_4y"
+OBSERVATION_MODE_TIME = "time"
+OBSERVATION_MODE_VOLUME = "volume"
+OBSERVATION_MODE_IMBALANCE = "imbalance"
+OBSERVATION_MODE_DIRECTIONAL_CHANGE = "directional_change"
+OBSERVATION_MODE_ORDER = (
+    OBSERVATION_MODE_TIME,
+    OBSERVATION_MODE_VOLUME,
+    OBSERVATION_MODE_IMBALANCE,
+    OBSERVATION_MODE_DIRECTIONAL_CHANGE,
+)
+OBSERVATION_MODE_LABELS = {
+    OBSERVATION_MODE_TIME: "time-driven",
+    OBSERVATION_MODE_VOLUME: "volume-driven",
+    OBSERVATION_MODE_IMBALANCE: "order-imbalance-driven",
+    OBSERVATION_MODE_DIRECTIONAL_CHANGE: "directional-change-driven",
+}
+LABEL_HORIZON_ORDER = ("1m", "5m", "30m", "4h")
+LABEL_HORIZON_LABELS = {
+    "1m": "fast-proxy",
+    "5m": "native-5m",
+    "30m": "30m-decision-cadence",
+    "4h": "4h-decision-cadence",
+}
+LABEL_HORIZON_BAR_COUNTS = {
+    "1m": 1,
+    "5m": 1,
+    "30m": 6,
+    "4h": 48,
+}
+COMMON_OBSERVATION_FEATURES = {
+    "btc_regime",
+    "bnb_regime",
+    "regime_spread_btc_minus_bnb",
+    "breadth",
+    "breadth_change_1d",
+}
 
 BASE_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("btc_regime", ">=", (-0.05, 0.0, 0.05, 0.10)),
@@ -115,11 +155,18 @@ BASE_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("btc_macd_h_pct_1h", ">=", (-0.0010, -0.0005, -0.0002, 0.0, 0.0002, 0.0005, 0.0010)),
     ("btc_bb_p_1h", ">=", (0.20, 0.35, 0.50, 0.65, 0.80)),
     ("btc_volume_rel_1h", ">=", (0.40, 0.70, 1.00, 1.30, 1.80, 2.40)),
+    ("btc_order_imbalance_1h", ">=", (-0.60, -0.30, 0.0, 0.30, 0.60)),
     ("btc_cci_scaled_1h", ">=", (-1.50, -0.75, -0.25, 0.0, 0.25, 0.75, 1.50)),
+    ("btc_dc_trend_015_1h", ">=", (-0.50, 0.50)),
+    ("btc_dc_event_015_1h", ">=", (-0.50, 0.50)),
+    ("btc_dc_trend_03_1h", ">=", (-0.50, 0.50)),
+    ("btc_dc_event_03_1h", ">=", (-0.50, 0.50)),
     ("btc_dc_trend_05_1h", ">=", (-0.50, 0.50)),
     ("btc_dc_event_05_1h", ">=", (-0.50, 0.50)),
     ("btc_dc_overshoot_05_1h", ">=", (-0.015, -0.005, 0.0, 0.005, 0.015)),
     ("btc_dc_run_05_1h", ">=", (0.0, 0.01, 0.02, 0.05)),
+    ("btc_dc_trend_10_1h", ">=", (-0.50, 0.50)),
+    ("btc_dc_event_10_1h", ">=", (-0.50, 0.50)),
     ("session_utc_phase", ">=", (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)),
     ("session_asia_flag", ">=", (0.50,)),
     ("session_eu_flag", ">=", (0.50,)),
@@ -163,11 +210,18 @@ MULTI_PAIR_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("bnb_macd_h_pct_1h", ">=", (-0.0010, -0.0005, -0.0002, 0.0, 0.0002, 0.0005, 0.0010)),
     ("bnb_bb_p_1h", ">=", (0.20, 0.35, 0.50, 0.65, 0.80)),
     ("bnb_volume_rel_1h", ">=", (0.40, 0.70, 1.00, 1.30, 1.80, 2.40)),
+    ("bnb_order_imbalance_1h", ">=", (-0.60, -0.30, 0.0, 0.30, 0.60)),
     ("bnb_cci_scaled_1h", ">=", (-1.50, -0.75, -0.25, 0.0, 0.25, 0.75, 1.50)),
+    ("bnb_dc_trend_015_1h", ">=", (-0.50, 0.50)),
+    ("bnb_dc_event_015_1h", ">=", (-0.50, 0.50)),
+    ("bnb_dc_trend_03_1h", ">=", (-0.50, 0.50)),
+    ("bnb_dc_event_03_1h", ">=", (-0.50, 0.50)),
     ("bnb_dc_trend_05_1h", ">=", (-0.50, 0.50)),
     ("bnb_dc_event_05_1h", ">=", (-0.50, 0.50)),
     ("bnb_dc_overshoot_05_1h", ">=", (-0.015, -0.005, 0.0, 0.005, 0.015)),
     ("bnb_dc_run_05_1h", ">=", (0.0, 0.01, 0.02, 0.05)),
+    ("bnb_dc_trend_10_1h", ">=", (-0.50, 0.50)),
+    ("bnb_dc_event_10_1h", ">=", (-0.50, 0.50)),
     ("rsi_spread_btc_minus_bnb_14d", ">=", (-20.0, -10.0, -5.0, 0.0, 5.0, 10.0, 20.0)),
     ("atr_spread_btc_minus_bnb_14d", ">=", (-0.02, -0.01, 0.0, 0.01, 0.02)),
     ("macd_hist_spread_btc_minus_bnb_12_26_9", ">=", (-0.05, -0.02, 0.0, 0.02, 0.05)),
@@ -184,6 +238,7 @@ MULTI_PAIR_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("atr_pct_spread_btc_minus_bnb_1h", ">=", (-0.004, -0.002, -0.001, 0.0, 0.001, 0.002, 0.004)),
     ("macd_h_pct_spread_btc_minus_bnb_1h", ">=", (-0.0015, -0.0007, -0.0002, 0.0, 0.0002, 0.0007, 0.0015)),
     ("volume_rel_spread_btc_minus_bnb_1h", ">=", (-1.50, -0.50, 0.0, 0.50, 1.50)),
+    ("imbalance_spread_btc_minus_bnb_1h", ">=", (-1.0, -0.50, 0.0, 0.50, 1.0)),
     ("cci_scaled_spread_btc_minus_bnb_1h", ">=", (-2.0, -1.0, -0.3, 0.0, 0.3, 1.0, 2.0)),
     ("dc_trend_spread_btc_minus_bnb_1h", ">=", (-2.0, -1.0, 0.0, 1.0, 2.0)),
     ("dc_event_spread_btc_minus_bnb_1h", ">=", (-1.0, 0.0, 1.0)),
@@ -224,6 +279,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generations", type=int, default=8)
     parser.add_argument("--elite-count", type=int, default=8)
     parser.add_argument("--top-k", type=int, default=8)
+    parser.add_argument(
+        "--warm-start-summaries",
+        default="",
+        help="Optional comma-separated prior fractal summary JSON files used to warm-start local search.",
+    )
+    parser.add_argument(
+        "--warm-start-candidate-limit",
+        type=int,
+        default=12,
+        help="Maximum incumbent trees imported from prior fractal summaries per mode/horizon.",
+    )
+    parser.add_argument(
+        "--warm-start-variant-budget",
+        type=int,
+        default=24,
+        help="Maximum local neighbor variants generated from imported incumbent trees per mode/horizon.",
+    )
+    parser.add_argument(
+        "--local-search-rate",
+        type=float,
+        default=0.35,
+        help="Fraction of offspring generated from local incumbent mutations instead of generic breeding.",
+    )
+    parser.add_argument(
+        "--local-search-mutation-burst",
+        type=int,
+        default=2,
+        help="Maximum sequential mutation count applied during local incumbent search.",
+    )
     parser.add_argument("--max-depth", type=int, default=3)
     parser.add_argument("--logic-max-depth", type=int, default=2)
     parser.add_argument("--curriculum-min-depth", type=int, default=1)
@@ -275,6 +359,16 @@ def parse_args() -> argparse.Namespace:
         default="0.35,0.50,0.65,0.80",
     )
     parser.add_argument(
+        "--observation-modes",
+        default="time,volume,imbalance,directional_change",
+        help="Observation families searched in parallel.",
+    )
+    parser.add_argument(
+        "--label-horizons",
+        default="1m,5m,30m,4h",
+        help="Decision horizons searched in parallel on top of 5m execution data.",
+    )
+    parser.add_argument(
         "--fast-engine",
         choices=("auto", "python", "numba"),
         default="auto",
@@ -314,10 +408,208 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_feature_specs(pairs: tuple[str, ...]) -> tuple[tuple[str, str, tuple[float, ...]], ...]:
-    if len(pairs) <= 1:
-        return BASE_FEATURE_SPECS
-    return BASE_FEATURE_SPECS + MULTI_PAIR_FEATURE_SPECS
+def normalize_observation_modes(raw_modes: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for raw in raw_modes:
+        mode = str(raw).strip().lower()
+        if not mode:
+            continue
+        if mode not in OBSERVATION_MODE_ORDER:
+            raise ValueError(f"Unsupported observation mode: {raw}")
+        if mode not in normalized:
+            normalized.append(mode)
+    return tuple(normalized) if normalized else OBSERVATION_MODE_ORDER
+
+
+def normalize_label_horizons(raw_horizons: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for raw in raw_horizons:
+        horizon = str(raw).strip().lower()
+        if not horizon:
+            continue
+        if horizon not in LABEL_HORIZON_ORDER:
+            raise ValueError(f"Unsupported label horizon: {raw}")
+        if horizon not in normalized:
+            normalized.append(horizon)
+    return tuple(normalized) if normalized else LABEL_HORIZON_ORDER
+
+
+def classify_feature_observation_mode(feature: str) -> str:
+    if feature in COMMON_OBSERVATION_FEATURES:
+        return "common"
+    if "imbalance" in feature:
+        return OBSERVATION_MODE_IMBALANCE
+    if "dc_" in feature:
+        return OBSERVATION_MODE_DIRECTIONAL_CHANGE
+    if (
+        "volume" in feature
+        or "vol_rel" in feature
+        or "_vol_" in feature
+        or "volatility" in feature
+        or "mfi" in feature
+    ):
+        return OBSERVATION_MODE_VOLUME
+    return OBSERVATION_MODE_TIME
+
+
+def filter_feature_specs_by_observation_mode(
+    feature_specs: tuple[tuple[str, str, tuple[float, ...]], ...],
+    observation_mode: str,
+) -> tuple[tuple[str, str, tuple[float, ...]], ...]:
+    mode = str(observation_mode).strip().lower()
+    if mode not in OBSERVATION_MODE_ORDER:
+        raise ValueError(f"Unsupported observation mode: {observation_mode}")
+    return tuple(
+        spec
+        for spec in feature_specs
+        if classify_feature_observation_mode(spec[0]) in {"common", mode}
+    )
+
+
+def build_feature_specs(
+    pairs: tuple[str, ...],
+    observation_mode: str | None = None,
+) -> tuple[tuple[str, str, tuple[float, ...]], ...]:
+    feature_specs = BASE_FEATURE_SPECS if len(pairs) <= 1 else BASE_FEATURE_SPECS + MULTI_PAIR_FEATURE_SPECS
+    if observation_mode is None:
+        return feature_specs
+    return filter_feature_specs_by_observation_mode(feature_specs, observation_mode)
+
+
+def allocate_mode_budgets(total: int, modes: tuple[str, ...], minimum: int = 0) -> dict[str, int]:
+    if not modes:
+        return {}
+    total_budget = max(int(total), 0)
+    if minimum > 0 and total_budget >= len(modes) * minimum:
+        total_budget = max(total_budget, len(modes) * minimum)
+    base = total_budget // len(modes)
+    remainder = total_budget % len(modes)
+    budgets: dict[str, int] = {}
+    for idx, mode in enumerate(modes):
+        budgets[mode] = base + (1 if idx < remainder else 0)
+    return budgets
+
+
+def candidate_tree_key(observation_mode: str, label_horizon: str, node: TreeNode) -> str:
+    return f"{observation_mode}::{label_horizon}::{tree_key(node)}"
+
+
+def candidate_tree_key_from_raw(observation_mode: str, label_horizon: str, raw_tree_key: str) -> str:
+    return f"{observation_mode}::{label_horizon}::{raw_tree_key}"
+
+
+def _copy_feature_arrays(feature_arrays: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    return {name: np.asarray(values, dtype="float64").copy() for name, values in feature_arrays.items()}
+
+
+def _feature_scope(name: str) -> str:
+    if name.startswith("btc_"):
+        return "btc"
+    if name.startswith("bnb_"):
+        return "bnb"
+    return "pair"
+
+
+def _scope_values(name: str, btc_values: np.ndarray, bnb_values: np.ndarray, pair_values: np.ndarray) -> np.ndarray:
+    scope = _feature_scope(name)
+    if scope == "btc":
+        return btc_values
+    if scope == "bnb":
+        return bnb_values
+    return pair_values
+
+
+def project_feature_arrays_by_observation_mode(
+    feature_arrays: dict[str, np.ndarray],
+    observation_mode: str,
+) -> dict[str, np.ndarray]:
+    mode = str(observation_mode).strip().lower()
+    if mode not in OBSERVATION_MODE_ORDER:
+        raise ValueError(f"Unsupported observation mode: {observation_mode}")
+    projected = _copy_feature_arrays(feature_arrays)
+    if mode == OBSERVATION_MODE_TIME or not projected:
+        return projected
+
+    sample = next(iter(projected.values()))
+    length = len(sample)
+    zeros = np.zeros(length, dtype="float64")
+    ones = np.ones(length, dtype="float64")
+
+    btc_volume_rel = np.clip(np.asarray(projected.get("btc_volume_rel_1h", ones), dtype="float64"), 0.25, 4.0)
+    bnb_volume_rel = np.clip(np.asarray(projected.get("bnb_volume_rel_1h", ones), dtype="float64"), 0.25, 4.0)
+    pair_volume_rel = np.clip(0.5 * (btc_volume_rel + bnb_volume_rel), 0.25, 4.0)
+
+    btc_imbalance = np.clip(np.asarray(projected.get("btc_order_imbalance_1h", zeros), dtype="float64"), -1.0, 1.0)
+    bnb_imbalance = np.clip(np.asarray(projected.get("bnb_order_imbalance_1h", zeros), dtype="float64"), -1.0, 1.0)
+    pair_imbalance = np.clip(
+        np.asarray(projected.get("imbalance_spread_btc_minus_bnb_1h", btc_imbalance - bnb_imbalance), dtype="float64"),
+        -1.0,
+        1.0,
+    )
+
+    btc_dc_trend = np.asarray(projected.get("btc_dc_trend_05_1h", zeros), dtype="float64")
+    bnb_dc_trend = np.asarray(projected.get("bnb_dc_trend_05_1h", zeros), dtype="float64")
+    pair_dc_trend = np.asarray(
+        projected.get("dc_trend_spread_btc_minus_bnb_1h", btc_dc_trend - bnb_dc_trend),
+        dtype="float64",
+    )
+    btc_dc_event = np.asarray(projected.get("btc_dc_event_05_1h", zeros), dtype="float64")
+    bnb_dc_event = np.asarray(projected.get("bnb_dc_event_05_1h", zeros), dtype="float64")
+    pair_dc_event = np.asarray(
+        projected.get("dc_event_spread_btc_minus_bnb_1h", btc_dc_event - bnb_dc_event),
+        dtype="float64",
+    )
+    btc_dc_run = np.asarray(projected.get("btc_dc_run_05_1h", zeros), dtype="float64")
+    bnb_dc_run = np.asarray(projected.get("bnb_dc_run_05_1h", zeros), dtype="float64")
+    pair_dc_run = btc_dc_run - bnb_dc_run
+
+    if mode == OBSERVATION_MODE_VOLUME:
+        btc_factor = np.clip(0.75 + 0.25 * np.sqrt(btc_volume_rel), 0.80, 1.35)
+        bnb_factor = np.clip(0.75 + 0.25 * np.sqrt(bnb_volume_rel), 0.80, 1.35)
+        pair_factor = np.clip(0.75 + 0.25 * np.sqrt(pair_volume_rel), 0.80, 1.35)
+    elif mode == OBSERVATION_MODE_IMBALANCE:
+        btc_factor = np.clip(1.0 + 0.35 * btc_imbalance, 0.65, 1.35)
+        bnb_factor = np.clip(1.0 + 0.35 * bnb_imbalance, 0.65, 1.35)
+        pair_factor = np.clip(1.0 + 0.25 * pair_imbalance, 0.70, 1.30)
+    else:
+        btc_factor = np.clip(1.0 + 0.20 * btc_dc_trend + 0.15 * np.abs(btc_dc_event) + 0.10 * btc_dc_run, 0.60, 1.60)
+        bnb_factor = np.clip(1.0 + 0.20 * bnb_dc_trend + 0.15 * np.abs(bnb_dc_event) + 0.10 * bnb_dc_run, 0.60, 1.60)
+        pair_factor = np.clip(1.0 + 0.15 * pair_dc_trend + 0.10 * np.abs(pair_dc_event) + 0.05 * pair_dc_run, 0.60, 1.60)
+
+    for name, values in projected.items():
+        if name.startswith("session_"):
+            continue
+        scoped_factor = _scope_values(name, btc_factor, bnb_factor, pair_factor)
+        adjusted = np.asarray(values, dtype="float64") * scoped_factor
+        if "vol_rel" in name:
+            neutral = 1.0
+            adjusted = neutral + (np.asarray(values, dtype="float64") - neutral) * scoped_factor
+        elif name == "breadth":
+            adjusted = np.clip(adjusted, 0.0, 1.0)
+        elif name == "breadth_change_1d":
+            adjusted = np.clip(adjusted, -1.0, 1.0)
+        projected[name] = adjusted.astype("float64")
+    return projected
+
+
+def apply_label_horizon_to_feature_arrays(
+    feature_arrays: dict[str, np.ndarray],
+    label_horizon: str,
+) -> dict[str, np.ndarray]:
+    horizon = str(label_horizon).strip().lower()
+    bars = LABEL_HORIZON_BAR_COUNTS[horizon]
+    if bars <= 1:
+        return _copy_feature_arrays(feature_arrays)
+    transformed: dict[str, np.ndarray] = {}
+    for name, values in feature_arrays.items():
+        array = np.asarray(values, dtype="float64")
+        if len(array) == 0:
+            transformed[name] = array.copy()
+            continue
+        anchor_values = array[::bars]
+        stepped = np.repeat(anchor_values, bars)[: len(array)]
+        transformed[name] = stepped.astype("float64")
+    return transformed
 
 
 def build_condition_options(feature_specs: tuple[tuple[str, str, tuple[float, ...]], ...]) -> list[ConditionSpec]:
@@ -550,8 +842,18 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
     bnb_bb_p_1h = _safe_numeric_feature(df, f"{secondary_pair}_bb_p", 0.5).clip(-1.0, 2.0)
     btc_volume_rel_1h = volume[primary_pair] / _safe_numeric_feature(df, f"{primary_pair}_vol_sma", 0.0).replace(0.0, np.nan)
     bnb_volume_rel_1h = volume[secondary_pair] / _safe_numeric_feature(df, f"{secondary_pair}_vol_sma", 0.0).replace(0.0, np.nan)
+    btc_order_imbalance_1h = _safe_numeric_feature(df, f"{primary_pair}_order_imbalance", 0.0).clip(-1.0, 1.0)
+    bnb_order_imbalance_1h = _safe_numeric_feature(df, f"{secondary_pair}_order_imbalance", 0.0).clip(-1.0, 1.0)
     btc_cci_scaled_1h = (_safe_numeric_feature(df, f"{primary_pair}_cci_14", 0.0) / 100000.0).clip(-3.0, 3.0)
     bnb_cci_scaled_1h = (_safe_numeric_feature(df, f"{secondary_pair}_cci_14", 0.0) / 100000.0).clip(-3.0, 3.0)
+    btc_dc_trend_015_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_trend_015", 0.0)
+    bnb_dc_trend_015_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_trend_015", 0.0)
+    btc_dc_event_015_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_event_015", 0.0)
+    bnb_dc_event_015_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_event_015", 0.0)
+    btc_dc_trend_03_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_trend_03", 0.0)
+    bnb_dc_trend_03_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_trend_03", 0.0)
+    btc_dc_event_03_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_event_03", 0.0)
+    bnb_dc_event_03_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_event_03", 0.0)
     btc_dc_trend_05_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_trend_05", 0.0)
     bnb_dc_trend_05_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_trend_05", 0.0)
     btc_dc_event_05_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_event_05", 0.0)
@@ -560,6 +862,10 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
     bnb_dc_overshoot_05_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_overshoot_05", 0.0)
     btc_dc_run_05_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_run_05", 0.0)
     bnb_dc_run_05_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_run_05", 0.0)
+    btc_dc_trend_10_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_trend_10", 0.0)
+    bnb_dc_trend_10_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_trend_10", 0.0)
+    btc_dc_event_10_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_event_10", 0.0)
+    bnb_dc_event_10_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_event_10", 0.0)
 
     btc_drawdown_7d = daily_close[primary_pair] / daily_close[primary_pair].rolling(7, min_periods=1).max() - 1.0
     bnb_drawdown_7d = daily_close[secondary_pair] / daily_close[secondary_pair].rolling(7, min_periods=1).max() - 1.0
@@ -602,6 +908,7 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
     atr_pct_spread_1h = btc_atr_pct_1h - bnb_atr_pct_1h
     macd_h_pct_spread_1h = btc_macd_h_pct_1h - bnb_macd_h_pct_1h
     volume_rel_spread_1h = btc_volume_rel_1h - bnb_volume_rel_1h
+    imbalance_spread_1h = btc_order_imbalance_1h - bnb_order_imbalance_1h
     cci_scaled_spread_1h = btc_cci_scaled_1h - bnb_cci_scaled_1h
     dc_trend_spread_1h = btc_dc_trend_05_1h - bnb_dc_trend_05_1h
     dc_event_spread_1h = btc_dc_event_05_1h - bnb_dc_event_05_1h
@@ -683,8 +990,18 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "bnb_bb_p_1h": bnb_bb_p_1h,
         "btc_volume_rel_1h": btc_volume_rel_1h,
         "bnb_volume_rel_1h": bnb_volume_rel_1h,
+        "btc_order_imbalance_1h": btc_order_imbalance_1h,
+        "bnb_order_imbalance_1h": bnb_order_imbalance_1h,
         "btc_cci_scaled_1h": btc_cci_scaled_1h,
         "bnb_cci_scaled_1h": bnb_cci_scaled_1h,
+        "btc_dc_trend_015_1h": btc_dc_trend_015_1h,
+        "bnb_dc_trend_015_1h": bnb_dc_trend_015_1h,
+        "btc_dc_event_015_1h": btc_dc_event_015_1h,
+        "bnb_dc_event_015_1h": bnb_dc_event_015_1h,
+        "btc_dc_trend_03_1h": btc_dc_trend_03_1h,
+        "bnb_dc_trend_03_1h": bnb_dc_trend_03_1h,
+        "btc_dc_event_03_1h": btc_dc_event_03_1h,
+        "bnb_dc_event_03_1h": bnb_dc_event_03_1h,
         "btc_dc_trend_05_1h": btc_dc_trend_05_1h,
         "bnb_dc_trend_05_1h": bnb_dc_trend_05_1h,
         "btc_dc_event_05_1h": btc_dc_event_05_1h,
@@ -693,6 +1010,10 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "bnb_dc_overshoot_05_1h": bnb_dc_overshoot_05_1h,
         "btc_dc_run_05_1h": btc_dc_run_05_1h,
         "bnb_dc_run_05_1h": bnb_dc_run_05_1h,
+        "btc_dc_trend_10_1h": btc_dc_trend_10_1h,
+        "bnb_dc_trend_10_1h": bnb_dc_trend_10_1h,
+        "btc_dc_event_10_1h": btc_dc_event_10_1h,
+        "bnb_dc_event_10_1h": bnb_dc_event_10_1h,
         "rsi_spread_btc_minus_bnb_14d": rsi_spread,
         "atr_spread_btc_minus_bnb_14d": atr_spread,
         "macd_hist_spread_btc_minus_bnb_12_26_9": macd_hist_spread,
@@ -709,6 +1030,7 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "atr_pct_spread_btc_minus_bnb_1h": atr_pct_spread_1h,
         "macd_h_pct_spread_btc_minus_bnb_1h": macd_h_pct_spread_1h,
         "volume_rel_spread_btc_minus_bnb_1h": volume_rel_spread_1h,
+        "imbalance_spread_btc_minus_bnb_1h": imbalance_spread_1h,
         "cci_scaled_spread_btc_minus_bnb_1h": cci_scaled_spread_1h,
         "dc_trend_spread_btc_minus_bnb_1h": dc_trend_spread_1h,
         "dc_event_spread_btc_minus_bnb_1h": dc_event_spread_1h,
@@ -721,6 +1043,20 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "session_eu_flag": session_eu_flag,
         "session_us_flag": session_us_flag,
     }
+
+
+def _neutral_feature_fill(name: str) -> float:
+    if "spread" in name:
+        return 0.0
+    if name in {"session_utc_phase", "session_asia_flag", "session_eu_flag", "session_us_flag"}:
+        return 0.0
+    if (name.endswith("_vol_rel") or "volume_rel" in name) and "spread" not in name:
+        return 1.0
+    if "rsi" in name or "mfi" in name:
+        return 50.0
+    if "bb_p" in name or "bb_pct_b" in name:
+        return 0.5
+    return 0.0
 
 
 def materialize_feature_arrays(features: dict[str, pd.Series], index: pd.DatetimeIndex) -> dict[str, np.ndarray]:
@@ -736,10 +1072,11 @@ def materialize_feature_arrays(features: dict[str, pd.Series], index: pd.Datetim
     }
     out: dict[str, np.ndarray] = {}
     for name, series in features.items():
+        neutral_fill = _neutral_feature_fill(name)
         if name in intraday_features or name.endswith(("_1h", "_6h", "_24h")):
-            values = series.reindex(index).ffill().bfill().replace([np.inf, -np.inf], np.nan).fillna(1.0)
+            values = series.reindex(index).ffill().bfill().replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
         else:
-            values = series.reindex(day_index, method="ffill").replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            values = series.reindex(day_index, method="ffill").replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
         out[name] = values.to_numpy(dtype="float64")
     return out
 
@@ -987,6 +1324,11 @@ def select_generation_survivors(
         persistent_archive_candidate = max(
             persistent_candidates,
             key=lambda item: (
+                1 if candidate_final_hard_gate_pass(item) else 0,
+                1 if candidate_repair_hard_gate_pass(item) else 0,
+                1 if candidate_joint_repair_min_floor_pass(item) else 0,
+                1 if candidate_joint_repair_stress_pass(item) else 0,
+                1 if candidate_cost_reserve_pass(item) else 0,
                 1 if candidate_stress_pass(item) else 0,
                 1 if candidate_wf1_pass(item) else 0,
                 int(item["tree_depth"]) >= int(persistent_tree_depth),
@@ -1017,6 +1359,10 @@ def select_generation_survivors(
             archived_target_candidate = max(
                 target_candidates,
                 key=lambda item: (
+                    1 if candidate_final_hard_gate_pass(item) else 0,
+                    1 if candidate_repair_hard_gate_pass(item) else 0,
+                    1 if candidate_joint_repair_min_floor_pass(item) else 0,
+                    1 if candidate_joint_repair_stress_pass(item) else 0,
                     1 if candidate_cost_reserve_pass(item) else 0,
                     1 if candidate_stress_pass(item) else 0,
                     1 if candidate_wf1_pass(item) else 0,
@@ -1066,16 +1412,37 @@ def select_generation_survivors(
             non_nominal_stress_rate = float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
             non_nominal_stress_floor = float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
             non_nominal_stress_reserve = float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))
+            final_hard_gate_pass = candidate_final_hard_gate_pass(item)
+            repair_hard_gate_pass = candidate_repair_hard_gate_pass(item)
+            joint_repair_balance_pass = candidate_joint_repair_balance_pass(item)
+            joint_repair_min_floor_pass = candidate_joint_repair_min_floor_pass(item)
+            joint_repair_stress_pass = candidate_joint_repair_stress_pass(item)
             robustness_bonus = 0.0
+            robustness_bonus += 8.40 if final_hard_gate_pass else -5.20
+            robustness_bonus += 5.20 if repair_hard_gate_pass else -7.20
             robustness_bonus += 0.90 if candidate_wf1_pass(item) else -0.90
             robustness_bonus += 2.20 if candidate_stress_pass(item) else -3.20
             robustness_bonus += 2.60 if candidate_cost_reserve_pass(item) else -3.40
+            robustness_bonus += 3.80 if joint_repair_min_floor_pass else 0.0
+            robustness_bonus += 4.40 if joint_repair_stress_pass else 0.0
             robustness_bonus += max(0.0, stress_mean - stress_threshold) * 3.80
             robustness_bonus += max(0.0, stress_floor - stress_threshold) * 4.60
             robustness_bonus += max(0.0, stress_reserve_score) / 6000.0
             robustness_bonus += max(0.0, non_nominal_stress_rate - stress_threshold) * 5.20
             robustness_bonus += max(0.0, non_nominal_stress_floor - stress_threshold) * 6.20
             robustness_bonus += max(0.0, non_nominal_stress_reserve) / 6000.0
+            if joint_repair_balance_pass and stress_floor <= 0.0:
+                robustness_bonus -= 6.40
+            if joint_repair_balance_pass and non_nominal_stress_floor <= 0.0:
+                robustness_bonus -= 6.80
+            if joint_repair_balance_pass and stress_floor < stress_threshold:
+                robustness_bonus -= (stress_threshold - stress_floor) * 8.20
+            if joint_repair_balance_pass and non_nominal_stress_floor < stress_threshold:
+                robustness_bonus -= (stress_threshold - non_nominal_stress_floor) * 9.20
+            if joint_repair_balance_pass and not joint_repair_stress_pass:
+                robustness_bonus -= 4.80
+            if joint_repair_balance_pass and not candidate_cost_reserve_pass(item):
+                robustness_bonus -= 2.20
             if stress_mean < stress_threshold:
                 robustness_bonus -= (stress_threshold - stress_mean) * 4.20
             if stress_floor < stress_threshold:
@@ -1094,6 +1461,10 @@ def select_generation_survivors(
             utility += 0.35 * float(item["structural_score"])
             tie_break = (
                 utility,
+                1.0 if final_hard_gate_pass else 0.0,
+                1.0 if repair_hard_gate_pass else 0.0,
+                1.0 if joint_repair_min_floor_pass else 0.0,
+                1.0 if joint_repair_stress_pass else 0.0,
                 1.0 if candidate_cost_reserve_pass(item) else 0.0,
                 1.0 if candidate_wf1_pass(item) else 0.0,
                 1.0 if candidate_stress_pass(item) else 0.0,
@@ -1159,6 +1530,10 @@ def select_generation_survivors(
         "wf1_pass_count": sum(1 for item in selected if candidate_wf1_pass(item)),
         "stress_pass_count": sum(1 for item in selected if candidate_stress_pass(item)),
         "cost_reserve_pass_count": sum(1 for item in selected if candidate_cost_reserve_pass(item)),
+        "final_hard_gate_pass_count": sum(1 for item in selected if candidate_final_hard_gate_pass(item)),
+        "repair_hard_gate_pass_count": sum(1 for item in selected if candidate_repair_hard_gate_pass(item)),
+        "joint_repair_min_floor_pass_count": sum(1 for item in selected if candidate_joint_repair_min_floor_pass(item)),
+        "joint_repair_stress_pass_count": sum(1 for item in selected if candidate_joint_repair_stress_pass(item)),
         "top_fitness_depths": [int(item["tree_depth"]) for item in ranked[:survivor_count]],
         "top_fitness_logic_depths": [int(item["logic_depth"]) for item in ranked[:survivor_count]],
     }
@@ -1183,16 +1558,37 @@ def select_near_frontier_structural_winner(
         frontier = candidates[:]
 
     wf1_frontier = [item for item in frontier if candidate_wf1_pass(item)]
+    final_hard_frontier = [item for item in wf1_frontier if candidate_final_hard_gate_pass(item)]
+    repair_hard_frontier = [item for item in wf1_frontier if candidate_repair_hard_gate_pass(item)]
+    joint_repair_min_floor_frontier = [item for item in repair_hard_frontier if candidate_joint_repair_min_floor_pass(item)]
+    joint_repair_stress_frontier = [item for item in wf1_frontier if candidate_joint_repair_stress_pass(item)]
     stress_frontier = [item for item in wf1_frontier if candidate_stress_pass(item)]
     reserve_frontier = [item for item in wf1_frontier if candidate_cost_reserve_pass(item)]
-    selection_frontier = stress_frontier or reserve_frontier or wf1_frontier or frontier
+    selection_frontier = (
+        final_hard_frontier
+        or
+        joint_repair_min_floor_frontier
+        or repair_hard_frontier
+        or joint_repair_stress_frontier
+        or stress_frontier
+        or reserve_frontier
+        or wf1_frontier
+        or frontier
+    )
 
     def key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, float, float, str]:
         robustness = item.get("robustness", {})
         return (
+            float(candidate_final_hard_gate_pass(item)),
+            float(candidate_repair_hard_gate_pass(item)),
+            float(candidate_joint_repair_min_floor_pass(item)),
+            float(candidate_joint_repair_stress_pass(item)),
             float(candidate_wf1_pass(item)),
             float(candidate_stress_pass(item)),
             float(candidate_cost_reserve_pass(item)),
+            float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)),
+            float(robustness.get("min_fold_stress_survival_rate", robustness.get("stress_survival_rate_min", 0.0))),
+            float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)),
             float(robustness.get("latest_fold_stress_reserve_score", 0.0)),
             float(item["structural_score"]),
             float(item["logic_depth"]),
@@ -1209,6 +1605,10 @@ def select_near_frontier_structural_winner(
         "candidate_count": len(candidates),
         "frontier_count": len(frontier),
         "wf1_frontier_count": len(wf1_frontier),
+        "final_hard_frontier_count": len(final_hard_frontier),
+        "repair_hard_frontier_count": len(repair_hard_frontier),
+        "joint_repair_min_floor_frontier_count": len(joint_repair_min_floor_frontier),
+        "joint_repair_stress_frontier_count": len(joint_repair_stress_frontier),
         "stress_frontier_count": len(stress_frontier),
         "reserve_frontier_count": len(reserve_frontier),
         "selection_frontier_count": len(selection_frontier),
@@ -1223,6 +1623,10 @@ def select_near_frontier_structural_winner(
         "winner_wf1_pass": candidate_wf1_pass(winner),
         "winner_stress_pass": candidate_stress_pass(winner),
         "winner_cost_reserve_pass": candidate_cost_reserve_pass(winner),
+        "winner_final_hard_gate_pass": candidate_final_hard_gate_pass(winner),
+        "winner_repair_hard_gate_pass": candidate_repair_hard_gate_pass(winner),
+        "winner_joint_repair_min_floor_pass": candidate_joint_repair_min_floor_pass(winner),
+        "winner_joint_repair_stress_pass": candidate_joint_repair_stress_pass(winner),
     }
     return winner, diagnostics
 
@@ -1256,6 +1660,13 @@ def compute_dynamic_windows(index: pd.DatetimeIndex) -> list[dict[str, str]]:
             "label": "recent_6m",
             "description": "Latest 6 months ending at the most recent bar",
             "start": clamp_start(6).date().isoformat(),
+            "end": end_day.date().isoformat(),
+        },
+        {
+            "key": "recent_1y",
+            "label": "recent_1y",
+            "description": "Latest 1 year ending at the most recent bar",
+            "start": max(first_day, end_day - pd.DateOffset(years=1)).date().isoformat(),
             "end": end_day.date().isoformat(),
         },
         {
@@ -1318,6 +1729,8 @@ def build_baseline_windows_for_pairs(
     out: dict[str, Any] = {}
     for spec in window_specs:
         key = spec["key"]
+        if key not in baseline_windows:
+            continue
         source_window = baseline_windows[key]
         per_pair_source = source_window.get("per_pair", {})
         filtered_per_pair = {pair: per_pair_source[pair] for pair in pairs if pair in per_pair_source}
@@ -1525,6 +1938,28 @@ def build_leaf_runtime_arrays_from_pair_configs(
         "kill_switch_scale": np.asarray(kill_switch_scale, dtype="float64"),
         "cooldown_scale": np.asarray(cooldown_scale, dtype="float64"),
     }
+
+
+def apply_leaf_gene_to_pair_config(
+    pair_config: dict[str, Any],
+    gene: LeafGene | None,
+    route_thresholds: tuple[float, ...],
+    library_size: int,
+) -> dict[str, Any]:
+    adjusted = copy.deepcopy(pair_config)
+    leaf_gene = gene if gene is not None else LeafGene()
+    route_state_mode = normalize_route_state_mode(adjusted.get("route_state_mode"))
+    base_threshold_idx = route_thresholds.index(float(adjusted["route_breadth_threshold"]))
+    biased_threshold_idx = min(max(base_threshold_idx + int(leaf_gene.route_threshold_bias), 0), len(route_thresholds) - 1)
+    mapping = list(normalize_mapping_indices(adjusted["mapping_indices"], route_state_mode))
+    adjusted["route_breadth_threshold"] = float(route_thresholds[biased_threshold_idx])
+    adjusted["mapping_indices"] = [
+        min(max(int(value) + int(leaf_gene.mapping_shift), 0), max(library_size - 1, 0))
+        for value in mapping
+    ]
+    adjusted["route_state_mode"] = route_state_mode
+    adjusted["leaf_gene"] = json_safe(leaf_gene)
+    return adjusted
 
 
 def build_baseline_leaf_runtime_for_pairs(
@@ -1783,6 +2218,8 @@ def build_baseline_relative_metrics(
 ) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     for key, window in windows.items():
+        if key not in baseline_windows:
+            continue
         baseline_window = baseline_windows[key]
         cand_agg = window["aggregate"]
         base_agg = baseline_window["aggregate"]
@@ -1804,6 +2241,126 @@ def build_baseline_relative_metrics(
             "baseline_trade_count": float(base_trade_count),
         }
     return out
+
+
+def _safe_metric(mapping: dict[str, Any], field: str) -> float:
+    try:
+        return float(mapping.get(field, 0.0))
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
+
+
+def build_pair_repair_metrics(
+    windows: dict[str, Any],
+    repair_pair: str | None,
+    window_key: str = "recent_1y",
+) -> dict[str, Any]:
+    active_window_key = window_key if window_key in windows else "recent_6m"
+    window = windows.get(active_window_key) or {}
+    per_pair = window.get("per_pair") or {}
+    resolved_pair = repair_pair if repair_pair in per_pair else None
+    if resolved_pair is None and per_pair:
+        resolved_pair = min(per_pair, key=lambda pair: _safe_metric(per_pair.get(pair) or {}, "avg_daily_return"))
+    pair_metrics = per_pair.get(resolved_pair) or {}
+    aggregate = window.get("aggregate") or {}
+    pair_count = len(per_pair)
+    positive_pair_count = int(_safe_metric(aggregate, "positive_pair_count"))
+    return {
+        "window": active_window_key,
+        "repair_pair": resolved_pair,
+        "repair_pair_avg_daily_return": _safe_metric(pair_metrics, "avg_daily_return"),
+        "repair_pair_total_return": _safe_metric(pair_metrics, "total_return"),
+        "repair_pair_max_drawdown": abs(_safe_metric(pair_metrics, "max_drawdown")),
+        "worst_pair_avg_daily_return": _safe_metric(aggregate, "worst_pair_avg_daily_return"),
+        "positive_pair_count": positive_pair_count,
+        "pair_count": int(pair_count),
+        "negative_pair_count": max(0, int(pair_count) - positive_pair_count),
+        "pair_return_dispersion": _safe_metric(aggregate, "pair_return_dispersion"),
+    }
+
+
+def candidate_joint_repair_balance_pass(
+    item: dict[str, Any],
+    *,
+    recent_6m_floor: float = 0.006,
+    full_4y_floor: float = 0.0045,
+    full_4y_mdd_cap: float = 0.15,
+    tolerance: float = 1e-12,
+) -> bool:
+    if not candidate_repair_hard_gate_pass(item, tolerance=tolerance):
+        return False
+    if not candidate_wf1_pass(item, tolerance=tolerance):
+        return False
+    windows = item.get("windows") or {}
+    agg_6m = ((windows.get("recent_6m") or {}).get("aggregate") or {})
+    agg_4y = ((windows.get(WINDOW_COMPAT_LABEL_FULL) or {}).get("aggregate") or {})
+    return bool(
+        float(agg_6m.get("worst_pair_avg_daily_return", 0.0)) >= recent_6m_floor - tolerance
+        and float(agg_4y.get("worst_pair_avg_daily_return", 0.0)) >= full_4y_floor - tolerance
+        and abs(float(agg_4y.get("worst_max_drawdown", 0.0))) <= full_4y_mdd_cap + tolerance
+    )
+
+
+def candidate_repair_hard_gate_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    validation_profiles = ((item.get("validation") or {}).get("profiles") or {})
+    if not bool((validation_profiles.get("pair_repair_1y") or {}).get("passed", False)):
+        return False
+    repair_metrics = item.get("repair_metrics") or {}
+    if not repair_metrics:
+        repair_pair = (validation_profiles.get("pair_repair_1y") or {}).get("repair_pair")
+        repair_metrics = build_pair_repair_metrics(item.get("windows") or {}, repair_pair)
+    pair_count = int(repair_metrics.get("pair_count", 0) or 0)
+    positive_pair_count = int(repair_metrics.get("positive_pair_count", 0) or 0)
+    repair_pair_daily = float(repair_metrics.get("repair_pair_avg_daily_return", 0.0) or 0.0)
+    repair_pair_total = float(repair_metrics.get("repair_pair_total_return", 0.0) or 0.0)
+    repair_pair_mdd = abs(float(repair_metrics.get("repair_pair_max_drawdown", 0.0) or 0.0))
+    return bool(
+        pair_count > 0
+        and positive_pair_count >= pair_count
+        and repair_pair_daily >= -tolerance
+        and repair_pair_total >= -tolerance
+        and repair_pair_mdd <= 0.15 + tolerance
+    )
+
+
+def candidate_final_hard_gate_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    validation_profiles = ((item.get("validation") or {}).get("profiles") or {})
+    if not candidate_repair_hard_gate_pass(item, tolerance=tolerance):
+        return False
+    if not bool((validation_profiles.get("target_060") or {}).get("passed", False)):
+        return False
+    return bool(
+        candidate_wf1_pass(item, tolerance=tolerance)
+        and candidate_stress_pass(item, tolerance=tolerance)
+        and candidate_cost_reserve_pass(item, tolerance=tolerance)
+    )
+
+
+def candidate_joint_repair_stress_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    return bool(
+        candidate_joint_repair_balance_pass(item, tolerance=tolerance)
+        and candidate_stress_pass(item, tolerance=tolerance)
+        and candidate_cost_reserve_pass(item, tolerance=tolerance)
+    )
+
+
+def candidate_joint_repair_min_floor_pass(item: dict[str, Any], tolerance: float = 1e-12) -> bool:
+    if not candidate_joint_repair_balance_pass(item, tolerance=tolerance):
+        return False
+    robustness = item.get("robustness", {})
+    threshold = float(robustness.get("stress_survival_threshold", 0.0))
+    stress_min = float(
+        robustness.get("min_fold_stress_survival_rate", robustness.get("stress_survival_rate_min", 0.0))
+    )
+    non_nominal_min = float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
+    latest_reserve = float(robustness.get("latest_fold_stress_reserve_score", 0.0))
+    latest_non_nominal_reserve = float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))
+    return bool(
+        stress_min >= threshold - tolerance
+        and non_nominal_min >= threshold - tolerance
+        and latest_reserve >= -tolerance
+        and latest_non_nominal_reserve >= -tolerance
+    )
 
 
 def relative_gate_pass(relative: dict[str, float], tolerance: float = 1e-12) -> bool:
@@ -1910,11 +2467,11 @@ def evaluate_defensive_variants(
     for item in ranked[:candidate_limit]:
         for profile in ("mild", "strong", "ultra", "max_defense"):
             variant_tree = apply_leaf_gene_profile(item["tree"], profile)
-            variant_key = tree_key(variant_tree)
+            variant_key = candidate_tree_key(item["observation_mode"], item["label_horizon"], variant_tree)
             if variant_key in seen:
                 continue
             seen.add(variant_key)
-            variants.append(evaluate_tree_fn(variant_tree))
+            variants.append(evaluate_tree_fn(item["observation_mode"], item["label_horizon"], variant_tree))
     return variants
 
 
@@ -2136,12 +2693,92 @@ def fractal_fast_scalar_score(
     node: TreeNode,
     robustness: dict[str, Any],
     leaf_gene_penalty: float,
+    repair_pair: str | None = None,
 ) -> tuple[float, dict[str, dict[str, float]]]:
     recent_2m_key, recent_6m_key, full_key = score_window_labels(windows)
     relative = build_baseline_relative_metrics(windows, baseline_windows)
     rel_2m = relative[recent_2m_key]
     rel_6m = relative[recent_6m_key]
     rel_4y = relative[full_key]
+    repair_metrics = build_pair_repair_metrics(windows, repair_pair)
+    recent_6m_worst_daily = _safe_metric((windows.get(recent_6m_key) or {}).get("aggregate") or {}, "worst_pair_avg_daily_return")
+    recent_6m_mdd = abs(_safe_metric((windows.get(recent_6m_key) or {}).get("aggregate") or {}, "worst_max_drawdown"))
+    full_4y_worst_daily = _safe_metric((windows.get(full_key) or {}).get("aggregate") or {}, "worst_pair_avg_daily_return")
+    full_4y_mdd = abs(_safe_metric((windows.get(full_key) or {}).get("aggregate") or {}, "worst_max_drawdown"))
+    wf1_like_pass = bool(
+        float(robustness["latest_fold_delta_worst_pair_total_return"]) >= 0.0
+        and float(robustness["latest_fold_delta_worst_max_drawdown"]) >= 0.0
+        and float(robustness["latest_fold_delta_worst_daily_win_rate"]) >= 0.0
+    )
+    repair_pair_count = int(repair_metrics["pair_count"])
+    repair_positive_pair_count = int(repair_metrics["positive_pair_count"])
+    repair_pair_daily = float(repair_metrics["repair_pair_avg_daily_return"])
+    repair_pair_total = float(repair_metrics["repair_pair_total_return"])
+    repair_pair_mdd = float(repair_metrics["repair_pair_max_drawdown"])
+    repair_positive = bool(
+        repair_pair_daily >= 0.0
+        and int(repair_metrics["negative_pair_count"]) == 0
+    )
+    repair_hard_pass = bool(
+        repair_positive
+        and repair_pair_count > 0
+        and repair_positive_pair_count >= repair_pair_count
+        and repair_pair_total >= 0.0
+        and repair_pair_mdd <= 0.15
+    )
+    balanced_joint_pass = bool(
+        repair_hard_pass
+        and wf1_like_pass
+        and recent_6m_worst_daily >= 0.006
+        and full_4y_worst_daily >= 0.0045
+        and full_4y_mdd <= 0.15
+    )
+    stress_threshold = float(robustness["stress_survival_threshold"])
+    stress_pass = bool(
+        float(robustness["stress_survival_rate_mean"]) >= stress_threshold
+        and float(robustness["stress_survival_rate_min"]) >= stress_threshold
+        and float(robustness["latest_fold_stress_reserve_score"]) >= 0.0
+    )
+    cost_reserve_pass = bool(
+        float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0)) >= stress_threshold
+        and float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) >= stress_threshold
+        and float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)) >= 0.0
+    )
+    min_floor_pass = bool(
+        balanced_joint_pass
+        and float(robustness["stress_survival_rate_min"]) >= stress_threshold
+        and float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) >= stress_threshold
+        and float(robustness["latest_fold_stress_reserve_score"]) >= 0.0
+        and float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)) >= 0.0
+    )
+    joint_repair_stress_pass = bool(balanced_joint_pass and stress_pass and cost_reserve_pass)
+    target_060_pass = bool(
+        recent_6m_worst_daily >= 0.006
+        and full_4y_worst_daily >= 0.006
+        and recent_6m_mdd <= 0.17
+        and full_4y_mdd <= 0.20
+    )
+    final_hard_pass = bool(repair_hard_pass and wf1_like_pass and target_060_pass and stress_pass and cost_reserve_pass)
+    full_4y_floor_gap = max(0.0, 0.0045 - full_4y_worst_daily)
+    recent_6m_floor_gap = max(0.0, 0.006 - recent_6m_worst_daily)
+    target_060_full_gap = max(0.0, 0.006 - full_4y_worst_daily)
+    target_060_recent_mdd_gap = max(0.0, recent_6m_mdd - 0.17)
+    target_060_full_mdd_gap = max(0.0, full_4y_mdd - 0.20)
+    stress_mean_gap = max(0.0, stress_threshold - float(robustness["stress_survival_rate_mean"]))
+    stress_min_gap = max(0.0, stress_threshold - float(robustness["stress_survival_rate_min"]))
+    non_nominal_latest_gap = max(
+        0.0,
+        stress_threshold - float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0)),
+    )
+    non_nominal_min_gap = max(
+        0.0,
+        stress_threshold - float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)),
+    )
+    negative_stress_reserve = max(0.0, -float(robustness["latest_fold_stress_reserve_score"]))
+    negative_non_nominal_reserve = max(
+        0.0,
+        -float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)),
+    )
     score = 0.0
     score += rel_2m["delta_worst_pair_avg_daily_return"] * 320000.0
     score += rel_6m["delta_worst_pair_avg_daily_return"] * 240000.0
@@ -2161,6 +2798,87 @@ def fractal_fast_scalar_score(
     score += rel_2m["delta_worst_daily_win_rate"] * 18000.0
     score += rel_6m["delta_worst_daily_win_rate"] * 14000.0
     score += rel_4y["delta_worst_daily_win_rate"] * 10000.0
+    score += float(repair_metrics["worst_pair_avg_daily_return"]) * 120000.0
+    score += float(repair_metrics["repair_pair_avg_daily_return"]) * 220000.0
+    score += float(repair_metrics["repair_pair_total_return"]) * 900.0
+    score += (int(repair_metrics["positive_pair_count"]) - int(repair_metrics["pair_count"])) * 1800.0
+    score -= float(repair_metrics["repair_pair_max_drawdown"]) * 12000.0
+    score -= float(repair_metrics["pair_return_dispersion"]) * 40000.0
+    score += full_4y_worst_daily * 420000.0
+    score += recent_6m_worst_daily * 260000.0
+    score -= recent_6m_mdd * 18000.0
+    if final_hard_pass:
+        score += 180000.0
+    elif repair_hard_pass:
+        score -= target_060_full_gap * 28_000_000.0
+        score -= target_060_recent_mdd_gap * 900_000.0
+        score -= target_060_full_mdd_gap * 650_000.0
+        score -= stress_mean_gap * 260000.0
+        score -= stress_min_gap * 320000.0
+        score -= non_nominal_latest_gap * 360000.0
+        score -= non_nominal_min_gap * 420000.0
+        score -= negative_stress_reserve * 40.0
+        score -= negative_non_nominal_reserve * 52.0
+    if min_floor_pass:
+        score += 62000.0
+    elif balanced_joint_pass and float(robustness["stress_survival_rate_min"]) > 0.0:
+        score += 12000.0
+    if joint_repair_stress_pass:
+        score += 48000.0
+    elif balanced_joint_pass and stress_pass:
+        score += 18000.0
+    elif balanced_joint_pass:
+        score -= stress_mean_gap * 42000.0
+        score -= stress_min_gap * 52000.0
+        score -= non_nominal_latest_gap * 62000.0
+        score -= non_nominal_min_gap * 72000.0
+        score -= negative_stress_reserve * 18.0
+        score -= negative_non_nominal_reserve * 24.0
+    repair_pair_coverage_gap = max(0, repair_pair_count - repair_positive_pair_count)
+    repair_pair_total_gap = max(0.0, -repair_pair_total)
+    repair_pair_mdd_gap = max(0.0, repair_pair_mdd - 0.15)
+    if repair_hard_pass:
+        score += 96000.0
+        score -= repair_pair_mdd_gap * 220000.0
+    else:
+        score -= 180000.0
+        score -= max(0.0, -repair_pair_daily) * 120_000_000.0
+        score -= repair_pair_total_gap * 24000.0
+        score -= repair_pair_coverage_gap * 90000.0
+        score -= repair_pair_mdd_gap * 260000.0
+    if repair_positive:
+        score += 18000.0
+        score -= full_4y_floor_gap * 9_000_000.0
+        score -= recent_6m_floor_gap * 5_000_000.0
+        score -= stress_min_gap * 120000.0
+        score -= non_nominal_min_gap * 140000.0
+        if float(robustness["stress_survival_rate_min"]) <= 0.0:
+            score -= 36000.0
+        if float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0)) <= 0.0:
+            score -= 42000.0
+    else:
+        score -= 70000.0
+        score -= abs(float(repair_metrics["repair_pair_avg_daily_return"])) * 60_000_000.0
+        score -= abs(float(repair_metrics["repair_pair_total_return"])) * 12000.0
+        score -= int(repair_metrics["negative_pair_count"]) * 45000.0
+    if balanced_joint_pass:
+        score += 22000.0
+    elif repair_hard_pass and wf1_like_pass and full_4y_worst_daily >= 0.0040 and full_4y_mdd <= 0.16:
+        score += 10000.0
+    elif repair_hard_pass and not wf1_like_pass:
+        score -= 7000.0
+    elif repair_hard_pass and full_4y_worst_daily < 0.0045:
+        score -= (0.0045 - full_4y_worst_daily) * 420000.0
+    elif repair_hard_pass and recent_6m_worst_daily < 0.006:
+        score -= (0.006 - recent_6m_worst_daily) * 360000.0
+    if repair_hard_pass and full_4y_mdd > 0.15:
+        score -= (full_4y_mdd - 0.15) * 80000.0
+    if repair_hard_pass and full_4y_worst_daily < 0.006:
+        score -= (0.006 - full_4y_worst_daily) * 1_200_000.0
+    if repair_hard_pass and recent_6m_mdd > 0.17:
+        score -= (recent_6m_mdd - 0.17) * 180000.0
+    if repair_hard_pass and full_4y_mdd > 0.20:
+        score -= (full_4y_mdd - 0.20) * 140000.0
     score += float(robustness["worst_fold_delta_worst_pair_avg_daily_return"]) * 220000.0
     score += float(robustness["worst_fold_delta_worst_pair_total_return"]) * 1600.0
     score += float(robustness["worst_fold_delta_worst_max_drawdown"]) * 16000.0
@@ -2243,6 +2961,18 @@ def fractal_fast_scalar_score(
         score -= (float(robustness["latest_fold_trade_count_ratio"]) - 0.9) * 36000.0
     if float(robustness["mean_fold_trade_count_ratio"]) > 0.9:
         score -= (float(robustness["mean_fold_trade_count_ratio"]) - 0.9) * 22000.0
+    if repair_pair_daily < 0.0:
+        score -= abs(repair_pair_daily) * 1_600_000.0
+    if repair_pair_total < 0.0:
+        score -= abs(repair_pair_total) * 1500.0
+    if int(repair_metrics["negative_pair_count"]) > 0:
+        score -= int(repair_metrics["negative_pair_count"]) * 2200.0
+    if repair_pair_coverage_gap > 0:
+        score -= repair_pair_coverage_gap * 18000.0
+    if repair_pair_mdd_gap > 0.0:
+        score -= repair_pair_mdd_gap * 60000.0
+    if not repair_positive and full_4y_worst_daily >= 0.0045 and wf1_like_pass:
+        score -= 4500.0
     for rel in (rel_2m, rel_6m, rel_4y):
         if rel["trade_count_ratio"] < 0.05:
             score -= (0.05 - rel["trade_count_ratio"]) * 150000.0
@@ -2286,6 +3016,7 @@ def find_condition_spec(
     threshold: float,
     comparator: str = ">=",
     invert: bool = False,
+    strict: bool = False,
 ) -> ConditionSpec:
     for spec in condition_options:
         if (
@@ -2298,6 +3029,8 @@ def find_condition_spec(
     for spec in condition_options:
         if spec.feature == feature and spec.comparator == comparator and bool(spec.invert) == bool(invert):
             return copy.deepcopy(spec)
+    if strict:
+        raise KeyError(f"Condition spec not available for feature={feature} comparator={comparator} invert={invert}")
     return copy.deepcopy(condition_options[0])
 
 
@@ -2307,8 +3040,18 @@ def threshold(
     value: float,
     comparator: str = ">=",
     invert: bool = False,
+    strict: bool = False,
 ) -> ThresholdCell:
-    return ThresholdCell(spec=find_condition_spec(condition_options, feature, value, comparator=comparator, invert=invert))
+    return ThresholdCell(
+        spec=find_condition_spec(
+            condition_options,
+            feature,
+            value,
+            comparator=comparator,
+            invert=invert,
+            strict=strict,
+        )
+    )
 
 
 def build_seed_trees(
@@ -2317,83 +3060,74 @@ def build_seed_trees(
     pairs: tuple[str, ...],
 ) -> list[TreeNode]:
     def named_threshold(feature: str, value: float, comparator: str = ">=", invert: bool = False) -> ThresholdCell:
-        return threshold(condition_options, feature, value, comparator=comparator, invert=invert)
+        return threshold(condition_options, feature, value, comparator=comparator, invert=invert, strict=True)
+
+    def add_seed(factory: Any, seeds: list[TreeNode]) -> None:
+        try:
+            seeds.append(factory())
+        except KeyError:
+            return
 
     seeds: list[TreeNode] = []
     top_count = min(4, len(expert_pool))
     for idx in range(top_count):
         seeds.append(LeafNode(idx))
     if len(expert_pool) >= 2:
-        seeds.append(
-            ConditionNode(
+        add_seed(lambda: ConditionNode(
                 condition=named_threshold("btc_regime", 0.0, comparator=">="),
                 if_true=LeafNode(0),
                 if_false=LeafNode(1),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("btc_rsi_14d", 55.0, comparator=">="),
                     right=named_threshold("btc_volume_z_7d", 0.0, comparator=">="),
                 ),
                 if_true=LeafNode(0),
                 if_false=LeafNode(1),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=OrCell(
                     left=named_threshold("session_us_flag", 0.5, comparator=">="),
                     right=named_threshold("btc_atr_pct_14d", 0.02, comparator="<="),
                 ),
                 if_true=LeafNode(1),
                 if_false=LeafNode(0),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("btc_macd_hist_12_26_9", 0.0, comparator=">="),
                     right=named_threshold("btc_bb_pct_b_20_2", 0.50, comparator=">="),
                 ),
                 if_true=LeafNode(0),
                 if_false=LeafNode(1),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=OrCell(
                     left=named_threshold("btc_mfi_14d", 50.0, comparator=">="),
                     right=named_threshold("btc_cci_20d", 0.0, comparator=">="),
                 ),
                 if_true=LeafNode(1),
                 if_false=LeafNode(0),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("btc_rsi_14_1h", 55.0, comparator=">="),
                     right=named_threshold("btc_volume_rel_1h", 1.0, comparator=">="),
                 ),
                 if_true=LeafNode(0),
                 if_false=LeafNode(1),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=OrCell(
                     left=named_threshold("btc_dc_trend_05_1h", 0.5, comparator=">="),
                     right=named_threshold("btc_macd_h_pct_1h", 0.0, comparator=">="),
                 ),
                 if_true=LeafNode(1),
                 if_false=LeafNode(0),
-            )
-        )
+            ), seeds)
     if len(expert_pool) >= 4 and len(pairs) > 1:
-        seeds.append(
-            ConditionNode(
+        add_seed(lambda: ConditionNode(
                 condition=OrCell(
                     left=named_threshold("rsi_spread_btc_minus_bnb_14d", 0.0, comparator=">="),
                     right=named_threshold("volume_z_spread_btc_minus_bnb_7d", 0.0, comparator=">="),
@@ -2414,10 +3148,8 @@ def build_seed_trees(
                     if_true=LeafNode(1),
                     if_false=LeafNode(3),
                 ),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("macd_hist_spread_btc_minus_bnb_12_26_9", 0.0, comparator=">="),
                     right=named_threshold("bb_pct_b_spread_btc_minus_bnb_20_2", 0.0, comparator=">="),
@@ -2438,10 +3170,8 @@ def build_seed_trees(
                     if_true=LeafNode(1),
                     if_false=LeafNode(3),
                 ),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("macd_h_pct_spread_btc_minus_bnb_1h", 0.0, comparator=">="),
                     right=named_threshold("volume_rel_spread_btc_minus_bnb_1h", 0.0, comparator=">="),
@@ -2462,11 +3192,9 @@ def build_seed_trees(
                     if_true=LeafNode(1),
                     if_false=LeafNode(3),
                 ),
-            )
-        )
+            ), seeds)
     elif len(expert_pool) >= 4:
-        seeds.append(
-            ConditionNode(
+        add_seed(lambda: ConditionNode(
                 condition=OrCell(
                     left=named_threshold("btc_momentum_3d", 0.0, comparator=">="),
                     right=named_threshold("session_eu_flag", 0.5, comparator=">="),
@@ -2487,10 +3215,8 @@ def build_seed_trees(
                     if_true=LeafNode(1),
                     if_false=LeafNode(3),
                 ),
-            )
-        )
-        seeds.append(
-            ConditionNode(
+            ), seeds)
+        add_seed(lambda: ConditionNode(
                 condition=AndCell(
                     left=named_threshold("btc_rsi_14_1h", 55.0, comparator=">="),
                     right=named_threshold("btc_dc_trend_05_1h", 0.5, comparator=">="),
@@ -2511,9 +3237,184 @@ def build_seed_trees(
                     if_true=LeafNode(1),
                     if_false=LeafNode(3),
                 ),
-            )
-        )
+            ), seeds)
     return seeds
+
+
+def load_warm_start_trees(
+    summary_paths: list[Path],
+    *,
+    observation_mode: str,
+    label_horizon: str,
+    limit: int,
+) -> list[TreeNode]:
+    prioritized: list[tuple[int, str, TreeNode]] = []
+    seen: set[str] = set()
+    for path in summary_paths:
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text())
+        except Exception:
+            continue
+        raw_candidates: list[dict[str, Any]] = []
+        selected = payload.get("selected_candidate") or {}
+        if selected:
+            raw_candidates.append(selected)
+        raw_candidates.extend(payload.get("top_candidates") or [])
+        for raw in raw_candidates:
+            if str(raw.get("observation_mode") or "") != observation_mode:
+                continue
+            if str(raw.get("label_horizon") or "") != label_horizon:
+                continue
+            raw_tree = raw.get("tree")
+            if not isinstance(raw_tree, dict):
+                continue
+            try:
+                tree = deserialize_tree(raw_tree)
+            except Exception:
+                continue
+            key = tree_key(tree)
+            if key in seen:
+                continue
+            seen.add(key)
+            if candidate_final_hard_gate_pass(raw):
+                priority = 0
+            elif candidate_repair_hard_gate_pass(raw):
+                priority = 1
+            elif candidate_joint_repair_min_floor_pass(raw):
+                priority = 2
+            elif candidate_joint_repair_stress_pass(raw):
+                priority = 3
+            elif candidate_joint_repair_balance_pass(raw):
+                priority = 4
+            else:
+                priority = 5
+            prioritized.append((priority, key, tree))
+    if limit <= 0 or not prioritized:
+        return []
+    prioritized.sort(key=lambda item: (item[0], item[1]))
+    repair_candidates = [tree for priority, _, tree in prioritized if priority <= 1]
+    if not repair_candidates:
+        return [tree for _, _, tree in prioritized[: int(limit)]]
+    return repair_candidates[: int(limit)]
+
+
+def build_exploit_pool(
+    parent_pool: list[dict[str, Any]],
+    *,
+    tolerance: float = 1e-12,
+) -> list[dict[str, Any]]:
+    final_hard_pool = [
+        item
+        for item in parent_pool
+        if candidate_final_hard_gate_pass(item, tolerance=tolerance)
+    ]
+    repair_pool = [
+        item
+        for item in parent_pool
+        if candidate_repair_hard_gate_pass(item, tolerance=tolerance)
+        and not candidate_final_hard_gate_pass(item, tolerance=tolerance)
+    ]
+    if final_hard_pool or repair_pool:
+        return [*final_hard_pool, *repair_pool]
+    balance_pool = [
+        item
+        for item in parent_pool
+        if candidate_joint_repair_balance_pass(item, tolerance=tolerance)
+    ]
+    if balance_pool:
+        return balance_pool
+    return parent_pool[: max(1, min(4, len(parent_pool)))]
+
+
+def build_local_variant_population(
+    base_trees: list[TreeNode],
+    *,
+    rng: random.Random,
+    condition_options: list[ConditionSpec],
+    expert_count: int,
+    max_depth: int,
+    logic_max_depth: int,
+    variant_budget: int,
+) -> list[TreeNode]:
+    if not base_trees or variant_budget <= 0:
+        return []
+    variants: list[TreeNode] = []
+    seen: set[str] = set()
+
+    def add(tree: TreeNode) -> None:
+        key = tree_key(tree)
+        if key in seen:
+            return
+        seen.add(key)
+        variants.append(copy.deepcopy(tree))
+
+    for tree in base_trees:
+        add(tree)
+        if len(variants) >= variant_budget:
+            return variants[:variant_budget]
+
+    profiles = ("mild", "strong", "ultra", "max_defense")
+    attempts = 0
+    max_attempts = max(variant_budget * 12, 24)
+    while len(variants) < variant_budget and attempts < max_attempts:
+        attempts += 1
+        base = copy.deepcopy(base_trees[attempts % len(base_trees)])
+        mode = attempts % 6
+        if mode == 0:
+            candidate = mutate_tree(
+                base,
+                rng,
+                condition_options,
+                expert_count,
+                max_depth,
+                logic_max_depth=logic_max_depth,
+            )
+        elif mode == 1:
+            candidate = mutate_tree(
+                mutate_tree(
+                    base,
+                    rng,
+                    condition_options,
+                    expert_count,
+                    max_depth,
+                    logic_max_depth=logic_max_depth,
+                ),
+                rng,
+                condition_options,
+                expert_count,
+                max_depth,
+                logic_max_depth=logic_max_depth,
+            )
+        elif mode == 2:
+            candidate = apply_leaf_gene_profile(base, profiles[attempts % len(profiles)])
+        elif mode == 3 and len(base_trees) >= 2:
+            other = copy.deepcopy(base_trees[(attempts + 1) % len(base_trees)])
+            candidate, _ = crossover_tree(base, other, rng)
+        elif mode == 4:
+            candidate = apply_leaf_gene_profile(
+                mutate_tree(
+                    base,
+                    rng,
+                    condition_options,
+                    expert_count,
+                    max_depth,
+                    logic_max_depth=logic_max_depth,
+                ),
+                profiles[attempts % len(profiles)],
+            )
+        else:
+            candidate = mutate_tree(
+                apply_leaf_gene_profile(base, profiles[attempts % len(profiles)]),
+                rng,
+                condition_options,
+                expert_count,
+                max_depth,
+                logic_max_depth=logic_max_depth,
+            )
+        add(candidate)
+    return variants[:variant_budget]
 
 
 def tournament_select(population: list[dict[str, Any]], rng: random.Random, k: int = 3) -> TreeNode:
@@ -2533,7 +3434,10 @@ def export_llm_review_queue(path: str | None, candidates: list[dict[str, Any]], 
         lines.append(
             json.dumps(
                 {
-                    "tree_key": tree_key(tree),
+                    "tree_key": item["tree_key"],
+                    "structure_tree_key": item.get("structure_tree_key"),
+                    "observation_mode": item.get("observation_mode"),
+                    "label_horizon": item.get("label_horizon"),
                     "tree": serialize_tree(tree),
                     "llm_prompt": item["filter"].llm_prompt or build_llm_prompt(tree, expert_pool),
                     "accepted": item["filter"].accepted,
@@ -2553,6 +3457,13 @@ def main() -> None:
     np.random.seed(args.seed)
     pairs = parse_csv_tuple(args.pairs, str)
     route_thresholds = parse_csv_tuple(args.route_thresholds, float)
+    observation_modes = normalize_observation_modes(parse_csv_tuple(args.observation_modes, str))
+    label_horizons = normalize_label_horizons(parse_csv_tuple(args.label_horizons, str))
+    warm_start_summary_paths = [
+        Path(part.strip())
+        for part in parse_csv_tuple(args.warm_start_summaries, str)
+        if str(part).strip()
+    ]
     _ = resolve_fast_engine(args.fast_engine)
 
     expert_summary_paths = [part.strip() for part in args.expert_summaries.split(",") if part.strip()]
@@ -2562,7 +3473,33 @@ def main() -> None:
 
     baseline_summary = json.loads(Path(args.baseline_summary).read_text())
     llm_reviews = load_llm_review_map(args.llm_review_in)
-    feature_specs = build_feature_specs(pairs)
+    full_feature_specs = build_feature_specs(pairs)
+    feature_specs_by_mode = {
+        mode: build_feature_specs(pairs, observation_mode=mode)
+        for mode in observation_modes
+    }
+    condition_options_by_mode = {
+        mode: build_condition_options(specs)
+        for mode, specs in feature_specs_by_mode.items()
+    }
+    search_configs = [
+        {"observation_mode": mode, "label_horizon": horizon}
+        for mode in observation_modes
+        for horizon in label_horizons
+    ]
+    config_keys = tuple(f"{cfg['observation_mode']}::{cfg['label_horizon']}" for cfg in search_configs)
+    population_budget_by_config = allocate_mode_budgets(args.population, config_keys, minimum=0)
+    elite_budget_by_config = {
+        key: (
+            0
+            if population_budget_by_config[key] <= 0
+            else min(
+                population_budget_by_config[key],
+                max(1, int(round(args.elite_count * population_budget_by_config[key] / max(args.population, 1)))),
+            )
+        )
+        for key in config_keys
+    }
     stress_values = parse_csv_tuple(args.commission_stress, float)
 
     library = list(iter_params())
@@ -2607,14 +3544,20 @@ def main() -> None:
     }
 
     prepare_started = perf_counter()
-    condition_options = build_condition_options(feature_specs)
     window_cache: dict[str, dict[str, Any]] = {}
     for spec in window_specs:
         label = spec["key"]
         start = spec["start"]
         end = spec["end"]
         df = df_all.loc[start:end].copy()
-        feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        base_feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        feature_arrays_by_mode = {}
+        for mode in observation_modes:
+            projected_feature_arrays = project_feature_arrays_by_observation_mode(base_feature_arrays, mode)
+            feature_arrays_by_mode[mode] = {
+                horizon: apply_label_horizon_to_feature_arrays(projected_feature_arrays, horizon)
+                for horizon in label_horizons
+            }
         pair_cache: dict[str, Any] = {}
         for pair in pairs:
             overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
@@ -2637,7 +3580,7 @@ def main() -> None:
                 ),
             }
         window_cache[label] = {
-            "features": feature_arrays,
+            "features_by_mode": feature_arrays_by_mode,
             "pair_cache": pair_cache,
             "bars": int(len(df)),
             "start": start,
@@ -2653,7 +3596,14 @@ def main() -> None:
         df = df_all.loc[start:end].copy()
         if df.empty:
             continue
-        feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        base_feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        feature_arrays_by_mode = {}
+        for mode in observation_modes:
+            projected_feature_arrays = project_feature_arrays_by_observation_mode(base_feature_arrays, mode)
+            feature_arrays_by_mode[mode] = {
+                horizon: apply_label_horizon_to_feature_arrays(projected_feature_arrays, horizon)
+                for horizon in label_horizons
+            }
         pair_cache: dict[str, Any] = {}
         for pair in pairs:
             overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
@@ -2676,7 +3626,7 @@ def main() -> None:
                 ),
             }
         robustness_cache[label] = {
-            "features": feature_arrays,
+            "features_by_mode": feature_arrays_by_mode,
             "pair_cache": pair_cache,
             "bars": int(len(df)),
             "start": start,
@@ -2686,8 +3636,6 @@ def main() -> None:
         }
     prepare_seconds = perf_counter() - prepare_started
 
-    seed_trees = build_seed_trees(expert_pool, condition_options, pairs)
-    population: list[TreeNode] = seed_trees[:]
     initial_tree_depth_budget = curriculum_budget(
         0,
         args.generations,
@@ -2700,24 +3648,72 @@ def main() -> None:
         args.curriculum_min_logic_depth,
         args.logic_max_depth,
     )
-    while len(population) < args.population:
-        population.append(
-            random_tree(
-                rng,
-                condition_options,
-                len(expert_pool),
-                initial_tree_depth_budget,
-                logic_max_depth=initial_logic_depth_budget,
-            )
+    population_by_config: dict[str, list[TreeNode]] = {}
+    warm_start_diagnostics: list[dict[str, Any]] = []
+    for cfg in search_configs:
+        mode = cfg["observation_mode"]
+        horizon = cfg["label_horizon"]
+        config_key = f"{mode}::{horizon}"
+        target_population = population_budget_by_config[config_key]
+        if target_population <= 0:
+            population_by_config[config_key] = []
+            continue
+        condition_options = condition_options_by_mode[mode]
+        warm_start_trees = load_warm_start_trees(
+            warm_start_summary_paths,
+            observation_mode=mode,
+            label_horizon=horizon,
+            limit=max(0, int(args.warm_start_candidate_limit)),
         )
+        warm_start_variants = build_local_variant_population(
+            warm_start_trees,
+            rng=rng,
+            condition_options=condition_options,
+            expert_count=len(expert_pool),
+            max_depth=initial_tree_depth_budget,
+            logic_max_depth=initial_logic_depth_budget,
+            variant_budget=max(0, int(args.warm_start_variant_budget)),
+        )
+        seed_trees = [*warm_start_variants, *build_seed_trees(expert_pool, condition_options, pairs)]
+        deduped_seed_trees: list[TreeNode] = []
+        seen_seed_keys: set[str] = set()
+        for seed_tree in seed_trees:
+            key = tree_key(seed_tree)
+            if key in seen_seed_keys:
+                continue
+            seen_seed_keys.add(key)
+            deduped_seed_trees.append(seed_tree)
+        seed_trees = deduped_seed_trees
+        warm_start_diagnostics.append(
+            {
+                "observation_mode": mode,
+                "label_horizon": horizon,
+                "imported_incumbents": len(warm_start_trees),
+                "generated_local_variants": len(warm_start_variants),
+                "summary_paths": [str(path) for path in warm_start_summary_paths],
+            }
+        )
+        mode_population = seed_trees[:target_population]
+        while len(mode_population) < target_population:
+            mode_population.append(
+                random_tree(
+                    rng,
+                    condition_options,
+                    len(expert_pool),
+                    initial_tree_depth_budget,
+                    logic_max_depth=initial_logic_depth_budget,
+                )
+            )
+        population_by_config[config_key] = mode_population
 
     fast_cache: dict[str, dict[str, Any]] = {}
     auto_llm_review_events: list[dict[str, Any]] = []
     generation_selection_diagnostics: list[dict[str, Any]] = []
     immigrant_injection_diagnostics: list[dict[str, Any]] = []
 
-    def evaluate_tree(tree: TreeNode) -> dict[str, Any]:
-        key = tree_key(tree)
+    def evaluate_tree(observation_mode: str, label_horizon: str, tree: TreeNode) -> dict[str, Any]:
+        structure_key = tree_key(tree)
+        key = candidate_tree_key_from_raw(observation_mode, label_horizon, structure_key)
         cached = fast_cache.get(key)
         if cached is not None:
             return cached
@@ -2728,7 +3724,7 @@ def main() -> None:
         tree_logic_size_value = tree_logic_size(tree)
         leaf_signature = _tree_leaf_signature(tree)
         condition_count = len(collect_specs(tree))
-        reference_features = window_cache[window_specs[0]["key"]]["features"]
+        reference_features = window_cache[window_specs[0]["key"]]["features_by_mode"][observation_mode][label_horizon]
         _, leaf_catalog = evaluate_tree_leaf_codes(tree, reference_features)
         leaf_gene_penalty = leaf_gene_deviation_score(leaf_catalog)
         leaf_runtime_arrays = {
@@ -2745,7 +3741,10 @@ def main() -> None:
         for spec in window_specs:
             label = spec["key"]
             window_state = window_cache[label]
-            leaf_codes, _ = evaluate_tree_leaf_codes(tree, window_state["features"])
+            leaf_codes, _ = evaluate_tree_leaf_codes(
+                tree,
+                window_state["features_by_mode"][observation_mode][label_horizon],
+            )
             per_pair = {}
             for pair in pairs:
                 per_pair[pair] = fast_fractal_replay_from_context(
@@ -2770,7 +3769,10 @@ def main() -> None:
             fold_state = robustness_cache.get(label)
             if fold_state is None:
                 continue
-            leaf_codes, _ = evaluate_tree_leaf_codes(tree, fold_state["features"])
+            leaf_codes, _ = evaluate_tree_leaf_codes(
+                tree,
+                fold_state["features_by_mode"][observation_mode][label_horizon],
+            )
             per_pair = {}
             baseline_per_pair = {}
             stress_runs: list[dict[str, Any]] = []
@@ -2837,7 +3839,9 @@ def main() -> None:
                 }
             )
         robustness = summarize_robustness_folds(robustness_folds, args.stress_survival_threshold)
-        validation = build_validation_bundle(windows, baseline_windows)
+        repair_pair = pairs[1] if len(pairs) > 1 else pairs[0]
+        repair_metrics = build_pair_repair_metrics(windows, repair_pair)
+        validation = build_validation_bundle(windows, baseline_windows, repair_pair=repair_pair)
         fitness, baseline_relative = fractal_fast_scalar_score(
             windows,
             baseline_windows,
@@ -2845,16 +3849,24 @@ def main() -> None:
             tree,
             robustness,
             leaf_gene_penalty,
+            repair_pair=repair_pair,
         )
         cached = {
             "tree": copy.deepcopy(tree),
+            "candidate_kind": "fractal_tree",
+            "observation_mode": observation_mode,
+            "observation_mode_label": OBSERVATION_MODE_LABELS.get(observation_mode, observation_mode),
+            "label_horizon": label_horizon,
+            "label_horizon_label": LABEL_HORIZON_LABELS.get(label_horizon, label_horizon),
             "tree_key": key,
+            "structure_tree_key": structure_key,
             "filter": filter_decision,
             "windows": windows,
             "validation": validation,
             "fitness": fitness,
             "baseline_relative": baseline_relative,
             "robustness": robustness,
+            "repair_metrics": repair_metrics,
             "tree_depth": tree_depth_value,
             "logic_depth": tree_logic_depth_value,
             "tree_size": tree_size_value,
@@ -2897,10 +3909,19 @@ def main() -> None:
                 "logic_depth_budget": generation_logic_depth_budget,
             }
         )
-        evaluated = [evaluate_tree(tree) for tree in population]
-        evaluated.sort(key=lambda item: item["search_fitness"], reverse=True)
+        evaluated_by_config: dict[str, list[dict[str, Any]]] = {}
+        evaluated_all: list[dict[str, Any]] = []
+        for cfg in search_configs:
+            mode = cfg["observation_mode"]
+            horizon = cfg["label_horizon"]
+            config_key = f"{mode}::{horizon}"
+            evaluated = [evaluate_tree(mode, horizon, tree) for tree in population_by_config[config_key]]
+            evaluated.sort(key=lambda item: item["search_fitness"], reverse=True)
+            evaluated_by_config[config_key] = evaluated
+            evaluated_all.extend(evaluated)
+        evaluated_all.sort(key=lambda item: item["search_fitness"], reverse=True)
         llm_review_event = auto_review_top_candidates(
-            evaluated,
+            evaluated_all,
             expert_pool,
             llm_reviews,
             top_n=args.auto_llm_review_top_n,
@@ -2911,84 +3932,189 @@ def main() -> None:
         auto_llm_review_events.append(llm_review_event)
         reviewed_keys = llm_review_event.get("reviewed_keys", [])
         if reviewed_keys:
-            for key in reviewed_keys:
-                fast_cache.pop(key, None)
-            evaluated = [evaluate_tree(tree) for tree in population]
-            evaluated.sort(key=lambda item: item["search_fitness"], reverse=True)
-        survivors, survivor_diag = select_generation_survivors(
-            evaluated,
-            args.elite_count,
-            args.survivor_diversity_weight,
-            args.survivor_depth_weight,
-            target_tree_depth=generation_tree_depth_budget,
-            target_logic_depth=generation_logic_depth_budget,
-        )
-        next_population = [copy.deepcopy(item["tree"]) for item in survivors]
-        immigrant_count = 0
-        if args.immigrant_rate > 0.0 and len(next_population) < args.population:
-            immigrant_count = min(
-                args.population - len(next_population),
-                max(1, int(round(args.population * args.immigrant_rate))),
+            for cache_key, cached in list(fast_cache.items()):
+                if cached.get("structure_tree_key") in reviewed_keys:
+                    fast_cache.pop(cache_key, None)
+            evaluated_by_config = {}
+            evaluated_all = []
+            for cfg in search_configs:
+                mode = cfg["observation_mode"]
+                horizon = cfg["label_horizon"]
+                config_key = f"{mode}::{horizon}"
+                reevaluated = [evaluate_tree(mode, horizon, tree) for tree in population_by_config[config_key]]
+                reevaluated.sort(key=lambda item: item["search_fitness"], reverse=True)
+                evaluated_by_config[config_key] = reevaluated
+                evaluated_all.extend(reevaluated)
+            evaluated_all.sort(key=lambda item: item["search_fitness"], reverse=True)
+        generation_mode_summary: list[dict[str, Any]] = []
+        for cfg in search_configs:
+            mode = cfg["observation_mode"]
+            horizon = cfg["label_horizon"]
+            config_key = f"{mode}::{horizon}"
+            condition_options = condition_options_by_mode[mode]
+            evaluated = evaluated_by_config[config_key]
+            target_population = population_budget_by_config[config_key]
+            if target_population <= 0:
+                generation_mode_summary.append(
+                    {
+                        "observation_mode": mode,
+                        "observation_mode_label": OBSERVATION_MODE_LABELS.get(mode, mode),
+                        "label_horizon": horizon,
+                        "label_horizon_label": LABEL_HORIZON_LABELS.get(horizon, horizon),
+                        "population_budget": 0,
+                        "elite_budget": 0,
+                        "candidate_count": 0,
+                        "best_search_fitness": None,
+                        "survivor_selection": None,
+                        "immigrant_injection": None,
+                        "population_after_selection": 0,
+                        "population_final": 0,
+                    }
+                )
+                continue
+            survivors, survivor_diag = select_generation_survivors(
+                evaluated,
+                elite_budget_by_config[config_key],
+                args.survivor_diversity_weight,
+                args.survivor_depth_weight,
+                target_tree_depth=generation_tree_depth_budget,
+                target_logic_depth=generation_logic_depth_budget,
             )
+            next_population = [copy.deepcopy(item["tree"]) for item in survivors]
+            immigrant_count = 0
             immigrant_tree_budget = max(1, min(args.max_depth, generation_tree_depth_budget + 1))
             immigrant_logic_budget = max(1, min(args.logic_max_depth, generation_logic_depth_budget + 1))
-            for _ in range(immigrant_count):
-                next_population.append(
-                    random_tree(
-                        rng,
-                        condition_options,
-                        len(expert_pool),
-                        immigrant_tree_budget,
-                        logic_max_depth=immigrant_logic_budget,
-                    )
+            if args.immigrant_rate > 0.0 and len(next_population) < target_population:
+                immigrant_count = min(
+                    target_population - len(next_population),
+                    max(1, int(round(target_population * args.immigrant_rate))),
                 )
-        immigrant_injection_diagnostics.append(
-            {
+                for _ in range(immigrant_count):
+                    next_population.append(
+                        random_tree(
+                            rng,
+                            condition_options,
+                            len(expert_pool),
+                            immigrant_tree_budget,
+                            logic_max_depth=immigrant_logic_budget,
+                        )
+                    )
+            immigrant_diag = {
                 "generation": generation_idx,
+                "observation_mode": mode,
+                "label_horizon": horizon,
                 "requested_rate": args.immigrant_rate,
                 "injected_count": immigrant_count,
                 "survivor_count": len(next_population) - immigrant_count,
                 "tree_budget": generation_tree_depth_budget,
                 "logic_budget": generation_logic_depth_budget,
-                "immigrant_tree_budget": max(1, min(args.max_depth, generation_tree_depth_budget + 1)),
-                "immigrant_logic_budget": max(1, min(args.logic_max_depth, generation_logic_depth_budget + 1)),
+                "immigrant_tree_budget": immigrant_tree_budget,
+                "immigrant_logic_budget": immigrant_logic_budget,
             }
-        )
-        parent_pool = survivors if survivors else evaluated
-        while len(next_population) < args.population:
-            parent_a = tournament_select(parent_pool, rng)
-            if rng.random() < 0.65:
-                parent_b = tournament_select(parent_pool, rng)
-                child_a, child_b = crossover_tree(parent_a, parent_b, rng)
-                candidate = child_a if rng.random() < 0.5 else child_b
-            else:
-                candidate = parent_a
-            if rng.random() < 0.70:
-                candidate = mutate_tree(
-                    candidate,
-                    rng,
-                    condition_options,
-                    len(expert_pool),
-                    generation_tree_depth_budget,
-                    logic_max_depth=generation_logic_depth_budget,
+            immigrant_injection_diagnostics.append(immigrant_diag)
+            parent_pool = survivors if survivors else evaluated
+            exploit_pool = build_exploit_pool(parent_pool)
+            local_search_count = 0
+            repair_anchor_offspring = 0
+            if exploit_pool and len(next_population) < target_population:
+                repair_anchor_budget = min(
+                    target_population - len(next_population),
+                    max(1, min(3, len(exploit_pool))),
                 )
-            next_population.append(candidate)
-        population = next_population[: args.population]
+                for base_item in exploit_pool[:repair_anchor_budget]:
+                    candidate = copy.deepcopy(base_item["tree"])
+                    if rng.random() < 0.85:
+                        candidate = mutate_tree(
+                            candidate,
+                            rng,
+                            condition_options,
+                            len(expert_pool),
+                            generation_tree_depth_budget,
+                            logic_max_depth=generation_logic_depth_budget,
+                        )
+                    if rng.random() < 0.30:
+                        candidate = apply_leaf_gene_profile(
+                            candidate,
+                            rng.choice(("mild", "strong", "ultra")),
+                        )
+                    next_population.append(candidate)
+                    repair_anchor_offspring += 1
+                    local_search_count += 1
+            while len(next_population) < target_population:
+                if exploit_pool and rng.random() < float(args.local_search_rate):
+                    base_item = rng.choice(exploit_pool)
+                    candidate = copy.deepcopy(base_item["tree"])
+                    burst = max(1, min(int(args.local_search_mutation_burst), 4))
+                    mutate_count = rng.randint(1, burst)
+                    for _ in range(mutate_count):
+                        candidate = mutate_tree(
+                            candidate,
+                            rng,
+                            condition_options,
+                            len(expert_pool),
+                            generation_tree_depth_budget,
+                            logic_max_depth=generation_logic_depth_budget,
+                        )
+                    if rng.random() < 0.45:
+                        candidate = apply_leaf_gene_profile(
+                            candidate,
+                            rng.choice(("mild", "strong", "ultra", "max_defense")),
+                        )
+                    local_search_count += 1
+                else:
+                    parent_a = tournament_select(parent_pool, rng)
+                    if len(parent_pool) >= 2 and rng.random() < 0.65:
+                        parent_b = tournament_select(parent_pool, rng)
+                        child_a, child_b = crossover_tree(parent_a, parent_b, rng)
+                        candidate = child_a if rng.random() < 0.5 else child_b
+                    else:
+                        candidate = parent_a
+                    if rng.random() < 0.70:
+                        candidate = mutate_tree(
+                            candidate,
+                            rng,
+                            condition_options,
+                            len(expert_pool),
+                            generation_tree_depth_budget,
+                            logic_max_depth=generation_logic_depth_budget,
+                        )
+                next_population.append(candidate)
+            population_by_config[config_key] = next_population[:target_population]
+            generation_mode_summary.append(
+                {
+                    "observation_mode": mode,
+                    "observation_mode_label": OBSERVATION_MODE_LABELS.get(mode, mode),
+                    "label_horizon": horizon,
+                    "label_horizon_label": LABEL_HORIZON_LABELS.get(horizon, horizon),
+                    "population_budget": target_population,
+                    "elite_budget": elite_budget_by_config[config_key],
+                    "candidate_count": len(evaluated),
+                    "best_search_fitness": float(evaluated[0]["search_fitness"]) if evaluated else None,
+                    "survivor_selection": survivor_diag,
+                    "immigrant_injection": immigrant_diag,
+                    "local_search_offspring": int(local_search_count),
+                    "repair_anchor_offspring": int(repair_anchor_offspring),
+                    "exploit_pool_size": len(exploit_pool),
+                    "population_after_selection": len(next_population),
+                    "population_final": len(population_by_config[config_key]),
+                }
+            )
         generation_selection_diagnostics.append(
             {
                 "generation": generation_idx,
                 "tree_depth_budget": generation_tree_depth_budget,
                 "logic_depth_budget": generation_logic_depth_budget,
-                "survivor_selection": survivor_diag,
-                "immigrant_injection": immigrant_injection_diagnostics[-1],
-                "population_after_selection": len(next_population),
-                "population_final": len(population),
+                "mode_coverage": generation_mode_summary,
             }
         )
     search_seconds = perf_counter() - search_started
 
-    evaluated = [evaluate_tree(tree) for tree in population]
-    ranked = sorted({tree_key(item["tree"]): item for item in evaluated}.values(), key=lambda item: item["search_fitness"], reverse=True)
+    evaluated = [
+        evaluate_tree(cfg["observation_mode"], cfg["label_horizon"], tree)
+        for cfg in search_configs
+        for tree in population_by_config[f"{cfg['observation_mode']}::{cfg['label_horizon']}"]
+    ]
+    ranked = sorted({item["tree_key"]: item for item in evaluated}.values(), key=lambda item: item["search_fitness"], reverse=True)
     defensive_variants = evaluate_defensive_variants(ranked, evaluate_tree)
     if defensive_variants:
         ranked = sorted(
@@ -3111,9 +4237,27 @@ def main() -> None:
             persistent_archive_injected_into_top_k = True
     progressive_candidates = [item for item in top_candidates if item["validation"]["profiles"]["progressive_improvement"]["passed"]]
     target_candidates = [item for item in top_candidates if item["validation"]["profiles"]["target_060"]["passed"]]
+    final_hard_candidates = [item for item in top_candidates if candidate_final_hard_gate_pass(item)]
+    repair_candidates = [item for item in top_candidates if item["validation"]["profiles"]["pair_repair_1y"]["passed"]]
+    repair_hard_candidates = [item for item in top_candidates if candidate_repair_hard_gate_pass(item)]
+    joint_repair_min_floor_candidates = [item for item in top_candidates if candidate_joint_repair_min_floor_pass(item)]
+    joint_repair_stress_candidates = [item for item in top_candidates if candidate_joint_repair_stress_pass(item)]
+    joint_repair_candidates = [item for item in top_candidates if candidate_joint_repair_balance_pass(item)]
     robust_candidates = [item for item in top_candidates if bool(item["robustness"]["gate_passed"])]
     fallback_best = max(top_candidates, key=lambda item: float(item["performance_score"])) if top_candidates else None
-    winner_pool = target_candidates or progressive_candidates or robust_candidates or top_candidates
+    winner_pool = (
+        final_hard_candidates
+        or
+        target_candidates
+        or progressive_candidates
+        or repair_hard_candidates
+        or joint_repair_min_floor_candidates
+        or joint_repair_stress_candidates
+        or joint_repair_candidates
+        or repair_candidates
+        or robust_candidates
+        or top_candidates
+    )
     if cost_reserve_archive_candidate is not None:
         winner_pool = [item for item in winner_pool if item["tree_key"] != cost_reserve_archive_candidate["tree_key"]]
         winner_pool.append(cost_reserve_archive_candidate)
@@ -3145,16 +4289,28 @@ def main() -> None:
                 reverse=True,
             )[: args.top_k]
             structural_champion_forced_into_top_k = True
-    selection_reason = "target_060_near_frontier_structural_pass"
-    if not target_candidates and progressive_candidates:
+    selection_reason = "final_hard_gate_near_frontier_structural_pass"
+    if not final_hard_candidates and target_candidates:
+        selection_reason = "target_060_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and progressive_candidates:
         selection_reason = "progressive_near_frontier_structural_pass"
-    elif not target_candidates and not progressive_candidates and robust_candidates:
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and repair_hard_candidates:
+        selection_reason = "repair_hard_gate_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and joint_repair_min_floor_candidates:
+        selection_reason = "joint_repair_min_floor_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and joint_repair_stress_candidates:
+        selection_reason = "joint_repair_stress_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and joint_repair_candidates:
+        selection_reason = "joint_repair_market_os_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and repair_candidates:
+        selection_reason = "pair_repair_1y_near_frontier_structural_pass"
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and robust_candidates:
         selection_reason = "robustness_gate_near_frontier_structural_pass"
-    elif not target_candidates and not progressive_candidates and not robust_candidates:
+    elif not final_hard_candidates and not target_candidates and not progressive_candidates and not robust_candidates:
         selection_reason = "no_gate_pass_near_frontier_structural"
 
     export_llm_review_queue(args.llm_review_out, top_candidates, expert_pool)
-    feature_set = describe_feature_set(feature_specs)
+    feature_set = describe_feature_set(full_feature_specs)
 
     report = {
         "search": {
@@ -3178,17 +4334,53 @@ def main() -> None:
             "auto_llm_review_model": args.auto_llm_review_model,
             "survivor_diversity_weight": args.survivor_diversity_weight,
             "survivor_depth_weight": args.survivor_depth_weight,
+            "warm_start_summaries": [str(path) for path in warm_start_summary_paths],
+            "warm_start_candidate_limit": int(args.warm_start_candidate_limit),
+            "warm_start_variant_budget": int(args.warm_start_variant_budget),
+            "local_search_rate": float(args.local_search_rate),
+            "local_search_mutation_burst": int(args.local_search_mutation_burst),
             "immigrant_rate": args.immigrant_rate,
             "robustness_folds": args.robustness_folds,
             "robustness_test_months": args.robustness_test_months,
             "commission_stress": [float(v) for v in stress_values],
             "stress_survival_threshold": float(args.stress_survival_threshold),
+            "observation_modes": [mode for mode in observation_modes],
+            "observation_mode_labels": {
+                mode: OBSERVATION_MODE_LABELS.get(mode, mode)
+                for mode in observation_modes
+            },
+            "label_horizons": [horizon for horizon in label_horizons],
+            "label_horizon_labels": {
+                horizon: LABEL_HORIZON_LABELS.get(horizon, horizon)
+                for horizon in label_horizons
+            },
+            "config_population_budgets": population_budget_by_config,
+            "config_elite_budgets": elite_budget_by_config,
             "feature_set": {
                 "name": FEATURE_SET_NAME,
                 "description": FEATURE_SET_DESCRIPTION,
-                "condition_option_count": len(condition_options),
-                "feature_count": len(feature_specs),
+                "condition_option_count": sum(len(options) for options in condition_options_by_mode.values()),
+                "feature_count": len(full_feature_specs),
                 "features": feature_set["features"],
+                "observation_modes": [
+                    {
+                        "mode": mode,
+                        "label": OBSERVATION_MODE_LABELS.get(mode, mode),
+                        "feature_count": len(feature_specs_by_mode[mode]),
+                        "condition_option_count": len(condition_options_by_mode[mode]),
+                        "features": [spec[0] for spec in feature_specs_by_mode[mode]],
+                    }
+                    for mode in observation_modes
+                ],
+                "label_horizons": [
+                    {
+                        "horizon": horizon,
+                        "label": LABEL_HORIZON_LABELS.get(horizon, horizon),
+                        "decision_stride_bars": LABEL_HORIZON_BAR_COUNTS[horizon],
+                        "native": horizon == "5m",
+                    }
+                    for horizon in label_horizons
+                ],
                 "feature_context": {
                     "primary_pair": pairs[0],
                     "secondary_pair": pairs[1] if len(pairs) > 1 else pairs[0],
@@ -3202,6 +4394,7 @@ def main() -> None:
         "curriculum_schedule": curriculum_schedule,
         "auto_llm_review_events": auto_llm_review_events,
         "expert_pool_diagnostics": expert_pool_diagnostics,
+        "warm_start_diagnostics": warm_start_diagnostics,
         "generation_selection_diagnostics": generation_selection_diagnostics,
         "immigrant_injection_diagnostics": immigrant_injection_diagnostics,
         "baseline_summary_path": str(args.baseline_summary),
@@ -3210,6 +4403,11 @@ def main() -> None:
         "top_candidates": [
             {
                 "tree_key": item["tree_key"],
+                "structure_tree_key": item["structure_tree_key"],
+                "observation_mode": item["observation_mode"],
+                "observation_mode_label": item["observation_mode_label"],
+                "label_horizon": item["label_horizon"],
+                "label_horizon_label": item["label_horizon_label"],
                 "tree": serialize_tree(item["tree"]),
                 "fitness": float(item["fitness"]),
                 "search_fitness": float(item["search_fitness"]),
@@ -3229,24 +4427,41 @@ def main() -> None:
                 },
                 "baseline_relative": item["baseline_relative"],
                 "robustness": item["robustness"],
+                "repair_metrics": item.get("repair_metrics", {}),
                 "windows": item["windows"],
                 "validation": item["validation"],
             }
             for item in top_candidates
         ],
         "promotion_candidates": {
-            "target_060": [{"tree": serialize_tree(item["tree"])} for item in target_candidates],
-            "progressive_improvement": [{"tree": serialize_tree(item["tree"])} for item in progressive_candidates],
-            "robustness_gate": [{"tree": serialize_tree(item["tree"])} for item in robust_candidates],
+            "final_hard_gate": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in final_hard_candidates],
+            "target_060": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in target_candidates],
+            "progressive_improvement": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in progressive_candidates],
+            "repair_hard_gate": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in repair_hard_candidates],
+            "joint_repair_min_floor": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in joint_repair_min_floor_candidates],
+            "joint_repair_stress": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in joint_repair_stress_candidates],
+            "joint_repair_market_os": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in joint_repair_candidates],
+            "pair_repair_1y": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in repair_candidates],
+            "robustness_gate": [{"tree": serialize_tree(item["tree"]), "observation_mode": item["observation_mode"], "label_horizon": item["label_horizon"]} for item in robust_candidates],
         },
         "selection": {
             "reason": selection_reason,
+            "final_hard_gate_pass_count": len(final_hard_candidates),
             "target_060_pass_count": len(target_candidates),
             "progressive_pass_count": len(progressive_candidates),
+            "repair_hard_gate_pass_count": len(repair_hard_candidates),
+            "joint_repair_min_floor_pass_count": len(joint_repair_min_floor_candidates),
+            "joint_repair_stress_pass_count": len(joint_repair_stress_candidates),
+            "joint_repair_market_os_pass_count": len(joint_repair_candidates),
+            "pair_repair_1y_pass_count": len(repair_candidates),
             "robustness_gate_pass_count": len(robust_candidates),
             "top_k_wf1_pass_count": sum(1 for item in top_candidates if candidate_wf1_pass(item)),
             "top_k_stress_pass_count": sum(1 for item in top_candidates if candidate_stress_pass(item)),
             "top_k_cost_reserve_pass_count": sum(1 for item in top_candidates if candidate_cost_reserve_pass(item)),
+            "top_k_final_hard_gate_pass_count": sum(1 for item in top_candidates if candidate_final_hard_gate_pass(item)),
+            "top_k_repair_hard_gate_pass_count": sum(1 for item in top_candidates if candidate_repair_hard_gate_pass(item)),
+            "top_k_joint_repair_min_floor_pass_count": sum(1 for item in top_candidates if candidate_joint_repair_min_floor_pass(item)),
+            "top_k_joint_repair_stress_pass_count": sum(1 for item in top_candidates if candidate_joint_repair_stress_pass(item)),
             "top_k_stress_reserve_scores": [float(item["robustness"].get("latest_fold_stress_reserve_score", 0.0)) for item in top_candidates],
             "stress_run_summary": top_candidates[0]["robustness"].get("stress_run_summary", {}) if top_candidates else {},
             "latest_fold_stress_run_summary": top_candidates[0]["robustness"].get("latest_fold_stress_run_summary", {}) if top_candidates else {},
@@ -3278,6 +4493,12 @@ def main() -> None:
             "selection_diagnostics": selection_diagnostics,
         },
         "fallback_best_candidate": None if fallback_best is None else {
+            "tree_key": fallback_best["tree_key"],
+            "structure_tree_key": fallback_best["structure_tree_key"],
+            "observation_mode": fallback_best["observation_mode"],
+            "observation_mode_label": fallback_best["observation_mode_label"],
+            "label_horizon": fallback_best["label_horizon"],
+            "label_horizon_label": fallback_best["label_horizon_label"],
             "tree": serialize_tree(fallback_best["tree"]),
             "fitness": float(fallback_best["fitness"]),
             "search_fitness": float(fallback_best["search_fitness"]),
@@ -3292,6 +4513,7 @@ def main() -> None:
             "structural_score": float(fallback_best["structural_score"]),
             "baseline_relative": fallback_best["baseline_relative"],
             "robustness": fallback_best["robustness"],
+            "repair_metrics": fallback_best.get("repair_metrics", {}),
             "windows": fallback_best["windows"],
             "validation": fallback_best["validation"],
             "filter": {
@@ -3301,6 +4523,12 @@ def main() -> None:
             },
         },
         "selected_candidate": None if selected is None else {
+            "tree_key": selected["tree_key"],
+            "structure_tree_key": selected["structure_tree_key"],
+            "observation_mode": selected["observation_mode"],
+            "observation_mode_label": selected["observation_mode_label"],
+            "label_horizon": selected["label_horizon"],
+            "label_horizon_label": selected["label_horizon_label"],
             "tree": serialize_tree(selected["tree"]),
             "fitness": float(selected["fitness"]),
             "search_fitness": float(selected["search_fitness"]),
@@ -3315,6 +4543,7 @@ def main() -> None:
             "leaf_gene_penalty": float(selected["leaf_gene_penalty"]),
             "baseline_relative": selected["baseline_relative"],
             "robustness": selected["robustness"],
+            "repair_metrics": selected.get("repair_metrics", {}),
             "windows": selected["windows"],
             "validation": selected["validation"],
             "filter": {

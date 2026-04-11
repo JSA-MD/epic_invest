@@ -234,6 +234,18 @@ def build_fast_context(
             funding_series.reindex(idx, fill_value=0.0)
             .to_numpy(dtype="float64")
         )
+    equity_corr_daily = overlay_inputs.get(
+        "equity_corr_daily",
+        pd.Series(0.0, index=validation_daily_index, dtype="float64"),
+    )
+    equity_corr_gross_scale_daily = overlay_inputs.get(
+        "equity_corr_gross_scale_daily",
+        pd.Series(1.0, index=validation_daily_index, dtype="float64"),
+    )
+    equity_corr_regime_mult_daily = overlay_inputs.get(
+        "equity_corr_regime_threshold_mult_daily",
+        pd.Series(1.0, index=validation_daily_index, dtype="float64"),
+    )
     return {
         "open": df[f"{pair}_open"].to_numpy(dtype="float64"),
         "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
@@ -242,9 +254,9 @@ def build_fast_context(
         "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
-        "equity_corr": overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").to_numpy(dtype="float64"),
-        "equity_corr_gross_scale": overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
-        "equity_corr_regime_mult": overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "equity_corr": equity_corr_daily.reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "equity_corr_gross_scale": equity_corr_gross_scale_daily.reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "equity_corr_regime_mult": equity_corr_regime_mult_daily.reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
         "funding_rates": funding_rates,
         "equity_corr_context": overlay_inputs.get("equity_corr_context"),

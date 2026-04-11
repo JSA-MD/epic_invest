@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
 import signal
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
+from fractal_genome_core import LeafGene, collect_specs, deserialize_tree, evaluate_tree_leaf_codes
 from replay_regime_mixture_realistic import load_model
 from rotation_target_050_live import (
     append_jsonl,
@@ -30,10 +32,19 @@ from rotation_target_050_live import (
     save_state,
     utc_now,
 )
+from search_pair_subset_fractal_genome import (
+    apply_label_horizon_to_feature_arrays,
+    apply_leaf_gene_to_pair_config,
+    build_expert_pool,
+    build_market_features,
+    materialize_feature_arrays,
+    project_feature_arrays_by_observation_mode,
+)
 from search_pair_subset_regime_mixture import (
     build_library_lookup,
     build_overlay_inputs,
     build_route_bucket_codes,
+    json_safe,
     normalize_mapping_indices,
     normalize_route_state_mode,
     route_state_names,
@@ -372,13 +383,40 @@ def load_promotion_gate(report_path: str | Path) -> dict[str, Any]:
     if not path.exists():
         return {"status": "missing", "selected_candidate_ready_for_merge": False, "path": str(path)}
     payload = json.loads(path.read_text())
-    decision = payload.get("promotion_decision", {})
+    decision = payload.get("promotion_decision")
+    if not isinstance(decision, dict):
+        decision = payload.get("decision", {})
     return {
         "status": str(decision.get("status", "unknown")),
-        "selected_candidate_ready_for_merge": bool(decision.get("selected_candidate_ready_for_merge", False)),
+        "selected_candidate_ready_for_merge": bool(
+            decision.get("selected_candidate_ready_for_merge", decision.get("ready_for_merge", False))
+        ),
         "path": str(path),
         "decision": decision,
     }
+
+
+def detect_candidate_kind(candidate: dict[str, Any]) -> str:
+    if not isinstance(candidate, dict):
+        return "unknown"
+    if str(candidate.get("candidate_kind") or "").strip().lower() == "fractal_tree":
+        return "fractal_tree"
+    if candidate.get("tree"):
+        return "fractal_tree"
+    if candidate.get("pair_configs"):
+        return "pairwise_candidate"
+    return "unknown"
+
+
+def apply_leaf_gene_to_overlay_params(params: OverlayParams, gene: LeafGene | None) -> OverlayParams:
+    leaf_gene = gene if isinstance(gene, LeafGene) else LeafGene()
+    return replace(
+        params,
+        target_vol_ann=max(float(params.target_vol_ann) * float(leaf_gene.target_vol_scale), 0.0),
+        gross_cap=max(float(params.gross_cap) * float(leaf_gene.gross_cap_scale), 0.0),
+        kill_switch_pct=max(float(params.kill_switch_pct) * float(leaf_gene.kill_switch_scale), EPSILON),
+        cooldown_days=max(int(round(float(params.cooldown_days) * float(leaf_gene.cooldown_scale))), 0),
+    )
 
 
 def load_strategy_bundle(summary_path: str | Path, base_summary_path: str | Path, model_path: str | Path) -> dict[str, Any]:
@@ -389,18 +427,95 @@ def load_strategy_bundle(summary_path: str | Path, base_summary_path: str | Path
     library = list(iter_params())
     model, _ = load_model(Path(model_path))
     compiled = gp.toolbox.compile(expr=model)
+    selected_candidate = selected_summary["selected_candidate"]
+    candidate_kind = detect_candidate_kind(selected_candidate)
+    expert_pool = None
+    route_thresholds = tuple(float(v) for v in (selected_summary.get("search", {}).get("route_thresholds") or (0.35, 0.50, 0.65, 0.80)))
+    if candidate_kind == "fractal_tree":
+        embedded_pool = selected_summary.get("expert_pool")
+        if isinstance(embedded_pool, list) and embedded_pool:
+            expert_pool = embedded_pool
+        else:
+            search_meta = selected_summary.get("search") or {}
+            expert_summaries = [part for part in (search_meta.get("expert_summaries") or []) if part]
+            pool_size = int(search_meta.get("expert_pool_size", 0) or 0)
+            summary_pairs = tuple(selected_summary.get("pairs") or DEFAULT_PAIRS)
+            if expert_summaries and pool_size > 0:
+                expert_pool, _ = build_expert_pool(expert_summaries, pool_size, summary_pairs)
     payload = {
         "summary_path": str(summary_file),
         "base_summary_path": str(base_summary_file),
         "model_path": str(Path(model_path)),
         "library_size": len(library),
-        "selected_candidate": selected_summary["selected_candidate"],
+        "selected_candidate": selected_candidate,
+        "candidate_kind": candidate_kind,
         "summary_metadata": selected_summary,
         "base_summary_metadata": base_summary,
+        "expert_pool": expert_pool,
+        "route_thresholds": route_thresholds,
         "library": library,
         "compiled_model": compiled,
     }
     return payload
+
+
+def resolve_runtime_candidate(
+    df_all: pd.DataFrame,
+    pairs: tuple[str, ...],
+    bundle: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = copy.deepcopy(bundle["selected_candidate"])
+    candidate_kind = str(bundle.get("candidate_kind") or detect_candidate_kind(candidate))
+    if candidate_kind != "fractal_tree":
+        candidate.setdefault("candidate_kind", candidate_kind)
+        return candidate
+
+    expert_pool = bundle.get("expert_pool") or []
+    if not expert_pool:
+        raise ValueError("Fractal runtime candidate is missing expert_pool metadata.")
+    tree_payload = candidate.get("tree")
+    if not isinstance(tree_payload, dict):
+        raise ValueError("Fractal runtime candidate is missing serialized tree payload.")
+    route_thresholds = tuple(float(v) for v in (bundle.get("route_thresholds") or (0.35, 0.50, 0.65, 0.80)))
+    label_horizon = str(candidate.get("label_horizon") or "5m")
+    observation_mode = str(candidate.get("observation_mode") or "time")
+    tree = deserialize_tree(tree_payload)
+    feature_series = build_market_features(df_all, pairs)
+    feature_arrays = materialize_feature_arrays(feature_series, pd.DatetimeIndex(df_all.index))
+    projected_arrays = project_feature_arrays_by_observation_mode(feature_arrays, observation_mode)
+    horizon_arrays = apply_label_horizon_to_feature_arrays(projected_arrays, label_horizon)
+    leaf_codes, leaf_catalog = evaluate_tree_leaf_codes(tree, horizon_arrays)
+    if len(leaf_codes) == 0 or not leaf_catalog:
+        raise ValueError("Fractal runtime candidate did not produce an active leaf.")
+    active_leaf_code = int(leaf_codes[-1])
+    active_leaf = leaf_catalog[active_leaf_code]
+    active_pair_configs = {
+        pair: apply_leaf_gene_to_pair_config(
+            expert_pool[int(active_leaf.expert_idx)]["pair_configs"][pair],
+            active_leaf.gene,
+            route_thresholds,
+            int(bundle["library_size"]),
+        )
+        for pair in pairs
+    }
+    feature_snapshot = {
+        spec.feature: float(horizon_arrays[spec.feature][-1])
+        for spec in collect_specs(tree)
+        if spec.feature in horizon_arrays and len(horizon_arrays[spec.feature]) > 0
+    }
+    candidate["candidate_kind"] = "fractal_tree"
+    candidate["pair_configs"] = active_pair_configs
+    candidate["active_leaf"] = {
+        "leaf_index": active_leaf_code,
+        "expert_idx": int(active_leaf.expert_idx),
+        "gene": json_safe(active_leaf.gene),
+    }
+    candidate["runtime_context"] = {
+        "observation_mode": observation_mode,
+        "label_horizon": label_horizon,
+        "feature_snapshot": feature_snapshot,
+    }
+    return candidate
 
 
 def build_pairwise_plan(
@@ -412,7 +527,7 @@ def build_pairwise_plan(
     leverage: int,
     exchange: ccxt.binanceusdm | None = None,
 ) -> dict[str, Any]:
-    candidate = bundle["selected_candidate"]
+    candidate = resolve_runtime_candidate(df_all, pairs, bundle)
     library = bundle["library"]
     compiled = bundle["compiled_model"]
     library_lookup = build_library_lookup(library)
@@ -467,6 +582,9 @@ def build_pairwise_plan(
         active_idx = int(mapping[bucket_code])
         route_state_name = route_state_names(route_state_mode)[bucket_code]
         params = library[active_idx]
+        active_leaf = candidate.get("active_leaf") or {}
+        if active_leaf:
+            params = apply_leaf_gene_to_overlay_params(params, LeafGene(**((active_leaf.get("gene") or {}))))
         signal_pos = int(library_lookup["signal_pos"][active_idx])
         signal_pct = float(np.clip(context["smooth_signal_matrix"][signal_pos, signal_idx], -500.0, 500.0))
         requested_weight = signal_pct / 100.0
@@ -502,6 +620,8 @@ def build_pairwise_plan(
                 "route_state_mode": route_state_mode,
                 "route_state_name": route_state_name,
                 "active_library_index": active_idx,
+                "candidate_kind": candidate.get("candidate_kind", "pairwise_candidate"),
+                "active_leaf": active_leaf or None,
                 "params": asdict(params),
                 "regime_score": regime_score,
                 "breadth_score": breadth_score,

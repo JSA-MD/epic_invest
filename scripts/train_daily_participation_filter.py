@@ -87,6 +87,10 @@ def build_feature_vector(row: pd.Series, signal: float) -> tuple[list[str], list
     for pair in PAIRS:
         close = float(row[f"{pair}_close"])
         close_scale = max(abs(close), 1e-8)
+        raw_volume_scale = float(row.get(f"{pair}_vol_sma", 0.0))
+        volume_rel = 1.0
+        if np.isfinite(raw_volume_scale) and abs(raw_volume_scale) >= 1e-8:
+            volume_rel = float(row.get(f"{pair}_volume", 0.0)) / abs(raw_volume_scale)
         pair_feats = {
             f"{pair}_rsi_14": float(row[f"{pair}_rsi_14"]) / 100.0,
             f"{pair}_atr_rel": float(row[f"{pair}_atr_14"]) / close_scale,
@@ -94,6 +98,7 @@ def build_feature_vector(row: pd.Series, signal: float) -> tuple[list[str], list
             f"{pair}_bb_p": float(row[f"{pair}_bb_p"]),
             f"{pair}_cci_14": float(np.tanh(float(row[f"{pair}_cci_14"]) / 100.0)),
             f"{pair}_mfi_14": float(row[f"{pair}_mfi_14"]) / 100.0,
+            f"{pair}_volume_rel": float(volume_rel),
             f"{pair}_dc_trend_05": float(row[f"{pair}_dc_trend_05"]),
             f"{pair}_dc_event_05": float(row[f"{pair}_dc_event_05"]),
             f"{pair}_dc_overshoot_05": float(row[f"{pair}_dc_overshoot_05"]) / 0.01,

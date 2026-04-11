@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -156,6 +157,84 @@ class CoreLiveSmokeTests(unittest.TestCase):
         self.assertEqual(report["retained_count"], 0)
         self.assertEqual(report["placed_count"], 2)
         self.assertEqual(report["protections"][0]["status"], "placed")
+
+    def test_routine_notifications_are_sent_at_most_once_per_hour(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
+
+        sent: list[str] = []
+        base = datetime(2026, 4, 11, 0, 0, tzinfo=timezone.utc)
+        with (
+            patch.object(
+                rotation_target_050_live,
+                "send_telegram_notification",
+                side_effect=lambda text: sent.append(text) or True,
+            ),
+            patch.object(
+                rotation_target_050_live,
+                "utc_now",
+                side_effect=[
+                    base,
+                    base + timedelta(minutes=10),
+                    base + timedelta(minutes=61),
+                ],
+            ),
+        ):
+            rotation_target_050_live.dispatch_notifications(
+                state,
+                ["일일 시작 브리핑\n- 적용일: 2026-04-11"],
+            )
+            rotation_target_050_live.dispatch_notifications(
+                state,
+                ["오버레이 진입\n- 적용일: 2026-04-11"],
+            )
+            rotation_target_050_live.dispatch_notifications(state, [])
+
+        self.assertEqual(len(sent), 2)
+        self.assertIn("운영 정기 요약", sent[0])
+        self.assertIn("일일 시작 브리핑", sent[0])
+        self.assertIn("오버레이 진입", sent[1])
+        self.assertEqual(state["notification_state"]["pending_routine_notifications"], [])
+
+    def test_critical_notifications_bypass_hourly_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
+
+        sent: list[str] = []
+        base = datetime(2026, 4, 11, 0, 0, tzinfo=timezone.utc)
+        with (
+            patch.object(
+                rotation_target_050_live,
+                "send_telegram_notification",
+                side_effect=lambda text: sent.append(text) or True,
+            ),
+            patch.object(
+                rotation_target_050_live,
+                "utc_now",
+                side_effect=[
+                    base,
+                    base + timedelta(minutes=5),
+                    base + timedelta(minutes=61),
+                ],
+            ),
+        ):
+            rotation_target_050_live.dispatch_notifications(
+                state,
+                ["일일 시작 브리핑\n- 적용일: 2026-04-11"],
+            )
+            rotation_target_050_live.dispatch_notifications(
+                state,
+                [
+                    "코어 킬 스위치 발동\n- 손실률: -5.00%",
+                    "세션 상태 변경\n- 적용일: 2026-04-11",
+                ],
+            )
+            rotation_target_050_live.dispatch_notifications(state, [])
+
+        self.assertEqual(len(sent), 3)
+        self.assertIn("운영 정기 요약", sent[0])
+        self.assertEqual(sent[1], "코어 킬 스위치 발동\n- 손실률: -5.00%")
+        self.assertIn("세션 상태 변경", sent[2])
 
 
 if __name__ == "__main__":

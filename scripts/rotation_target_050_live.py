@@ -136,6 +136,10 @@ def resolve_telegram_chat_ids() -> list[int]:
 
 
 TELEGRAM_NOTIFY_CHAT_IDS = resolve_telegram_chat_ids()
+TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS = int(
+    os.getenv("TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS", "3600")
+)
+CRITICAL_NOTIFICATION_TITLES = {"코어 킬 스위치 발동"}
 
 
 def resolve_strategy_profile() -> str:
@@ -267,6 +271,58 @@ def send_telegram_notification(text: str) -> bool:
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
             print(f"[WARN] Telegram notification error for chat_id={chat_id}: {exc}")
     return delivered
+
+
+def parse_runtime_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def notification_title(message: str) -> str:
+    payload = message.strip()
+    if not payload:
+        return ""
+    return payload.splitlines()[0].strip()
+
+
+def is_critical_notification(message: str) -> bool:
+    return notification_title(message) in CRITICAL_NOTIFICATION_TITLES
+
+
+def build_routine_notification_digest(messages: list[str], generated_at: datetime) -> str:
+    lines = [
+        "운영 정기 요약",
+        f"- 시각: {generated_at.isoformat()}",
+        f"- 이벤트 수: {len(messages)}",
+    ]
+    for idx, message in enumerate(messages, start=1):
+        payload = message.strip()
+        if not payload:
+            continue
+        lines.append("")
+        lines.append(f"[{idx}] {notification_title(payload)}")
+        body_lines = payload.splitlines()[1:]
+        if body_lines:
+            lines.extend(body_lines)
+    return "\n".join(lines)
+
+
+def queue_routine_notifications(notification_state: dict[str, Any], messages: list[str]) -> None:
+    pending = notification_state.setdefault("pending_routine_notifications", [])
+    seen = {str(item).strip() for item in pending if str(item).strip()}
+    for message in messages:
+        payload = message.strip()
+        if not payload or payload in seen:
+            continue
+        seen.add(payload)
+        pending.append(payload)
 
 
 def side_label_from_qty(qty: float) -> str:
@@ -426,12 +482,44 @@ def build_session_change_notification(previous_session: str, current_session: st
     )
 
 
-def dispatch_notifications(messages: list[str]) -> None:
+def dispatch_notifications(state: dict[str, Any], messages: list[str]) -> None:
+    notification_state = state.setdefault("notification_state", {})
+    critical_messages: list[str] = []
+    routine_messages: list[str] = []
     for message in messages:
-        message = message.strip()
-        if not message:
+        payload = message.strip()
+        if not payload:
             continue
+        if is_critical_notification(payload):
+            critical_messages.append(payload)
+        else:
+            routine_messages.append(payload)
+
+    for message in critical_messages:
         send_telegram_notification(message)
+
+    if routine_messages:
+        queue_routine_notifications(notification_state, routine_messages)
+
+    pending = [
+        str(item).strip()
+        for item in (notification_state.get("pending_routine_notifications") or [])
+        if str(item).strip()
+    ]
+    if not pending:
+        return
+
+    now = utc_now()
+    last_sent_at = parse_runtime_timestamp(notification_state.get("last_routine_notification_sent_at"))
+    if last_sent_at is not None:
+        elapsed = (now - last_sent_at).total_seconds()
+        if elapsed < TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS:
+            return
+
+    digest = build_routine_notification_digest(pending, now)
+    if send_telegram_notification(digest):
+        notification_state["last_routine_notification_sent_at"] = now.isoformat()
+        notification_state["pending_routine_notifications"] = []
 
 
 def normalize_day(value: Any) -> pd.Timestamp:
@@ -628,6 +716,8 @@ def load_state(path: str | Path) -> dict[str, Any]:
                 "last_summary_effective_day": None,
                 "last_session_effective_day": None,
                 "last_session_type": None,
+                "last_routine_notification_sent_at": None,
+                "pending_routine_notifications": [],
             },
             "runtime_health": {
                 "process_started_at": None,
@@ -669,6 +759,8 @@ def load_state(path: str | Path) -> dict[str, Any]:
     state["notification_state"].setdefault("last_summary_effective_day", None)
     state["notification_state"].setdefault("last_session_effective_day", None)
     state["notification_state"].setdefault("last_session_type", None)
+    state["notification_state"].setdefault("last_routine_notification_sent_at", None)
+    state["notification_state"].setdefault("pending_routine_notifications", [])
     state.setdefault("runtime_health", {})
     state["runtime_health"].setdefault("process_started_at", None)
     state["runtime_health"].setdefault("last_loop_started_at", None)
@@ -2454,8 +2546,9 @@ def run_once(args: argparse.Namespace) -> None:
         refresh_decision_snapshot_and_journal(state)
         save_state(args.state_path, state)
         print(f"\nState saved: {args.state_path}")
-        if args.execute and notifications:
-            dispatch_notifications(notifications)
+        if args.execute:
+            dispatch_notifications(state, notifications)
+            save_state(args.state_path, state)
     finally:
         clear_runtime_context()
 

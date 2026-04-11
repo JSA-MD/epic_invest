@@ -22,7 +22,9 @@
     "last_briefing_equity": null,
     "last_summary_effective_day": null,
     "last_session_effective_day": null,
-    "last_session_type": null
+    "last_session_type": null,
+    "last_routine_notification_sent_at": null,
+    "pending_routine_notifications": []
   },
   "runtime_health": {
     "process_started_at": null,

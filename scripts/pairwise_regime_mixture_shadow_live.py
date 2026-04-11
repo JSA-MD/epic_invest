@@ -11,7 +11,7 @@ import os
 import signal
 import time
 from dataclasses import asdict, replace
-from datetime import timezone
+from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -59,17 +59,43 @@ PAIR_TO_MARKET = {
     "BNBUSDT": "BNB/USDT:USDT",
 }
 DEFAULT_PAIRS = ("BTCUSDT", "BNBUSDT")
-STATE_PATH = gp.MODELS_DIR / "pairwise_regime_mixture_shadow_live_state.json"
-DECISION_LOG_PATH = Path(
+PAIRWISE_HISTORY_START = "2022-04-06"
+SHADOW_DEFAULT_EQUITY = 100_000.0
+STATE_PATH = Path(
     os.getenv(
-        "PAIRWISE_SHADOW_DECISION_LOG_FILE",
-        str(gp.MODELS_DIR.parent / "logs" / "pairwise_regime_mixture_shadow_decisions.jsonl"),
+        "PAIRWISE_SHADOW_STATE_PATH",
+        str(gp.MODELS_DIR / "pairwise_regime_shadow_state.json"),
     )
 )
-DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
-DEFAULT_BASE_SUMMARY_PATH = gp.MODELS_DIR / "gp_regime_mixture_search_summary.json"
-DEFAULT_MODEL_PATH = gp.MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill"
-DEFAULT_PROMOTION_REPORT_PATH = gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_stress_report.json"
+DECISION_LOG_PATH = Path(
+    os.getenv("PAIRWISE_SHADOW_DECISION_LOG_FILE")
+    or os.getenv("PAIRWISE_SHADOW_DECISION_LOG_PATH")
+    or str(gp.MODELS_DIR.parent / "logs" / "pairwise_regime_shadow_decisions.jsonl")
+)
+DEFAULT_SUMMARY_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SHADOW_SUMMARY_PATH",
+        str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"),
+    )
+)
+DEFAULT_BASE_SUMMARY_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SHADOW_BASE_SUMMARY_PATH",
+        str(gp.MODELS_DIR / "gp_regime_mixture_search_summary.json"),
+    )
+)
+DEFAULT_MODEL_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SHADOW_MODEL_PATH",
+        str(gp.MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill"),
+    )
+)
+DEFAULT_PROMOTION_REPORT_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SHADOW_PROMOTION_REPORT_PATH",
+        str(gp.MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json"),
+    )
+)
 DEFAULT_EXCHANGE_LEVERAGE = 5
 EPSILON = 1e-12
 
@@ -120,6 +146,9 @@ def parse_args() -> argparse.Namespace:
     status.add_argument("--equity", type=float, default=gp.INITIAL_CASH)
     status.add_argument("--mode", choices=["demo", "live"], default=os.getenv("BINANCE_MODE", "demo"))
     status.add_argument("--leverage", type=float, default=common["leverage"])
+    status.add_argument("--refresh-live-data", dest="refresh_live_data", action="store_true")
+    status.add_argument("--no-refresh-live-data", dest="refresh_live_data", action="store_false")
+    status.set_defaults(refresh_live_data=True)
 
     run_once = subparsers.add_parser("run-once", help="Evaluate the pairwise strategy once.")
     run_once.add_argument("--pairs", default=",".join(common["pairs"]))
@@ -134,6 +163,9 @@ def parse_args() -> argparse.Namespace:
     run_once.add_argument("--leverage", type=float, default=common["leverage"])
     run_once.add_argument("--execute", action="store_true", help="Actually place orders.")
     run_once.add_argument("--force-execute", action="store_true", help="Bypass the promotion gate.")
+    run_once.add_argument("--refresh-live-data", dest="refresh_live_data", action="store_true")
+    run_once.add_argument("--no-refresh-live-data", dest="refresh_live_data", action="store_false")
+    run_once.set_defaults(refresh_live_data=True)
 
     loop = subparsers.add_parser("loop", help="Keep evaluating the pairwise strategy on a schedule.")
     loop.add_argument("--pairs", default=",".join(common["pairs"]))
@@ -149,6 +181,9 @@ def parse_args() -> argparse.Namespace:
     loop.add_argument("--execute", action="store_true", help="Actually place orders.")
     loop.add_argument("--force-execute", action="store_true", help="Bypass the promotion gate.")
     loop.add_argument("--poll-seconds", type=int, default=60)
+    loop.add_argument("--refresh-live-data", dest="refresh_live_data", action="store_true")
+    loop.add_argument("--no-refresh-live-data", dest="refresh_live_data", action="store_false")
+    loop.set_defaults(refresh_live_data=True)
 
     return parser.parse_args()
 
@@ -158,9 +193,24 @@ def load_shadow_state(path: str | Path, decision_log: str | Path) -> dict[str, A
     if not state_file.exists():
         return {
             "strategy_class": "pairwise_regime_mixture_shadow_live",
+            "created_at": utc_now().isoformat(),
             "selected_candidate": None,
             "promotion_gate": None,
             "latest_plan": None,
+            "shadow_paper": {
+                "enabled": True,
+                "observations": 0,
+                "equity": SHADOW_DEFAULT_EQUITY,
+                "peak_equity": SHADOW_DEFAULT_EQUITY,
+                "max_drawdown": 0.0,
+                "return_pct": 0.0,
+                "last_prices": {},
+                "current_weights": {},
+                "cooldown_bars_left": {},
+                "turnover_cost_paid": 0.0,
+                "last_signal_timestamp": None,
+                "last_updated_at": None,
+            },
             "latest_runtime_snapshot": {
                 "captured_at": None,
                 "equity": None,
@@ -168,6 +218,7 @@ def load_shadow_state(path: str | Path, decision_log: str | Path) -> dict[str, A
                 "exchange_error": None,
                 "plan": None,
             },
+            "latest_decision_snapshot": {},
             "decision_journal": {
                 "last_fingerprint": None,
                 "last_recorded_at": None,
@@ -193,20 +244,42 @@ def load_shadow_state(path: str | Path, decision_log: str | Path) -> dict[str, A
     with open(state_file, "r") as f:
         state = json.load(f)
     state.setdefault("strategy_class", "pairwise_regime_mixture_shadow_live")
+    state.setdefault("created_at", None)
     state.setdefault("selected_candidate", None)
     state.setdefault("promotion_gate", None)
     state.setdefault("latest_plan", None)
-    state.setdefault("latest_runtime_snapshot", {})
+    if not isinstance(state.get("shadow_paper"), dict):
+        state["shadow_paper"] = {}
+    state["shadow_paper"].setdefault("enabled", True)
+    state["shadow_paper"].setdefault("observations", 0)
+    state["shadow_paper"].setdefault("equity", SHADOW_DEFAULT_EQUITY)
+    state["shadow_paper"].setdefault("peak_equity", SHADOW_DEFAULT_EQUITY)
+    state["shadow_paper"].setdefault("max_drawdown", 0.0)
+    state["shadow_paper"].setdefault("return_pct", 0.0)
+    state["shadow_paper"].setdefault("last_prices", {})
+    state["shadow_paper"].setdefault("current_weights", {})
+    state["shadow_paper"].setdefault("cooldown_bars_left", {})
+    state["shadow_paper"].setdefault("turnover_cost_paid", 0.0)
+    state["shadow_paper"].setdefault("last_signal_timestamp", None)
+    state["shadow_paper"].setdefault("last_updated_at", None)
+    if not isinstance(state.get("latest_runtime_snapshot"), dict):
+        state["latest_runtime_snapshot"] = {}
     state["latest_runtime_snapshot"].setdefault("captured_at", None)
     state["latest_runtime_snapshot"].setdefault("equity", None)
     state["latest_runtime_snapshot"].setdefault("positions", [])
     state["latest_runtime_snapshot"].setdefault("exchange_error", None)
     state["latest_runtime_snapshot"].setdefault("plan", None)
-    state.setdefault("decision_journal", {})
+    if not isinstance(state.get("latest_decision_snapshot"), dict):
+        state["latest_decision_snapshot"] = {}
+    if not isinstance(state.get("decision_journal"), dict):
+        state["decision_journal"] = {
+            "history": state.get("decision_journal") if isinstance(state.get("decision_journal"), list) else [],
+        }
     state["decision_journal"].setdefault("last_fingerprint", None)
     state["decision_journal"].setdefault("last_recorded_at", None)
     state["decision_journal"].setdefault("log_path", str(decision_log))
-    state.setdefault("runtime_health", {})
+    if not isinstance(state.get("runtime_health"), dict):
+        state["runtime_health"] = {}
     state["runtime_health"].setdefault("process_started_at", None)
     state["runtime_health"].setdefault("last_loop_started_at", None)
     state["runtime_health"].setdefault("last_loop_completed_at", None)
@@ -244,6 +317,67 @@ def json_stable(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
     return value
+
+
+def pandas_timeframe(interval: str) -> str:
+    if interval.endswith("m"):
+        return f"{interval[:-1]}min"
+    if interval.endswith("h"):
+        return f"{interval[:-1]}h"
+    return interval
+
+
+def drop_incomplete_bar(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    index = pd.DatetimeIndex(df.index)
+    if index.tz is None:
+        index = index.tz_localize(timezone.utc)
+    else:
+        index = index.tz_convert(timezone.utc)
+    df = df.copy()
+    df.index = index
+    current_bar_open = pd.Timestamp(utc_now()).floor(pandas_timeframe(gp.TIMEFRAME))
+    if index[-1] >= current_bar_open:
+        return df.iloc[:-1].copy()
+    return df
+
+
+def merge_recent_pair_frame(df: pd.DataFrame, pair: str, recent: pd.DataFrame) -> pd.DataFrame:
+    if recent.empty:
+        return df
+    pair_prefix = f"{pair}_"
+    renamed = recent.rename(columns={column: f"{pair_prefix}{column}" for column in recent.columns}).sort_index()
+    existing_pair_cols = [column for column in df.columns if column.startswith(pair_prefix)]
+    other = df.drop(columns=existing_pair_cols)
+    current_pair = df[existing_pair_cols].copy()
+    merged_pair = pd.concat([current_pair, renamed]).sort_index()
+    merged_pair = merged_pair[~merged_pair.index.duplicated(keep="last")]
+    return pd.concat([other, merged_pair], axis=1).sort_index()
+
+
+def load_live_frame(pairs: tuple[str, ...], refresh_live_data: bool, recent_days: int = 10) -> pd.DataFrame:
+    df = gp.load_all_pairs(
+        pairs=list(pairs),
+        start=PAIRWISE_HISTORY_START,
+        end=None,
+        refresh_cache=False,
+    )
+    if refresh_live_data:
+        now = utc_now()
+        start_dt = now - timedelta(days=recent_days)
+        end_dt = now
+        for pair in pairs:
+            try:
+                recent = gp.fetch_klines(pair, gp.TIMEFRAME, start_dt, end_dt)
+                df = merge_recent_pair_frame(df, pair, recent)
+            except Exception as exc:
+                print(f"  {pair}: live refresh skipped ({exc})")
+                continue
+    df = drop_incomplete_bar(df)
+    if len(df) < 20:
+        raise ValueError("No local market data available for pairwise shadow runner.")
+    return df
 
 
 def build_daily_close(df_all: pd.DataFrame, pairs: tuple[str, ...]) -> pd.DataFrame:
@@ -434,6 +568,22 @@ def resolve_strategy_artifact_path(raw_path: str | Path, anchor_file: str | Path
     return root / path
 
 
+def extract_strategy_artifact_reference(summary_payload: dict[str, Any], *field_names: str) -> str | None:
+    containers = [
+        summary_payload,
+        summary_payload.get("search") or {},
+        summary_payload.get("artifacts") or {},
+    ]
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        for field_name in field_names:
+            value = container.get(field_name)
+            if value:
+                return str(value)
+    return None
+
+
 def apply_leaf_gene_to_overlay_params(params: OverlayParams, gene: LeafGene | None) -> OverlayParams:
     leaf_gene = gene if isinstance(gene, LeafGene) else LeafGene()
     return replace(
@@ -453,9 +603,15 @@ def load_strategy_bundle(
     candidate_key: str = "selected_candidate",
 ) -> dict[str, Any]:
     summary_file = Path(summary_path)
-    base_summary_file = resolve_strategy_artifact_path(base_summary_path, summary_file)
-    model_file = resolve_strategy_artifact_path(model_path, summary_file)
     selected_summary = json.loads(summary_file.read_text())
+    embedded_base_summary = extract_strategy_artifact_reference(
+        selected_summary,
+        "baseline_summary_path",
+        "base_summary_path",
+    )
+    embedded_model = extract_strategy_artifact_reference(selected_summary, "model_path")
+    base_summary_file = resolve_strategy_artifact_path(embedded_base_summary or base_summary_path, summary_file)
+    model_file = resolve_strategy_artifact_path(embedded_model or model_path, summary_file)
     base_summary = json.loads(base_summary_file.read_text())
     library = list(iter_params())
     model, _ = load_model(model_file)
@@ -679,6 +835,7 @@ def build_pairwise_plan(
         "strategy_class": "pairwise_regime_mixture_shadow_live",
         "market_day": market_day.date().isoformat(),
         "effective_day": effective_day.date().isoformat(),
+        "signal_timestamp": pd.Timestamp(df_all.index.max()).isoformat(),
         "equity": float(equity),
         "leverage": float(leverage),
         "pairs": list(pairs),
@@ -686,6 +843,7 @@ def build_pairwise_plan(
         "pair_plans": pair_plans,
         "target_weights": target_weights,
         "gross_target_weight": float(sum(abs(v) for v in target_weights.values())),
+        "session_type": "flat" if float(sum(abs(v) for v in target_weights.values())) <= EPSILON else "pairwise",
         "promotion_gate": bundle.get("promotion_gate"),
         "summary_path": bundle["summary_path"],
         "base_summary_path": bundle["base_summary_path"],
@@ -710,8 +868,9 @@ def decision_fingerprint(decision: dict[str, Any]) -> str:
 
 
 def build_shadow_snapshot(state: dict[str, Any], plan: dict[str, Any], exchange_snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    captured_at = utc_now().isoformat()
     snapshot = {
-        "captured_at": utc_now().isoformat(),
+        "captured_at": captured_at,
         "equity": plan.get("equity"),
         "positions": exchange_snapshot or [],
         "exchange_error": None,
@@ -721,6 +880,36 @@ def build_shadow_snapshot(state: dict[str, Any], plan: dict[str, Any], exchange_
     state["latest_plan"] = plan
     state["selected_candidate"] = plan.get("selected_candidate")
     state["promotion_gate"] = plan.get("promotion_gate")
+    shadow_paper = state.setdefault("shadow_paper", {})
+    shadow_paper["enabled"] = True
+    shadow_paper["last_signal_timestamp"] = plan.get("signal_timestamp")
+    shadow_paper["last_updated_at"] = captured_at
+    shadow_paper["current_weights"] = {
+        pair: float(plan.get("target_weights", {}).get(pair, 0.0))
+        for pair in plan.get("pairs", [])
+    }
+    shadow_paper["cooldown_bars_left"] = {
+        pair_plan.get("pair"): 0
+        for pair_plan in plan.get("pair_plans", [])
+        if pair_plan.get("pair")
+    }
+    shadow_paper["equity"] = float(shadow_paper.get("equity") or plan.get("equity") or SHADOW_DEFAULT_EQUITY)
+    shadow_paper["peak_equity"] = float(
+        max(float(shadow_paper.get("peak_equity") or 0.0), float(shadow_paper.get("equity") or 0.0))
+    )
+    state["latest_decision_snapshot"] = {
+        "generated_at": captured_at,
+        "strategy_class": "pairwise_regime_mixture_shadow_live",
+        "session_type": plan.get("session_type"),
+        "target_weights": plan.get("target_weights", {}),
+        "pair_plans": plan.get("pair_plans", []),
+        "rationale": {
+            "mode": "pairwise",
+            "gross_leverage": plan.get("gross_target_weight", 0.0),
+            "net_exposure": float(sum(float(v) for v in (plan.get("target_weights", {}) or {}).values())),
+            "signal_timestamp": plan.get("signal_timestamp"),
+        },
+    }
     return snapshot
 
 
@@ -742,6 +931,8 @@ def build_decision(plan: dict[str, Any], execute: bool, order_actions: list[dict
         "strategy_class": plan["strategy_class"],
         "market_day": plan["market_day"],
         "effective_day": plan["effective_day"],
+        "signal_timestamp": plan.get("signal_timestamp"),
+        "session_type": plan.get("session_type"),
         "pairs": plan["pairs"],
         "selected_candidate": plan["selected_candidate"],
         "target_weights": plan["target_weights"],
@@ -776,7 +967,10 @@ def run_once(args: argparse.Namespace) -> None:
             )
 
         equity = float(args.equity) if args.equity is not None else float(fetch_equity(exchange) if execute_requested else gp.INITIAL_CASH)
-        df_all = gp.load_all_pairs(pairs=list(pairs), start="2022-04-06", end=None, refresh_cache=False)
+        df_all = load_live_frame(
+            pairs=tuple(pairs),
+            refresh_live_data=bool(getattr(args, "refresh_live_data", True)),
+        )
         if df_all.empty:
             raise ValueError("No local market data available for pairwise shadow runner.")
 

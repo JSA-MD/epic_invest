@@ -1,8 +1,11 @@
 import sys
 import unittest
 from argparse import Namespace
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -39,7 +42,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertEqual(pairwise_live.DEFAULT_SUMMARY_PATH, ROOT_DIR / "models" / VALIDATED_SUMMARY_NAME)
 
         shadow_live_source = (SCRIPTS_DIR / "pairwise_regime_mixture_shadow_live.py").read_text()
-        self.assertIn(f'DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "{VALIDATED_SUMMARY_NAME}"', shadow_live_source)
+        self.assertIn(VALIDATED_SUMMARY_NAME, shadow_live_source)
         self.assertNotIn(f'DEFAULT_SUMMARY_PATH = gp.MODELS_DIR / "{REPAIR_SUMMARY_NAME}"', shadow_live_source)
 
         launchd_source = (SCRIPTS_DIR / "pairwise_shadow_launchd_entry.sh").read_text()
@@ -147,6 +150,39 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
 
         self.assertEqual(result, 2)
         bridge.get_exchange.assert_not_called()
+
+    def test_load_live_frame_requests_recent_klines_with_datetimes(self) -> None:
+        base_index = pd.date_range("2026-04-10 10:00", periods=25, freq="5min", tz="UTC")
+        base = pd.DataFrame(
+            {
+                "BTCUSDT_close": [float(i) for i in range(25)],
+                "BNBUSDT_close": [float(i + 100) for i in range(25)],
+            },
+            index=base_index,
+        )
+        recent_index = pd.date_range("2026-04-10 12:00", periods=2, freq="5min", tz="UTC")
+        recent_btc = pd.DataFrame({"close": [2.1, 2.2]}, index=recent_index)
+        recent_bnb = pd.DataFrame({"close": [4.1, 4.2]}, index=recent_index)
+
+        with (
+            patch.object(pairwise_live.gp, "load_all_pairs", return_value=base),
+            patch.object(
+                pairwise_live.gp,
+                "fetch_klines",
+                side_effect=[recent_btc, recent_bnb],
+            ) as fetch_klines,
+            patch.object(
+                pairwise_live,
+                "utc_now",
+                return_value=datetime(2026, 4, 10, 12, 7, tzinfo=timezone.utc),
+            ),
+        ):
+            df = pairwise_live.load_live_frame(("BTCUSDT", "BNBUSDT"), refresh_live_data=True, recent_days=1)
+
+        first_call = fetch_klines.call_args_list[0]
+        self.assertIsInstance(first_call.args[2], datetime)
+        self.assertIsInstance(first_call.args[3], datetime)
+        self.assertEqual(df.index.max().isoformat(), "2026-04-10T12:05:00+00:00")
 
 
 if __name__ == "__main__":

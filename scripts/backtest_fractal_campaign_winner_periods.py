@@ -22,15 +22,19 @@ from pairwise_regime_mixture_shadow_live import (
 )
 from search_pair_subset_fractal_genome import (
     apply_label_horizon_to_feature_arrays,
-    build_leaf_runtime_arrays_from_pair_configs,
     build_leaf_runtime_arrays_for_pair,
     build_market_features,
-    fast_fractal_replay_from_context,
     load_funding_from_cache_or_empty,
     materialize_feature_arrays,
     project_feature_arrays_by_observation_mode,
 )
 from search_pair_subset_regime_mixture import aggregate_metrics, build_fast_context, build_library_lookup, build_overlay_inputs
+from strategy_replay_dispatch import (
+    SUMMARY_WINDOW_LABELS,
+    audit_replay_against_candidate_windows,
+    replay_candidate_from_context,
+    resolve_pairwise_route_state_mode,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-summary", default=None)
     parser.add_argument("--model", default=None)
     parser.add_argument("--derivative-lookback-days", type=int, default=30)
+    parser.add_argument(
+        "--no-strict-summary-audit",
+        action="store_true",
+        help="Do not fail when replayed 2m/6m/4y windows disagree with summary windows.",
+    )
     parser.add_argument(
         "--summary-out",
         default=str(MODELS_DIR / "fractal_campaign_winner_periods.json"),
@@ -115,6 +124,17 @@ def infer_last_complete_day(index: pd.DatetimeIndex) -> pd.Timestamp:
     return last_day
 
 
+def normalize_window_day(value: Any, reference: pd.Timestamp) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if reference.tzinfo is not None:
+        if ts.tzinfo is None:
+            return ts.tz_localize(reference.tzinfo)
+        return ts.tz_convert(reference.tzinfo)
+    if ts.tzinfo is not None:
+        return ts.tz_localize(None)
+    return ts
+
+
 def evaluate_summary_periods(
     *,
     summary_path: Path,
@@ -123,9 +143,18 @@ def evaluate_summary_periods(
     model_path: Path,
     candidate_role: str,
     derivative_lookback_days: int,
+    strict_summary_audit: bool,
 ) -> dict[str, Any]:
     summary = load_json(summary_path)
     pipeline = load_json(pipeline_path) if pipeline_path is not None and pipeline_path.exists() else {}
+    artifact_provenance = {
+        "embedded_model_path_present": bool(summary.get("model_path") or (summary.get("search") or {}).get("model_path")),
+        "embedded_base_summary_path_present": bool(
+            summary.get("baseline_summary_path")
+            or summary.get("base_summary_path")
+            or (summary.get("search") or {}).get("base_summary_path")
+        ),
+    }
     candidate_key = f"{candidate_role}_candidate"
     selected = summary.get(candidate_key) or {}
     if not isinstance(selected, dict) or not selected:
@@ -163,22 +192,26 @@ def evaluate_summary_periods(
 
     first_day = pd.Timestamp(pd.DatetimeIndex(df_all.index).min()).normalize()
     period_reports: list[dict[str, Any]] = []
-    for label, window_start in resolve_period_windows(end_day):
-        actual_start = max(pd.Timestamp(window_start).normalize(), first_day)
-        df = df_all.loc[str(actual_start.date()) : str(end_day.date())].copy()
+
+    def replay_period(label: str, start_day: pd.Timestamp, end_window_day: pd.Timestamp) -> dict[str, Any] | None:
+        actual_start = max(pd.Timestamp(start_day).normalize(), first_day)
+        actual_end = min(pd.Timestamp(end_window_day).normalize(), end_day)
+        if actual_start > actual_end:
+            return None
+        df = df_all.loc[str(actual_start.date()) : str(actual_end.date())].copy()
         if df.empty:
-            continue
+            return None
         derivatives_by_pair = {
             pair: slice_derivative_bundle(
                 load_derivative_bundle(
                     pair,
                     start_dt=actual_start.to_pydatetime(),
-                    end_dt=end_day.to_pydatetime(),
+                    end_dt=actual_end.to_pydatetime(),
                     fetch=False,
                     lookback_days=int(derivative_lookback_days),
                 ),
                 start_dt=actual_start.to_pydatetime(),
-                end_dt=end_day.to_pydatetime(),
+                end_dt=actual_end.to_pydatetime(),
                 history=pd.Timedelta(days=max(8, int(derivative_lookback_days))).to_pytimedelta(),
             )
             for pair in pairs
@@ -209,19 +242,17 @@ def evaluate_summary_periods(
             }
         else:
             leaf_codes = np.zeros(len(df), dtype="int16")
-            leaf_runtime_arrays = {
-                pair: build_leaf_runtime_arrays_from_pair_configs(
-                    [{"pair_config": selected["pair_configs"][pair]}],
-                    route_thresholds,
-                    len(library),
-                )
-                for pair in pairs
-            }
+            leaf_runtime_arrays = {}
 
         per_pair: dict[str, dict[str, Any]] = {}
         for pair in pairs:
             overlay_inputs = build_overlay_inputs(df, pairs, regime_pair=pair)
-            funding_df = load_funding_from_cache_or_empty(pair, str(actual_start.date()), str(end_day.date()))
+            funding_df = load_funding_from_cache_or_empty(pair, str(actual_start.date()), str(actual_end.date()))
+            route_state_mode = (
+                resolve_pairwise_route_state_mode(selected, pair)
+                if candidate_kind == "pairwise_candidate"
+                else "base"
+            )
             context = build_fast_context(
                 df=df,
                 pair=pair,
@@ -230,24 +261,58 @@ def evaluate_summary_periods(
                 route_thresholds=route_thresholds,
                 library_lookup=library_lookup,
                 funding_df=funding_df,
+                route_state_mode=route_state_mode,
             )
-            per_pair[pair] = fast_fractal_replay_from_context(
-                context,
-                library_lookup,
-                route_thresholds,
-                leaf_runtime_arrays[pair],
-                leaf_codes,
+            per_pair[pair] = replay_candidate_from_context(
+                candidate=selected,
+                pair=pair,
+                context=context,
+                library_lookup=library_lookup,
+                route_thresholds=route_thresholds,
+                leaf_runtime_array=leaf_runtime_arrays.get(pair),
+                leaf_codes=leaf_codes,
             )
 
-        period_reports.append(
-            {
-                "label": label,
-                "start": str(actual_start.date()),
-                "end": str(end_day.date()),
-                "bars": int(len(df)),
-                "per_pair": per_pair,
-                "aggregate": aggregate_metrics(per_pair),
-            }
+        return {
+            "label": label,
+            "start": str(actual_start.date()),
+            "end": str(actual_end.date()),
+            "bars": int(len(df)),
+            "per_pair": per_pair,
+            "aggregate": aggregate_metrics(per_pair),
+        }
+
+    for label, window_start in resolve_period_windows(end_day):
+        report = replay_period(label, normalize_window_day(window_start, end_day), end_day)
+        if report is not None:
+            period_reports.append(report)
+
+    replay_contract_periods: list[dict[str, Any]] = []
+    for label, summary_label in SUMMARY_WINDOW_LABELS.items():
+        window = (selected.get("windows") or {}).get(summary_label)
+        if not isinstance(window, dict):
+            continue
+        start_raw = window.get("start")
+        end_raw = window.get("end")
+        if not start_raw or not end_raw:
+            continue
+        report = replay_period(
+            label,
+            normalize_window_day(start_raw, end_day),
+            normalize_window_day(end_raw, end_day),
+        )
+        if report is not None:
+            replay_contract_periods.append(report)
+
+    replay_audit = audit_replay_against_candidate_windows(replay_contract_periods, selected)
+    if strict_summary_audit and replay_audit["status"] == "mismatch":
+        provenance_hint = ""
+        if not artifact_provenance["embedded_model_path_present"]:
+            provenance_hint = " Summary does not embed model_path; replay may be using a moved default model."
+        raise RuntimeError(
+            "Replay summary audit failed: "
+            + json.dumps(replay_audit["mismatches"], ensure_ascii=False)
+            + provenance_hint
         )
 
     return {
@@ -263,6 +328,9 @@ def evaluate_summary_periods(
             "logic_depth": selected.get("logic_depth"),
         },
         "promotion_decision": pipeline.get("decision"),
+        "artifact_provenance": artifact_provenance,
+        "replay_audit": replay_audit,
+        "replay_contract_periods": replay_contract_periods,
         "periods": period_reports,
     }
 
@@ -286,6 +354,7 @@ def main() -> None:
         model_path=resolve_default_bundle_path(args.model, summary_path, DEFAULT_MODEL_PATH),
         candidate_role=str(args.candidate_role),
         derivative_lookback_days=int(args.derivative_lookback_days),
+        strict_summary_audit=not bool(args.no_strict_summary_audit),
     )
     output_path = Path(args.summary_out)
     write_json(output_path, report)

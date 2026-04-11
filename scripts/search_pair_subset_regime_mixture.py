@@ -1284,6 +1284,8 @@ def main() -> None:
 
     report = {
         "pairs": list(pairs),
+        "model_path": str(args.model),
+        "baseline_summary_path": str(args.summary),
         "baseline_candidate": {
             "route_breadth_threshold": baseline_candidate.route_breadth_threshold,
             "mapping_indices": list(baseline_mapping),

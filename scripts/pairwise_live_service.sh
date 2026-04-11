@@ -36,14 +36,24 @@ case "${1:-}" in
         extra_args+=(--force-execute --force-note "$FORCE_NOTE")
         ;;
     esac
-    nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_live.py" loop \
-      --execute \
-      --mode "$MODE" \
-      --poll-seconds "$POLL_SECONDS" \
-      --state-path "$STATE_PATH" \
-      --decision-log-path "$DECISION_LOG_PATH" \
-      "${extra_args[@]}" \
-      >>"$LOG_FILE" 2>&1 &
+    if (( ${#extra_args[@]} > 0 )); then
+      nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_live.py" loop \
+        --execute \
+        --mode "$MODE" \
+        --poll-seconds "$POLL_SECONDS" \
+        --state-path "$STATE_PATH" \
+        --decision-log-path "$DECISION_LOG_PATH" \
+        "${extra_args[@]}" \
+        >>"$LOG_FILE" 2>&1 &
+    else
+      nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_live.py" loop \
+        --execute \
+        --mode "$MODE" \
+        --poll-seconds "$POLL_SECONDS" \
+        --state-path "$STATE_PATH" \
+        --decision-log-path "$DECISION_LOG_PATH" \
+        >>"$LOG_FILE" 2>&1 &
+    fi
     echo $! >"$PID_FILE"
     echo "pairwise live started (pid $!)"
     ;;

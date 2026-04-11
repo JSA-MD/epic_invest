@@ -4942,6 +4942,7 @@ def main() -> None:
         "warm_start_diagnostics": warm_start_diagnostics,
         "generation_selection_diagnostics": generation_selection_diagnostics,
         "immigrant_injection_diagnostics": immigrant_injection_diagnostics,
+        "model_path": str(args.model),
         "baseline_summary_path": str(args.baseline_summary),
         "baseline_candidate": baseline_summary["selected_candidate"],
         "expert_pool": expert_pool,

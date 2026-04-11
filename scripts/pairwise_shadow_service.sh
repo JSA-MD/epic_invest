@@ -5,8 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_FILE="${PAIRWISE_SHADOW_PID_FILE:-/tmp/epic_pairwise_shadow.pid}"
 LOG_FILE="${PAIRWISE_SHADOW_LOG_FILE:-$ROOT_DIR/logs/pairwise_shadow_service.log}"
 STATE_PATH="${PAIRWISE_SHADOW_STATE_PATH:-$ROOT_DIR/models/pairwise_regime_shadow_state.json}"
-DECISION_LOG_PATH="${PAIRWISE_SHADOW_DECISION_LOG_PATH:-$ROOT_DIR/logs/pairwise_regime_shadow_decisions.jsonl}"
+DECISION_LOG_PATH="${PAIRWISE_SHADOW_DECISION_LOG_PATH:-${PAIRWISE_SHADOW_DECISION_LOG_FILE:-$ROOT_DIR/logs/pairwise_regime_shadow_decisions.jsonl}}"
 POLL_SECONDS="${PAIRWISE_SHADOW_POLL_SECONDS:-300}"
+SUMMARY_PATH="${PAIRWISE_SHADOW_SUMMARY_PATH:-$ROOT_DIR/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json}"
+MODEL_PATH="${PAIRWISE_SHADOW_MODEL_PATH:-$ROOT_DIR/models/recent_6m_gp_vectorized_big_capped_rerun.dill}"
+BASE_SUMMARY_PATH="${PAIRWISE_SHADOW_BASE_SUMMARY_PATH:-$ROOT_DIR/models/gp_regime_mixture_search_summary.json}"
+PROMOTION_REPORT_PATH="${PAIRWISE_SHADOW_PROMOTION_REPORT_PATH:-$ROOT_DIR/models/gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json}"
+MODE="${PAIRWISE_SHADOW_MODE:-${BINANCE_MODE:-demo}}"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$STATE_PATH")" "$(dirname "$DECISION_LOG_PATH")"
 
@@ -27,10 +32,15 @@ case "${1:-}" in
       echo "pairwise shadow already running (pid $(cat "$PID_FILE"))"
       exit 0
     fi
-    nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_live.py" shadow-loop \
+    nohup "$ROOT_DIR/.venv/bin/python" -u "$ROOT_DIR/scripts/pairwise_regime_mixture_shadow_live.py" loop \
+      --summary "$SUMMARY_PATH" \
+      --base-summary "$BASE_SUMMARY_PATH" \
+      --model "$MODEL_PATH" \
+      --promotion-report "$PROMOTION_REPORT_PATH" \
       --poll-seconds "$POLL_SECONDS" \
+      --mode "$MODE" \
       --state-path "$STATE_PATH" \
-      --decision-log-path "$DECISION_LOG_PATH" \
+      --decision-log "$DECISION_LOG_PATH" \
       >>"$LOG_FILE" 2>&1 &
     echo $! >"$PID_FILE"
     echo "pairwise shadow started (pid $!)"

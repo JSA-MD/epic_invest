@@ -293,13 +293,14 @@ def load_live_frame(
         refresh_cache=False,
     )
     if refresh_live_data:
-        start_ms = int((utc_now() - timedelta(days=recent_days)).timestamp() * 1000)
-        end_ms = int(utc_now().timestamp() * 1000)
+        start_dt = utc_now() - timedelta(days=recent_days)
+        end_dt = utc_now()
         for pair in pairs:
             try:
-                recent = gp.fetch_klines(pair, gp.TIMEFRAME, start_ms, end_ms)
+                recent = gp.fetch_klines(pair, gp.TIMEFRAME, start_dt, end_dt)
                 df = _merge_recent_pair_frame(df, pair, recent)
-            except Exception:
+            except Exception as exc:
+                print(f"  {pair}: live refresh skipped ({exc})")
                 continue
     df = _drop_incomplete_bar(df)
     if len(df) < 20:

@@ -227,8 +227,10 @@ stop_pairwise_processes() {
   "$ROOT_DIR/scripts/pairwise_live_service.sh" stop >/dev/null 2>&1 || true
   terminate_matching_processes "$ROOT_DIR/scripts/pairwise_regime_live.py loop"
   terminate_matching_processes "$ROOT_DIR/scripts/pairwise_regime_live.py shadow-loop"
+  terminate_matching_processes "$ROOT_DIR/scripts/pairwise_regime_mixture_shadow_live.py loop"
   terminate_matching_processes "scripts/pairwise_regime_live.py loop"
   terminate_matching_processes "scripts/pairwise_regime_live.py shadow-loop"
+  terminate_matching_processes "scripts/pairwise_regime_mixture_shadow_live.py loop"
 }
 
 install_shutdown_protection() {

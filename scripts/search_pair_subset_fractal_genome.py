@@ -8,7 +8,7 @@ import copy
 import json
 import os
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -18,12 +18,14 @@ from urllib import request as urllib_request
 import numpy as np
 import pandas as pd
 
+from derivative_market_data import load_derivative_bundle, slice_derivative_bundle
 import gp_crypto_evolution as gp
 from fractal_genome_core import (
     AndCell,
     ConditionNode,
     ConditionSpec,
     deserialize_tree,
+    evaluate_logic_cell,
     FilterDecision,
     LeafGene,
     LeafNode,
@@ -42,6 +44,7 @@ from fractal_genome_core import (
     mutate_tree,
     random_tree,
     semantic_filter,
+    serialize_logic,
     serialize_tree,
     tree_depth,
     tree_key,
@@ -77,12 +80,12 @@ except ImportError:  # pragma: no cover
 
 UTC = timezone.utc
 
-FEATURE_SET_NAME = "fractal_market_feature_v3"
+FEATURE_SET_NAME = "fractal_market_feature_v4"
 FEATURE_SET_DESCRIPTION = (
     "Expanded single-asset and pairwise inputs covering returns, momentum, "
     "RSI, ATR, MACD, Bollinger, MFI, CCI, Donchian, drawdown, volatility, "
-    "volume, multi-threshold directional-change, order-imbalance, session, "
-    "and cross-asset spread features."
+    "volume, multi-threshold directional-change, order-imbalance, futures "
+    "positioning, basis, session, and cross-asset spread features."
 )
 WINDOW_COMPAT_LABEL_FULL = "full_4y"
 OBSERVATION_MODE_TIME = "time"
@@ -121,6 +124,14 @@ COMMON_OBSERVATION_FEATURES = {
     "breadth",
     "breadth_change_1d",
 }
+DERIVATIVE_FEATURE_TOKENS = (
+    "oi_rel",
+    "basis_rate",
+    "top_pos_log_ratio",
+    "top_acct_log_ratio",
+    "global_ls_log_ratio",
+    "taker_buy_sell_log_ratio",
+)
 
 BASE_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("btc_regime", ">=", (-0.05, 0.0, 0.05, 0.10)),
@@ -156,6 +167,12 @@ BASE_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("btc_bb_p_1h", ">=", (0.20, 0.35, 0.50, 0.65, 0.80)),
     ("btc_volume_rel_1h", ">=", (0.40, 0.70, 1.00, 1.30, 1.80, 2.40)),
     ("btc_order_imbalance_1h", ">=", (-0.60, -0.30, 0.0, 0.30, 0.60)),
+    ("btc_oi_rel_1h", ">=", (0.75, 0.90, 1.00, 1.10, 1.25)),
+    ("btc_basis_rate_1h", ">=", (-0.0020, -0.0010, 0.0, 0.0010, 0.0020)),
+    ("btc_top_pos_log_ratio_1h", ">=", (-0.08, -0.04, 0.0, 0.04, 0.08)),
+    ("btc_top_acct_log_ratio_1h", ">=", (-0.15, -0.08, 0.0, 0.08, 0.15)),
+    ("btc_global_ls_log_ratio_1h", ">=", (-0.15, -0.08, 0.0, 0.08, 0.15)),
+    ("btc_taker_buy_sell_log_ratio_1h", ">=", (-0.40, -0.15, 0.0, 0.15, 0.40)),
     ("btc_cci_scaled_1h", ">=", (-1.50, -0.75, -0.25, 0.0, 0.25, 0.75, 1.50)),
     ("btc_dc_trend_015_1h", ">=", (-0.50, 0.50)),
     ("btc_dc_event_015_1h", ">=", (-0.50, 0.50)),
@@ -211,6 +228,12 @@ MULTI_PAIR_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("bnb_bb_p_1h", ">=", (0.20, 0.35, 0.50, 0.65, 0.80)),
     ("bnb_volume_rel_1h", ">=", (0.40, 0.70, 1.00, 1.30, 1.80, 2.40)),
     ("bnb_order_imbalance_1h", ">=", (-0.60, -0.30, 0.0, 0.30, 0.60)),
+    ("bnb_oi_rel_1h", ">=", (0.75, 0.90, 1.00, 1.10, 1.25)),
+    ("bnb_basis_rate_1h", ">=", (-0.0020, -0.0010, 0.0, 0.0010, 0.0020)),
+    ("bnb_top_pos_log_ratio_1h", ">=", (0.0, 0.04, 0.08, 0.12, 0.16)),
+    ("bnb_top_acct_log_ratio_1h", ">=", (0.60, 0.70, 0.80, 0.90)),
+    ("bnb_global_ls_log_ratio_1h", ">=", (0.60, 0.70, 0.80, 0.90)),
+    ("bnb_taker_buy_sell_log_ratio_1h", ">=", (-0.40, -0.15, 0.0, 0.15, 0.40)),
     ("bnb_cci_scaled_1h", ">=", (-1.50, -0.75, -0.25, 0.0, 0.25, 0.75, 1.50)),
     ("bnb_dc_trend_015_1h", ">=", (-0.50, 0.50)),
     ("bnb_dc_event_015_1h", ">=", (-0.50, 0.50)),
@@ -239,6 +262,12 @@ MULTI_PAIR_FEATURE_SPECS: tuple[tuple[str, str, tuple[float, ...]], ...] = (
     ("macd_h_pct_spread_btc_minus_bnb_1h", ">=", (-0.0015, -0.0007, -0.0002, 0.0, 0.0002, 0.0007, 0.0015)),
     ("volume_rel_spread_btc_minus_bnb_1h", ">=", (-1.50, -0.50, 0.0, 0.50, 1.50)),
     ("imbalance_spread_btc_minus_bnb_1h", ">=", (-1.0, -0.50, 0.0, 0.50, 1.0)),
+    ("oi_rel_spread_btc_minus_bnb_1h", ">=", (-0.60, -0.25, 0.0, 0.25, 0.60)),
+    ("basis_rate_spread_btc_minus_bnb_1h", ">=", (-0.0030, -0.0015, 0.0, 0.0015, 0.0030)),
+    ("top_pos_log_ratio_spread_btc_minus_bnb_1h", ">=", (-0.10, -0.06, -0.03, 0.0, 0.03)),
+    ("top_acct_log_ratio_spread_btc_minus_bnb_1h", ">=", (-1.00, -0.80, -0.60, -0.40, -0.20, 0.0)),
+    ("global_ls_log_ratio_spread_btc_minus_bnb_1h", ">=", (-1.00, -0.80, -0.60, -0.40, -0.20, 0.0)),
+    ("taker_buy_sell_log_ratio_spread_btc_minus_bnb_1h", ">=", (-0.50, -0.20, 0.0, 0.20, 0.50)),
     ("cci_scaled_spread_btc_minus_bnb_1h", ">=", (-2.0, -1.0, -0.3, 0.0, 0.3, 1.0, 2.0)),
     ("dc_trend_spread_btc_minus_bnb_1h", ">=", (-2.0, -1.0, 0.0, 1.0, 2.0)),
     ("dc_event_spread_btc_minus_bnb_1h", ">=", (-1.0, 0.0, 1.0)),
@@ -405,6 +434,50 @@ def parse_args() -> argparse.Namespace:
         default=20.0,
         help="Timeout for each optional automatic LLM review request.",
     )
+    parser.add_argument(
+        "--fetch-derivatives",
+        action="store_true",
+        help="Refresh optional Binance futures derivatives caches before search.",
+    )
+    parser.add_argument(
+        "--enable-derivatives",
+        action="store_true",
+        help="Allow derivatives features into the search space. Default keeps main-equivalent price/indicator features only.",
+    )
+    parser.add_argument(
+        "--disable-derivatives",
+        action="store_true",
+        help="Force the search to ignore derivatives caches and run on price/indicator inputs only.",
+    )
+    parser.add_argument(
+        "--derivative-lookback-days",
+        type=int,
+        default=30,
+        help="Recent-days window used when refreshing optional Binance derivatives caches.",
+    )
+    parser.add_argument(
+        "--strict-external-asof",
+        action="store_true",
+        help="Align daily and sparse external signals to prior completed periods only. Default preserves main behavior.",
+    )
+    parser.add_argument(
+        "--derivative-search-bonus-weight",
+        type=float,
+        default=0.0,
+        help="Extra search-fitness weight for derivative-aware trees. Default 0 preserves main ranking.",
+    )
+    parser.add_argument(
+        "--derivative-survivor-bonus-weight",
+        type=float,
+        default=0.0,
+        help="Extra survivor-selection weight for derivative-aware trees. Default 0 preserves main ranking.",
+    )
+    parser.add_argument(
+        "--derivative-frontier-bonus-weight",
+        type=float,
+        default=0.0,
+        help="Extra near-frontier tie-break weight for derivative-aware trees. Default 0 preserves main ranking.",
+    )
     return parser.parse_args()
 
 
@@ -466,11 +539,18 @@ def filter_feature_specs_by_observation_mode(
     )
 
 
+def is_derivative_feature_name(name: str) -> bool:
+    return any(token in str(name) for token in DERIVATIVE_FEATURE_TOKENS)
+
+
 def build_feature_specs(
     pairs: tuple[str, ...],
     observation_mode: str | None = None,
+    include_derivative_features: bool = True,
 ) -> tuple[tuple[str, str, tuple[float, ...]], ...]:
     feature_specs = BASE_FEATURE_SPECS if len(pairs) <= 1 else BASE_FEATURE_SPECS + MULTI_PAIR_FEATURE_SPECS
+    if not include_derivative_features:
+        feature_specs = tuple(spec for spec in feature_specs if not is_derivative_feature_name(spec[0]))
     if observation_mode is None:
         return feature_specs
     return filter_feature_specs_by_observation_mode(feature_specs, observation_mode)
@@ -750,6 +830,270 @@ def _safe_numeric_feature(df: pd.DataFrame, column: str, default: float = 0.0) -
     return series.replace([np.inf, -np.inf], np.nan).fillna(default).astype("float64")
 
 
+def _derivative_metric_history_series(
+    bundle: dict[str, pd.DataFrame] | None,
+    metric_key: str,
+    value_column: str,
+) -> pd.Series:
+    frame = (bundle or {}).get(metric_key)
+    if frame is None or frame.empty or "timestamp" not in frame.columns or value_column not in frame.columns:
+        return pd.Series(dtype="float64")
+    return (
+        frame[["timestamp", value_column]]
+        .copy()
+        .assign(
+            timestamp=lambda df_: pd.to_datetime(df_["timestamp"], utc=True, errors="coerce", format="mixed"),
+            value=lambda df_: pd.to_numeric(df_[value_column], errors="coerce"),
+        )
+        .dropna(subset=["timestamp", "value"])
+        .drop_duplicates(subset=["timestamp"], keep="last")
+        .set_index("timestamp")["value"]
+        .sort_index()
+    )
+
+
+def _derivative_metric_series(
+    bundle: dict[str, pd.DataFrame] | None,
+    metric_key: str,
+    value_column: str,
+    index: pd.DatetimeIndex,
+) -> pd.Series:
+    series = _derivative_metric_history_series(bundle, metric_key, value_column)
+    if series.empty:
+        return pd.Series(np.nan, index=index, dtype="float64")
+    return series.reindex(index).ffill().replace([np.inf, -np.inf], np.nan).astype("float64")
+
+
+def _log_ratio_feature(series: pd.Series) -> pd.Series:
+    positive = pd.to_numeric(series, errors="coerce").where(lambda values: values > 0.0)
+    logged = np.log(positive)
+    return logged.replace([np.inf, -np.inf], np.nan).clip(-3.0, 3.0).astype("float64")
+
+
+def _open_interest_relative(series: pd.Series) -> pd.Series:
+    baseline = series.rolling(12 * 24 * 7, min_periods=12 * 24).median()
+    relative = series / baseline.replace(0.0, np.nan)
+    return relative.replace([np.inf, -np.inf], np.nan).clip(0.0, 5.0).astype("float64")
+
+
+def _open_interest_relative_metric(
+    bundle: dict[str, pd.DataFrame] | None,
+    index: pd.DatetimeIndex,
+) -> pd.Series:
+    history_series = _derivative_metric_history_series(bundle, "open_interest", "open_interest")
+    if history_series.empty:
+        return pd.Series(np.nan, index=index, dtype="float64")
+    combined_index = history_series.index.union(pd.DatetimeIndex(index)).sort_values()
+    aligned = history_series.reindex(combined_index).ffill().replace([np.inf, -np.inf], np.nan).astype("float64")
+    relative = _open_interest_relative(aligned)
+    return relative.reindex(index).ffill().replace([np.inf, -np.inf], np.nan).astype("float64")
+
+
+def _is_derivative_feature_name(name: str) -> bool:
+    raw = str(name)
+    return any(token in raw for token in DERIVATIVE_FEATURE_TOKENS)
+
+
+def _logic_feature_names(cell: Any) -> set[str]:
+    if isinstance(cell, ThresholdCell):
+        return {str(cell.spec.feature)}
+    if isinstance(cell, NotCell):
+        return _logic_feature_names(cell.child)
+    if isinstance(cell, (AndCell, OrCell)):
+        return _logic_feature_names(cell.left) | _logic_feature_names(cell.right)
+    return set()
+
+
+def summarize_derivative_feature_coverage(
+    features: dict[str, pd.Series],
+    index: pd.DatetimeIndex,
+) -> dict[str, Any]:
+    per_feature: dict[str, Any] = {}
+    target_index = pd.DatetimeIndex(index)
+    for name, series in features.items():
+        if not _is_derivative_feature_name(name):
+            continue
+        aligned = pd.to_numeric(series.reindex(target_index), errors="coerce")
+        non_null = aligned.notna()
+        non_null_count = int(non_null.sum())
+        last_valid_ts = None
+        if non_null_count:
+            last_valid_ts = pd.Timestamp(aligned.index[non_null][-1]).isoformat()
+        per_feature[name] = {
+            "non_null_count": non_null_count,
+            "non_null_ratio": float(non_null.mean()) if len(aligned) else 0.0,
+            "min": None if non_null_count == 0 else float(aligned[non_null].min()),
+            "max": None if non_null_count == 0 else float(aligned[non_null].max()),
+            "last_valid_timestamp": last_valid_ts,
+        }
+    aggregate = {
+        "feature_count": int(len(per_feature)),
+        "features_with_signal_count": int(sum(1 for item in per_feature.values() if item["non_null_count"] > 0)),
+        "mean_non_null_ratio": float(np.mean([item["non_null_ratio"] for item in per_feature.values()])) if per_feature else 0.0,
+    }
+    return {"aggregate": aggregate, "per_feature": per_feature}
+
+
+def summarize_derivative_bundle_inventory(
+    derivatives_by_pair: dict[str, dict[str, pd.DataFrame]],
+    *,
+    as_of: datetime,
+) -> dict[str, Any]:
+    as_of_ts = pd.Timestamp(as_of).tz_convert("UTC") if pd.Timestamp(as_of).tzinfo else pd.Timestamp(as_of, tz="UTC")
+    pairs_summary: dict[str, Any] = {}
+    for pair, bundle in (derivatives_by_pair or {}).items():
+        metric_summary: dict[str, Any] = {}
+        for metric_key, frame in (bundle or {}).items():
+            if frame is None or frame.empty or "timestamp" not in frame.columns:
+                metric_summary[metric_key] = {
+                    "row_count": 0,
+                    "non_null_rows": 0,
+                    "first_timestamp": None,
+                    "latest_timestamp": None,
+                    "stale_hours": None,
+                }
+                continue
+            value_columns = [column for column in frame.columns if column != "timestamp"]
+            non_null_rows = int(frame[value_columns].notna().any(axis=1).sum()) if value_columns else int(len(frame))
+            first_ts = pd.Timestamp(frame["timestamp"].iloc[0]) if len(frame) else None
+            latest_ts = pd.Timestamp(frame["timestamp"].iloc[-1]) if len(frame) else None
+            if first_ts is not None and first_ts.tzinfo is None:
+                first_ts = first_ts.tz_localize("UTC")
+            elif first_ts is not None:
+                first_ts = first_ts.tz_convert("UTC")
+            if latest_ts is not None and latest_ts.tzinfo is None:
+                latest_ts = latest_ts.tz_localize("UTC")
+            elif latest_ts is not None:
+                latest_ts = latest_ts.tz_convert("UTC")
+            metric_summary[metric_key] = {
+                "row_count": int(len(frame)),
+                "non_null_rows": non_null_rows,
+                "first_timestamp": None if first_ts is None else first_ts.isoformat(),
+                "latest_timestamp": None if latest_ts is None else latest_ts.isoformat(),
+                "stale_hours": None if latest_ts is None else float((as_of_ts - latest_ts).total_seconds() / 3600.0),
+            }
+        pairs_summary[pair] = metric_summary
+    return {
+        "enabled": bool(any(bundle for bundle in (derivatives_by_pair or {}).values())),
+        "as_of": as_of_ts.isoformat(),
+        "pairs": pairs_summary,
+    }
+
+
+def summarize_tree_condition_activity(
+    node: TreeNode,
+    features: dict[str, np.ndarray],
+) -> dict[str, Any]:
+    first = next(iter(features.values()))
+    total_bars = int(len(first))
+    conditions: list[dict[str, Any]] = []
+
+    def walk(current: TreeNode, mask: np.ndarray, path: str) -> None:
+        if not np.any(mask) or isinstance(current, LeafNode):
+            return
+        cond_values = evaluate_logic_cell(current.condition, features)
+        true_mask = mask & cond_values
+        false_mask = mask & (~cond_values)
+        feature_names = sorted(_logic_feature_names(current.condition))
+        derivative_feature_names = [name for name in feature_names if _is_derivative_feature_name(name)]
+        active_bars = int(mask.sum())
+        conditions.append(
+            {
+                "path": path,
+                "condition": serialize_logic(current.condition),
+                "feature_names": feature_names,
+                "derivative_feature_names": derivative_feature_names,
+                "derivative_condition": bool(derivative_feature_names),
+                "active_bars": active_bars,
+                "active_ratio": float(active_bars / total_bars) if total_bars else 0.0,
+                "true_count": int(true_mask.sum()),
+                "false_count": int(false_mask.sum()),
+                "true_ratio_within_active": float(true_mask.sum() / active_bars) if active_bars else 0.0,
+            }
+        )
+        walk(current.if_true, true_mask, f"{path}.T")
+        walk(current.if_false, false_mask, f"{path}.F")
+
+    walk(node, np.ones(total_bars, dtype=bool), "root")
+    derivative_conditions = [item for item in conditions if item["derivative_condition"]]
+    return {
+        "condition_count": int(len(conditions)),
+        "derivative_condition_count": int(len(derivative_conditions)),
+        "derivative_feature_names": sorted(
+            {name for item in derivative_conditions for name in item["derivative_feature_names"]}
+        ),
+        "conditions": conditions,
+    }
+
+
+def summarize_derivative_selection_profile(
+    activity: dict[str, Any] | None,
+    full_window_coverage: dict[str, Any] | None,
+    latest_fold_coverage: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    activity = activity or {}
+    derivative_conditions = [
+        item
+        for item in (activity.get("conditions") or [])
+        if bool(item.get("derivative_condition", False))
+    ]
+    derivative_feature_names = sorted(
+        {
+            name
+            for item in derivative_conditions
+            for name in (item.get("derivative_feature_names") or [])
+        }
+    )
+
+    def mean_feature_coverage(payload: dict[str, Any] | None) -> float:
+        per_feature = (payload or {}).get("per_feature") or {}
+        ratios = [
+            float((per_feature.get(name) or {}).get("non_null_ratio", 0.0))
+            for name in derivative_feature_names
+            if name in per_feature
+        ]
+        if not ratios:
+            return 0.0
+        return float(sum(ratios) / len(ratios))
+
+    def branch_balance(condition: dict[str, Any]) -> float:
+        ratio = float(condition.get("true_ratio_within_active", 0.0))
+        return max(0.0, 1.0 - abs(ratio - 0.5) * 2.0)
+
+    mean_active_ratio = (
+        float(sum(float(item.get("active_ratio", 0.0)) for item in derivative_conditions) / len(derivative_conditions))
+        if derivative_conditions
+        else 0.0
+    )
+    mean_branch_balance = (
+        float(sum(branch_balance(item) for item in derivative_conditions) / len(derivative_conditions))
+        if derivative_conditions
+        else 0.0
+    )
+    full_coverage_ratio = mean_feature_coverage(full_window_coverage)
+    latest_coverage_ratio = mean_feature_coverage(latest_fold_coverage)
+    condition_count = len(derivative_conditions)
+    feature_count = len(derivative_feature_names)
+    score = 0.0
+    if condition_count > 0:
+        score += float(condition_count) * 0.55
+        score += float(feature_count) * 0.20
+        score += mean_active_ratio * 0.35
+        score += mean_branch_balance * 0.45
+        score += full_coverage_ratio * 1.10
+        score += latest_coverage_ratio * 2.40
+    return {
+        "condition_count": int(condition_count),
+        "feature_count": int(feature_count),
+        "feature_names": derivative_feature_names,
+        "mean_active_ratio": float(mean_active_ratio),
+        "mean_branch_balance": float(mean_branch_balance),
+        "full_feature_coverage": float(full_coverage_ratio),
+        "latest_feature_coverage": float(latest_coverage_ratio),
+        "score": float(min(score, 4.0)),
+    }
+
+
 def _session_phase(index: pd.DatetimeIndex) -> pd.Series:
     normalized = pd.DatetimeIndex(index)
     if normalized.tz is None:
@@ -770,9 +1114,14 @@ def _session_flag(index: pd.DatetimeIndex, start_hour: int, end_hour: int) -> pd
     return pd.Series(((hour >= start_hour) & (hour < end_hour)).astype("float64"), index=index)
 
 
-def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str, pd.Series]:
+def build_market_features(
+    df: pd.DataFrame,
+    pairs: tuple[str, ...],
+    derivatives_by_pair: dict[str, dict[str, pd.DataFrame]] | None = None,
+) -> dict[str, pd.Series]:
     primary_pair = pairs[0]
     secondary_pair = pairs[1] if len(pairs) > 1 else primary_pair
+    index = pd.DatetimeIndex(df.index)
     close = pd.concat([df[f"{asset}_close"].rename(asset) for asset in pairs], axis=1).sort_index()
     volume = pd.concat(
         [
@@ -866,6 +1215,36 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
     bnb_dc_trend_10_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_trend_10", 0.0)
     btc_dc_event_10_1h = _safe_numeric_feature(df, f"{primary_pair}_dc_event_10", 0.0)
     bnb_dc_event_10_1h = _safe_numeric_feature(df, f"{secondary_pair}_dc_event_10", 0.0)
+    primary_derivatives = (derivatives_by_pair or {}).get(primary_pair, {})
+    secondary_derivatives = (derivatives_by_pair or {}).get(secondary_pair, {})
+    btc_oi_rel_1h = _open_interest_relative_metric(primary_derivatives, index)
+    bnb_oi_rel_1h = _open_interest_relative_metric(secondary_derivatives, index)
+    btc_basis_rate_1h = _derivative_metric_series(primary_derivatives, "basis_perpetual", "basis_rate", index).clip(-0.05, 0.05)
+    bnb_basis_rate_1h = _derivative_metric_series(secondary_derivatives, "basis_perpetual", "basis_rate", index).clip(-0.05, 0.05)
+    btc_top_pos_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(primary_derivatives, "top_trader_position_ratio", "long_short_ratio", index)
+    )
+    bnb_top_pos_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(secondary_derivatives, "top_trader_position_ratio", "long_short_ratio", index)
+    )
+    btc_top_acct_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(primary_derivatives, "top_trader_account_ratio", "long_short_ratio", index)
+    )
+    bnb_top_acct_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(secondary_derivatives, "top_trader_account_ratio", "long_short_ratio", index)
+    )
+    btc_global_ls_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(primary_derivatives, "global_long_short_ratio", "long_short_ratio", index)
+    )
+    bnb_global_ls_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(secondary_derivatives, "global_long_short_ratio", "long_short_ratio", index)
+    )
+    btc_taker_buy_sell_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(primary_derivatives, "taker_buy_sell_ratio", "buy_sell_ratio", index)
+    )
+    bnb_taker_buy_sell_log_ratio_1h = _log_ratio_feature(
+        _derivative_metric_series(secondary_derivatives, "taker_buy_sell_ratio", "buy_sell_ratio", index)
+    )
 
     btc_drawdown_7d = daily_close[primary_pair] / daily_close[primary_pair].rolling(7, min_periods=1).max() - 1.0
     bnb_drawdown_7d = daily_close[secondary_pair] / daily_close[secondary_pair].rolling(7, min_periods=1).max() - 1.0
@@ -909,6 +1288,12 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
     macd_h_pct_spread_1h = btc_macd_h_pct_1h - bnb_macd_h_pct_1h
     volume_rel_spread_1h = btc_volume_rel_1h - bnb_volume_rel_1h
     imbalance_spread_1h = btc_order_imbalance_1h - bnb_order_imbalance_1h
+    oi_rel_spread_1h = btc_oi_rel_1h - bnb_oi_rel_1h
+    basis_rate_spread_1h = btc_basis_rate_1h - bnb_basis_rate_1h
+    top_pos_log_ratio_spread_1h = btc_top_pos_log_ratio_1h - bnb_top_pos_log_ratio_1h
+    top_acct_log_ratio_spread_1h = btc_top_acct_log_ratio_1h - bnb_top_acct_log_ratio_1h
+    global_ls_log_ratio_spread_1h = btc_global_ls_log_ratio_1h - bnb_global_ls_log_ratio_1h
+    taker_buy_sell_log_ratio_spread_1h = btc_taker_buy_sell_log_ratio_1h - bnb_taker_buy_sell_log_ratio_1h
     cci_scaled_spread_1h = btc_cci_scaled_1h - bnb_cci_scaled_1h
     dc_trend_spread_1h = btc_dc_trend_05_1h - bnb_dc_trend_05_1h
     dc_event_spread_1h = btc_dc_event_05_1h - bnb_dc_event_05_1h
@@ -992,6 +1377,18 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "bnb_volume_rel_1h": bnb_volume_rel_1h,
         "btc_order_imbalance_1h": btc_order_imbalance_1h,
         "bnb_order_imbalance_1h": bnb_order_imbalance_1h,
+        "btc_oi_rel_1h": btc_oi_rel_1h,
+        "bnb_oi_rel_1h": bnb_oi_rel_1h,
+        "btc_basis_rate_1h": btc_basis_rate_1h,
+        "bnb_basis_rate_1h": bnb_basis_rate_1h,
+        "btc_top_pos_log_ratio_1h": btc_top_pos_log_ratio_1h,
+        "bnb_top_pos_log_ratio_1h": bnb_top_pos_log_ratio_1h,
+        "btc_top_acct_log_ratio_1h": btc_top_acct_log_ratio_1h,
+        "bnb_top_acct_log_ratio_1h": bnb_top_acct_log_ratio_1h,
+        "btc_global_ls_log_ratio_1h": btc_global_ls_log_ratio_1h,
+        "bnb_global_ls_log_ratio_1h": bnb_global_ls_log_ratio_1h,
+        "btc_taker_buy_sell_log_ratio_1h": btc_taker_buy_sell_log_ratio_1h,
+        "bnb_taker_buy_sell_log_ratio_1h": bnb_taker_buy_sell_log_ratio_1h,
         "btc_cci_scaled_1h": btc_cci_scaled_1h,
         "bnb_cci_scaled_1h": bnb_cci_scaled_1h,
         "btc_dc_trend_015_1h": btc_dc_trend_015_1h,
@@ -1031,6 +1428,12 @@ def build_market_features(df: pd.DataFrame, pairs: tuple[str, ...]) -> dict[str,
         "macd_h_pct_spread_btc_minus_bnb_1h": macd_h_pct_spread_1h,
         "volume_rel_spread_btc_minus_bnb_1h": volume_rel_spread_1h,
         "imbalance_spread_btc_minus_bnb_1h": imbalance_spread_1h,
+        "oi_rel_spread_btc_minus_bnb_1h": oi_rel_spread_1h,
+        "basis_rate_spread_btc_minus_bnb_1h": basis_rate_spread_1h,
+        "top_pos_log_ratio_spread_btc_minus_bnb_1h": top_pos_log_ratio_spread_1h,
+        "top_acct_log_ratio_spread_btc_minus_bnb_1h": top_acct_log_ratio_spread_1h,
+        "global_ls_log_ratio_spread_btc_minus_bnb_1h": global_ls_log_ratio_spread_1h,
+        "taker_buy_sell_log_ratio_spread_btc_minus_bnb_1h": taker_buy_sell_log_ratio_spread_1h,
         "cci_scaled_spread_btc_minus_bnb_1h": cci_scaled_spread_1h,
         "dc_trend_spread_btc_minus_bnb_1h": dc_trend_spread_1h,
         "dc_event_spread_btc_minus_bnb_1h": dc_event_spread_1h,
@@ -1050,6 +1453,8 @@ def _neutral_feature_fill(name: str) -> float:
         return 0.0
     if name in {"session_utc_phase", "session_asia_flag", "session_eu_flag", "session_us_flag"}:
         return 0.0
+    if "oi_rel" in name:
+        return 1.0
     if (name.endswith("_vol_rel") or "volume_rel" in name) and "spread" not in name:
         return 1.0
     if "rsi" in name or "mfi" in name:
@@ -1059,8 +1464,14 @@ def _neutral_feature_fill(name: str) -> float:
     return 0.0
 
 
-def materialize_feature_arrays(features: dict[str, pd.Series], index: pd.DatetimeIndex) -> dict[str, np.ndarray]:
+def materialize_feature_arrays(
+    features: dict[str, pd.Series],
+    index: pd.DatetimeIndex,
+    *,
+    strict_external_asof: bool = False,
+) -> dict[str, np.ndarray]:
     day_index = index.normalize()
+    completed_day_index = day_index - pd.Timedelta(days=1)
     intraday_features = {
         "btc_vol_rel",
         "bnb_vol_rel",
@@ -1074,9 +1485,13 @@ def materialize_feature_arrays(features: dict[str, pd.Series], index: pd.Datetim
     for name, series in features.items():
         neutral_fill = _neutral_feature_fill(name)
         if name in intraday_features or name.endswith(("_1h", "_6h", "_24h")):
-            values = series.reindex(index).ffill().bfill().replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
+            if strict_external_asof:
+                values = series.reindex(index).ffill().replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
+            else:
+                values = series.reindex(index).ffill().bfill().replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
         else:
-            values = series.reindex(day_index, method="ffill").replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
+            effective_day_index = completed_day_index if strict_external_asof else day_index
+            values = series.reindex(effective_day_index, method="ffill").replace([np.inf, -np.inf], np.nan).fillna(neutral_fill)
         out[name] = values.to_numpy(dtype="float64")
     return out
 
@@ -1288,6 +1703,7 @@ def select_generation_survivors(
     survivor_count: int,
     diversity_weight: float,
     depth_weight: float,
+    derivative_bonus_weight: float = 0.0,
     target_tree_depth: int = 1,
     target_logic_depth: int = 0,
     persistent_tree_depth: int = 3,
@@ -1412,6 +1828,9 @@ def select_generation_survivors(
             non_nominal_stress_rate = float(robustness.get("latest_non_nominal_stress_survival_rate", 0.0))
             non_nominal_stress_floor = float(robustness.get("min_fold_non_nominal_stress_survival_rate", 0.0))
             non_nominal_stress_reserve = float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0))
+            derivative_profile = item.get("derivative_profile") or {}
+            derivative_score = float(derivative_profile.get("score", 0.0))
+            derivative_condition_count = float(derivative_profile.get("condition_count", 0.0))
             final_hard_gate_pass = candidate_final_hard_gate_pass(item)
             repair_hard_gate_pass = candidate_repair_hard_gate_pass(item)
             joint_repair_balance_pass = candidate_joint_repair_balance_pass(item)
@@ -1458,6 +1877,7 @@ def select_generation_survivors(
             utility = normalized_fitness(item) + diversity_weight * min_distance + depth_weight * depth_coverage_bonus
             utility += depth_weight * 0.75 * target_alignment_bonus
             utility += depth_weight * 0.45 * robustness_bonus
+            utility += float(derivative_bonus_weight) * derivative_score
             utility += 0.35 * float(item["structural_score"])
             tie_break = (
                 utility,
@@ -1469,6 +1889,8 @@ def select_generation_survivors(
                 1.0 if candidate_wf1_pass(item) else 0.0,
                 1.0 if candidate_stress_pass(item) else 0.0,
                 float(item["search_fitness"]),
+                derivative_score,
+                derivative_condition_count,
                 min_distance,
                 item["tree_key"],
             )
@@ -1544,6 +1966,7 @@ def select_near_frontier_structural_winner(
     candidates: list[dict[str, Any]],
     frontier_ratio: float = 0.080,
     frontier_floor: float = 250.0,
+    derivative_bonus_weight: float = 0.0,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     if not candidates:
         return None, {"selected": False, "candidate_count": 0}
@@ -1578,6 +2001,7 @@ def select_near_frontier_structural_winner(
 
     def key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, float, float, str]:
         robustness = item.get("robustness", {})
+        derivative_profile = item.get("derivative_profile") or {}
         return (
             float(candidate_final_hard_gate_pass(item)),
             float(candidate_repair_hard_gate_pass(item)),
@@ -1591,6 +2015,9 @@ def select_near_frontier_structural_winner(
             float(robustness.get("latest_non_nominal_stress_reserve_score", 0.0)),
             float(robustness.get("latest_fold_stress_reserve_score", 0.0)),
             float(item["structural_score"]),
+            float(derivative_bonus_weight) * float(derivative_profile.get("score", 0.0)),
+            float(derivative_bonus_weight) * float(derivative_profile.get("latest_feature_coverage", 0.0)),
+            float(derivative_bonus_weight) * float(derivative_profile.get("condition_count", 0.0)),
             float(item["logic_depth"]),
             float(item["tree_depth"]),
             float(item["leaf_cardinality"]),
@@ -3459,6 +3886,8 @@ def main() -> None:
     route_thresholds = parse_csv_tuple(args.route_thresholds, float)
     observation_modes = normalize_observation_modes(parse_csv_tuple(args.observation_modes, str))
     label_horizons = normalize_label_horizons(parse_csv_tuple(args.label_horizons, str))
+    strict_external_asof = bool(args.strict_external_asof)
+    derivatives_enabled = bool(args.enable_derivatives) and not bool(args.disable_derivatives)
     warm_start_summary_paths = [
         Path(part.strip())
         for part in parse_csv_tuple(args.warm_start_summaries, str)
@@ -3473,9 +3902,13 @@ def main() -> None:
 
     baseline_summary = json.loads(Path(args.baseline_summary).read_text())
     llm_reviews = load_llm_review_map(args.llm_review_in)
-    full_feature_specs = build_feature_specs(pairs)
+    full_feature_specs = build_feature_specs(pairs, include_derivative_features=derivatives_enabled)
     feature_specs_by_mode = {
-        mode: build_feature_specs(pairs, observation_mode=mode)
+        mode: build_feature_specs(
+            pairs,
+            observation_mode=mode,
+            include_derivative_features=derivatives_enabled,
+        )
         for mode in observation_modes
     }
     condition_options_by_mode = {
@@ -3542,6 +3975,22 @@ def main() -> None:
         pair: load_funding_from_cache_or_empty(pair, start_all, end_all)
         for pair in pairs
     }
+    start_all_dt = datetime.fromisoformat(start_all).replace(tzinfo=UTC)
+    end_all_dt = datetime.fromisoformat(end_all).replace(tzinfo=UTC) + timedelta(days=1)
+    derivative_history_window = timedelta(days=max(8, int(args.derivative_lookback_days)))
+    if not derivatives_enabled:
+        derivatives_all = {pair: {} for pair in pairs}
+    else:
+        derivatives_all = {
+            pair: load_derivative_bundle(
+                pair,
+                start_dt=start_all_dt,
+                end_dt=end_all_dt,
+                fetch=bool(args.fetch_derivatives),
+                lookback_days=max(1, int(args.derivative_lookback_days)),
+            )
+            for pair in pairs
+        }
 
     prepare_started = perf_counter()
     window_cache: dict[str, dict[str, Any]] = {}
@@ -3550,7 +3999,22 @@ def main() -> None:
         start = spec["start"]
         end = spec["end"]
         df = df_all.loc[start:end].copy()
-        base_feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        derivative_slice = {
+            pair: slice_derivative_bundle(
+                derivatives_all[pair],
+                start_dt=datetime.fromisoformat(start).replace(tzinfo=UTC),
+                end_dt=datetime.fromisoformat(end).replace(tzinfo=UTC) + timedelta(days=1),
+                history=derivative_history_window,
+            )
+            for pair in pairs
+        }
+        raw_features = build_market_features(df, pairs, derivatives_by_pair=derivative_slice)
+        derivative_feature_coverage = summarize_derivative_feature_coverage(raw_features, pd.DatetimeIndex(df.index))
+        base_feature_arrays = materialize_feature_arrays(
+            raw_features,
+            pd.DatetimeIndex(df.index),
+            strict_external_asof=strict_external_asof,
+        )
         feature_arrays_by_mode = {}
         for mode in observation_modes:
             projected_feature_arrays = project_feature_arrays_by_observation_mode(base_feature_arrays, mode)
@@ -3577,10 +4041,12 @@ def main() -> None:
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
                     funding_df=funding_slice,
+                    strict_external_asof=strict_external_asof,
                 ),
             }
         window_cache[label] = {
             "features_by_mode": feature_arrays_by_mode,
+            "derivative_feature_coverage": derivative_feature_coverage,
             "pair_cache": pair_cache,
             "bars": int(len(df)),
             "start": start,
@@ -3596,7 +4062,22 @@ def main() -> None:
         df = df_all.loc[start:end].copy()
         if df.empty:
             continue
-        base_feature_arrays = materialize_feature_arrays(build_market_features(df, pairs), pd.DatetimeIndex(df.index))
+        derivative_slice = {
+            pair: slice_derivative_bundle(
+                derivatives_all[pair],
+                start_dt=datetime.fromisoformat(start).replace(tzinfo=UTC),
+                end_dt=datetime.fromisoformat(end).replace(tzinfo=UTC) + timedelta(days=1),
+                history=derivative_history_window,
+            )
+            for pair in pairs
+        }
+        raw_features = build_market_features(df, pairs, derivatives_by_pair=derivative_slice)
+        derivative_feature_coverage = summarize_derivative_feature_coverage(raw_features, pd.DatetimeIndex(df.index))
+        base_feature_arrays = materialize_feature_arrays(
+            raw_features,
+            pd.DatetimeIndex(df.index),
+            strict_external_asof=strict_external_asof,
+        )
         feature_arrays_by_mode = {}
         for mode in observation_modes:
             projected_feature_arrays = project_feature_arrays_by_observation_mode(base_feature_arrays, mode)
@@ -3623,10 +4104,12 @@ def main() -> None:
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
                     funding_df=funding_slice,
+                    strict_external_asof=strict_external_asof,
                 ),
             }
         robustness_cache[label] = {
             "features_by_mode": feature_arrays_by_mode,
+            "derivative_feature_coverage": derivative_feature_coverage,
             "pair_cache": pair_cache,
             "bars": int(len(df)),
             "start": start,
@@ -3710,6 +4193,7 @@ def main() -> None:
     auto_llm_review_events: list[dict[str, Any]] = []
     generation_selection_diagnostics: list[dict[str, Any]] = []
     immigrant_injection_diagnostics: list[dict[str, Any]] = []
+    latest_robustness_key = next(reversed(robustness_cache), None) if robustness_cache else None
 
     def evaluate_tree(observation_mode: str, label_horizon: str, tree: TreeNode) -> dict[str, Any]:
         structure_key = tree_key(tree)
@@ -3724,9 +4208,17 @@ def main() -> None:
         tree_logic_size_value = tree_logic_size(tree)
         leaf_signature = _tree_leaf_signature(tree)
         condition_count = len(collect_specs(tree))
-        reference_features = window_cache[window_specs[0]["key"]]["features_by_mode"][observation_mode][label_horizon]
+        full_window_state = window_cache[WINDOW_COMPAT_LABEL_FULL]
+        reference_features = full_window_state["features_by_mode"][observation_mode][label_horizon]
         _, leaf_catalog = evaluate_tree_leaf_codes(tree, reference_features)
         leaf_gene_penalty = leaf_gene_deviation_score(leaf_catalog)
+        latest_fold_state = robustness_cache.get(latest_robustness_key) if latest_robustness_key is not None else None
+        condition_activity = summarize_tree_condition_activity(tree, reference_features)
+        derivative_profile = summarize_derivative_selection_profile(
+            condition_activity,
+            full_window_state.get("derivative_feature_coverage", {}),
+            None if latest_fold_state is None else latest_fold_state.get("derivative_feature_coverage", {}),
+        )
         leaf_runtime_arrays = {
             pair: build_leaf_runtime_arrays_for_pair(
                 pair,
@@ -3875,6 +4367,8 @@ def main() -> None:
             "leaf_signature": leaf_signature,
             "leaf_cardinality": len(leaf_signature),
             "leaf_gene_penalty": float(leaf_gene_penalty),
+            "condition_activity": condition_activity,
+            "derivative_profile": derivative_profile,
             "structural_score": structural_bonus_from_metrics(
                 tree_depth_value,
                 tree_logic_depth_value,
@@ -3883,7 +4377,11 @@ def main() -> None:
             ),
             "performance_score": float(fitness),
         }
-        cached["search_fitness"] = float(cached["fitness"]) + 30.0 * float(cached["structural_score"])
+        cached["search_fitness"] = (
+            float(cached["fitness"])
+            + 30.0 * float(cached["structural_score"])
+            + float(args.derivative_search_bonus_weight) * float(derivative_profile.get("score", 0.0))
+        )
         fast_cache[key] = cached
         return cached
 
@@ -3977,6 +4475,7 @@ def main() -> None:
                 elite_budget_by_config[config_key],
                 args.survivor_diversity_weight,
                 args.survivor_depth_weight,
+                derivative_bonus_weight=float(args.derivative_survivor_bonus_weight),
                 target_tree_depth=generation_tree_depth_budget,
                 target_logic_depth=generation_logic_depth_budget,
             )
@@ -4267,7 +4766,10 @@ def main() -> None:
     elif persistent_archive_candidate is not None:
         winner_pool = [item for item in winner_pool if item["tree_key"] != persistent_archive_candidate["tree_key"]]
         winner_pool.append(persistent_archive_candidate)
-    selected, selection_diagnostics = select_near_frontier_structural_winner(winner_pool)
+    selected, selection_diagnostics = select_near_frontier_structural_winner(
+        winner_pool,
+        derivative_bonus_weight=float(args.derivative_frontier_bonus_weight),
+    )
     structural_champion_forced_into_top_k = False
     if selected is not None and selected["tree_key"] not in {item["tree_key"] for item in top_candidates}:
         top_candidate_frontier = float(selection_diagnostics.get("frontier_band", 0.0))
@@ -4311,6 +4813,41 @@ def main() -> None:
 
     export_llm_review_queue(args.llm_review_out, top_candidates, expert_pool)
     feature_set = describe_feature_set(full_feature_specs)
+    derivative_inventory = summarize_derivative_bundle_inventory(derivatives_all, as_of=end_all_dt)
+    derivative_inventory["fetch_requested"] = bool(args.fetch_derivatives)
+    derivative_inventory["lookback_days"] = int(args.derivative_lookback_days)
+    latest_robustness_key = next(reversed(robustness_cache), None) if robustness_cache else None
+
+    def build_candidate_derivative_diagnostics(candidate: dict[str, Any] | None) -> dict[str, Any] | None:
+        if candidate is None:
+            return None
+        full_window_state = window_cache.get(WINDOW_COMPAT_LABEL_FULL) or window_cache.get(window_specs[-1]["key"])
+        latest_fold_state = robustness_cache.get(latest_robustness_key) if latest_robustness_key is not None else None
+        full_window_features = (
+            full_window_state["features_by_mode"][candidate["observation_mode"]][candidate["label_horizon"]]
+            if full_window_state is not None
+            else {}
+        )
+        return {
+            "tree_condition_activity": (
+                candidate.get("condition_activity")
+                or summarize_tree_condition_activity(
+                    candidate["tree"],
+                    full_window_features,
+                )
+            ) if full_window_features else {"condition_count": 0, "derivative_condition_count": 0, "derivative_feature_names": [], "conditions": []},
+            "selection_profile": candidate.get("derivative_profile"),
+            "window_feature_coverage": {
+                "full_4y": None if full_window_state is None else full_window_state.get("derivative_feature_coverage", {}),
+                "latest_fold": None if latest_fold_state is None else {
+                    "fold": latest_robustness_key,
+                    **latest_fold_state.get("derivative_feature_coverage", {}),
+                },
+            },
+        }
+
+    fallback_derivative_diagnostics = build_candidate_derivative_diagnostics(fallback_best)
+    selected_derivative_diagnostics = build_candidate_derivative_diagnostics(selected)
 
     report = {
         "search": {
@@ -4344,6 +4881,13 @@ def main() -> None:
             "robustness_test_months": args.robustness_test_months,
             "commission_stress": [float(v) for v in stress_values],
             "stress_survival_threshold": float(args.stress_survival_threshold),
+            "derivatives_enabled": bool(derivatives_enabled),
+            "fetch_derivatives": bool(args.fetch_derivatives),
+            "derivative_lookback_days": int(args.derivative_lookback_days),
+            "strict_external_asof": bool(strict_external_asof),
+            "derivative_search_bonus_weight": float(args.derivative_search_bonus_weight),
+            "derivative_survivor_bonus_weight": float(args.derivative_survivor_bonus_weight),
+            "derivative_frontier_bonus_weight": float(args.derivative_frontier_bonus_weight),
             "observation_modes": [mode for mode in observation_modes],
             "observation_mode_labels": {
                 mode: OBSERVATION_MODE_LABELS.get(mode, mode)
@@ -4388,6 +4932,7 @@ def main() -> None:
                 },
             },
         },
+        "derivatives": derivative_inventory,
         "pairs": list(pairs),
         "backtest_windows": window_specs,
         "robustness_windows": robustness_specs,
@@ -4420,6 +4965,7 @@ def main() -> None:
                 "condition_count": int(len(collect_specs(item["tree"]))),
                 "leaf_cardinality": int(len(set(collect_leaf_keys(item["tree"])))),
                 "leaf_gene_penalty": float(item["leaf_gene_penalty"]),
+                "derivative_profile": item.get("derivative_profile"),
                 "filter": {
                     "accepted": item["filter"].accepted,
                     "source": item["filter"].source,
@@ -4516,6 +5062,7 @@ def main() -> None:
             "repair_metrics": fallback_best.get("repair_metrics", {}),
             "windows": fallback_best["windows"],
             "validation": fallback_best["validation"],
+            "derivative_diagnostics": fallback_derivative_diagnostics,
             "filter": {
                 "accepted": fallback_best["filter"].accepted,
                 "source": fallback_best["filter"].source,
@@ -4546,6 +5093,7 @@ def main() -> None:
             "repair_metrics": selected.get("repair_metrics", {}),
             "windows": selected["windows"],
             "validation": selected["validation"],
+            "derivative_diagnostics": selected_derivative_diagnostics,
             "filter": {
                 "accepted": selected["filter"].accepted,
                 "source": selected["filter"].source,

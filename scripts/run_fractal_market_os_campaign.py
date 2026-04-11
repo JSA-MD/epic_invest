@@ -47,6 +47,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--filter-mode", default="heuristic")
     parser.add_argument("--observation-modes", default="")
     parser.add_argument("--label-horizons", default="")
+    parser.add_argument("--enable-derivatives", action="store_true")
+    parser.add_argument("--fetch-derivatives", action="store_true")
+    parser.add_argument("--derivative-lookback-days", type=int, default=30)
+    parser.add_argument("--strict-external-asof", action="store_true")
+    parser.add_argument("--derivative-search-bonus-weight", type=float, default=0.0)
+    parser.add_argument("--derivative-survivor-bonus-weight", type=float, default=0.0)
+    parser.add_argument("--derivative-frontier-bonus-weight", type=float, default=0.0)
     parser.add_argument("--warm-start-summaries", default="")
     parser.add_argument("--warm-start-candidate-limit", type=int, default=12)
     parser.add_argument("--warm-start-variant-budget", type=int, default=24)
@@ -443,6 +450,16 @@ def run_seed_campaign_job(
                 search_cmd.extend(["--observation-modes", str(args.observation_modes)])
             if str(args.label_horizons).strip():
                 search_cmd.extend(["--label-horizons", str(args.label_horizons)])
+            if bool(args.enable_derivatives) or bool(args.fetch_derivatives):
+                search_cmd.append("--enable-derivatives")
+            if bool(args.fetch_derivatives):
+                search_cmd.append("--fetch-derivatives")
+            search_cmd.extend(["--derivative-lookback-days", str(int(args.derivative_lookback_days))])
+            if bool(args.strict_external_asof):
+                search_cmd.append("--strict-external-asof")
+            search_cmd.extend(["--derivative-search-bonus-weight", str(float(args.derivative_search_bonus_weight))])
+            search_cmd.extend(["--derivative-survivor-bonus-weight", str(float(args.derivative_survivor_bonus_weight))])
+            search_cmd.extend(["--derivative-frontier-bonus-weight", str(float(args.derivative_frontier_bonus_weight))])
             if str(args.warm_start_summaries).strip():
                 search_cmd.extend(["--warm-start-summaries", str(args.warm_start_summaries)])
             search_cmd.extend(["--warm-start-candidate-limit", str(int(args.warm_start_candidate_limit))])

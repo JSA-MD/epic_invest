@@ -27,15 +27,30 @@ class PairwiseCorrRouteStateTests(unittest.TestCase):
         }
 
         base_codes = pairwise_search.build_route_bucket_codes(index, overlay_inputs, 0.5)
+        strict_base_codes = pairwise_search.build_route_bucket_codes(
+            index,
+            overlay_inputs,
+            0.5,
+            strict_external_asof=True,
+        )
         corr_codes = pairwise_search.build_route_bucket_codes(
             index,
             overlay_inputs,
             0.5,
             route_state_mode=pairwise_search.ROUTE_STATE_MODE_EQUITY_CORR,
         )
+        strict_corr_codes = pairwise_search.build_route_bucket_codes(
+            index,
+            overlay_inputs,
+            0.5,
+            route_state_mode=pairwise_search.ROUTE_STATE_MODE_EQUITY_CORR,
+            strict_external_asof=True,
+        )
 
         self.assertEqual(base_codes.tolist(), [0, 1, 2, 3])
         self.assertEqual(corr_codes.tolist(), [0, 5, 10, 7])
+        self.assertEqual(strict_base_codes.tolist(), [2, 0, 1, 2])
+        self.assertEqual(strict_corr_codes.tolist(), [6, 0, 5, 10])
 
     def test_normalize_mapping_indices_expands_and_compresses(self) -> None:
         base_mapping = (0, 1, 2, 3)

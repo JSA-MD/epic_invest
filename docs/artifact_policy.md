@@ -27,6 +27,7 @@
   - `data/binance_futures/*_1d.csv`
   - `data/binance_futures/*_5m.csv`
   - `data/binance_futures/*_funding_*.csv`
+  - `data/binance_futures/derivatives/`
   - `scripts/__pycache__/`
 
 ## Review Queue

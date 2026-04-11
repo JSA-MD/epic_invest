@@ -32,6 +32,17 @@ class FractalObservationModesTests(unittest.TestCase):
         self.assertNotIn("btc_volume_rel_1h", imbalance_features)
         self.assertNotIn("btc_dc_event_05_1h", imbalance_features)
 
+    def test_build_feature_specs_can_exclude_derivative_features(self) -> None:
+        time_specs = fractal.build_feature_specs(
+            ("BTCUSDT", "BNBUSDT"),
+            observation_mode="time",
+            include_derivative_features=False,
+        )
+        time_features = {name for name, _, _ in time_specs}
+        self.assertNotIn("btc_top_pos_log_ratio_1h", time_features)
+        self.assertNotIn("oi_rel_spread_btc_minus_bnb_1h", time_features)
+        self.assertIn("btc_rsi_14_1h", time_features)
+
     def test_candidate_tree_key_is_unique_per_observation_mode(self) -> None:
         tree = LeafNode(0)
         time_key = fractal.candidate_tree_key("time", "5m", tree)

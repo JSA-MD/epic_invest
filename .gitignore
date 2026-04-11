@@ -25,6 +25,7 @@ data/market_context/
 data/binance_futures/*_1d.csv
 data/binance_futures/*_5m.csv
 data/binance_futures/*_funding_*.csv
+data/binance_futures/derivatives/
 
 # Detailed experiment traces not used as durable decision artifacts
 models/ga_long_short_rotation_curve.csv

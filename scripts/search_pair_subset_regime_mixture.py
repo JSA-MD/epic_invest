@@ -200,10 +200,13 @@ def build_fast_context(
     library_lookup: dict[str, Any],
     funding_df: pd.DataFrame | None = None,
     route_state_mode: str = ROUTE_STATE_MODE_BASE,
+    strict_external_asof: bool = False,
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(route_state_mode)
     idx = pd.DatetimeIndex(df.index)
     day_index = idx.normalize()
+    completed_day_index = day_index - pd.Timedelta(days=1)
+    effective_day_index = completed_day_index if strict_external_asof else day_index
     spans = library_lookup["spans"]
     smooth_signal_matrix = np.vstack(
         [
@@ -217,11 +220,12 @@ def build_fast_context(
             overlay_inputs,
             float(threshold),
             route_state_mode=route_state_mode,
+            strict_external_asof=strict_external_asof,
         ).astype("int64")
         for threshold in route_thresholds
     }
     funding_rates = np.zeros(len(idx), dtype="float64")
-    validation_daily_index = pd.DatetimeIndex(day_index.unique())
+    validation_daily_index = pd.DatetimeIndex(effective_day_index.unique())
     if funding_df is not None and not funding_df.empty:
         funding_series = (
             funding_df[["fundingTime", "fundingRate"]]
@@ -251,12 +255,16 @@ def build_fast_context(
         "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
         "bucket_codes": bucket_codes,
         "bar_day_index": pd.DatetimeIndex(day_index),
-        "regime": overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
-        "breadth": overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
-        "vol_ann": overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
-        "equity_corr": equity_corr_daily.reindex(day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
-        "equity_corr_gross_scale": equity_corr_gross_scale_daily.reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
-        "equity_corr_regime_mult": equity_corr_regime_mult_daily.reindex(day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "regime": overlay_inputs["btc_regime_daily"].reindex(effective_day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "breadth": overlay_inputs["breadth_daily"].reindex(effective_day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "vol_ann": (
+            overlay_inputs["vol_ann_bar"].reindex(idx).ffill().fillna(0.0)
+            if strict_external_asof
+            else overlay_inputs["vol_ann_bar"].reindex(idx).ffill().bfill().fillna(0.0)
+        ).to_numpy(dtype="float64"),
+        "equity_corr": equity_corr_daily.reindex(effective_day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+        "equity_corr_gross_scale": equity_corr_gross_scale_daily.reindex(effective_day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "equity_corr_regime_mult": equity_corr_regime_mult_daily.reindex(effective_day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
         "funding_rates": funding_rates,
         "equity_corr_context": overlay_inputs.get("equity_corr_context"),
@@ -679,11 +687,14 @@ def build_route_bucket_codes(
     overlay_inputs: dict[str, pd.Series],
     breadth_threshold: float,
     route_state_mode: str = ROUTE_STATE_MODE_BASE,
+    strict_external_asof: bool = False,
 ) -> np.ndarray:
     route_state_mode = normalize_route_state_mode(route_state_mode)
     day_index = index.normalize()
-    regime_daily = overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0)
-    breadth_daily = overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0)
+    completed_day_index = day_index - pd.Timedelta(days=1)
+    effective_day_index = completed_day_index if strict_external_asof else day_index
+    regime_daily = overlay_inputs["btc_regime_daily"].reindex(effective_day_index, method="ffill").fillna(0.0)
+    breadth_daily = overlay_inputs["breadth_daily"].reindex(effective_day_index, method="ffill").fillna(0.0)
     is_up = (regime_daily >= 0.0).astype(np.int8)
     is_broad = (breadth_daily >= breadth_threshold).astype(np.int8)
     base_codes = (is_up * 2 + is_broad).to_numpy(dtype="int8")
@@ -691,7 +702,7 @@ def build_route_bucket_codes(
         return base_codes
     corr_bucket = (
         overlay_inputs["equity_corr_bucket_daily"]
-        .reindex(day_index, method="ffill")
+        .reindex(effective_day_index, method="ffill")
         .fillna("equity_unknown")
     )
     corr_codes = corr_bucket.map(EQUITY_CORR_BUCKET_CODES).fillna(EQUITY_CORR_BUCKET_CODES["equity_unknown"]).astype("int8")

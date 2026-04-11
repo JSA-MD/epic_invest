@@ -408,6 +408,32 @@ def detect_candidate_kind(candidate: dict[str, Any]) -> str:
     return "unknown"
 
 
+def infer_strategy_artifact_root(anchor_file: str | Path) -> Path:
+    anchor = Path(anchor_file)
+    if anchor.parent.name == "models":
+        return anchor.parent.parent
+    return anchor.parent
+
+
+def resolve_strategy_artifact_path(raw_path: str | Path, anchor_file: str | Path) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+
+    anchor = Path(anchor_file)
+    root = infer_strategy_artifact_root(anchor)
+    candidates = [root / path, anchor.parent / path, path]
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists():
+            return candidate
+    return root / path
+
+
 def apply_leaf_gene_to_overlay_params(params: OverlayParams, gene: LeafGene | None) -> OverlayParams:
     leaf_gene = gene if isinstance(gene, LeafGene) else LeafGene()
     return replace(
@@ -419,15 +445,22 @@ def apply_leaf_gene_to_overlay_params(params: OverlayParams, gene: LeafGene | No
     )
 
 
-def load_strategy_bundle(summary_path: str | Path, base_summary_path: str | Path, model_path: str | Path) -> dict[str, Any]:
+def load_strategy_bundle(
+    summary_path: str | Path,
+    base_summary_path: str | Path,
+    model_path: str | Path,
+    *,
+    candidate_key: str = "selected_candidate",
+) -> dict[str, Any]:
     summary_file = Path(summary_path)
-    base_summary_file = Path(base_summary_path)
+    base_summary_file = resolve_strategy_artifact_path(base_summary_path, summary_file)
+    model_file = resolve_strategy_artifact_path(model_path, summary_file)
     selected_summary = json.loads(summary_file.read_text())
     base_summary = json.loads(base_summary_file.read_text())
     library = list(iter_params())
-    model, _ = load_model(Path(model_path))
+    model, _ = load_model(model_file)
     compiled = gp.toolbox.compile(expr=model)
-    selected_candidate = selected_summary["selected_candidate"]
+    selected_candidate = selected_summary[candidate_key]
     candidate_kind = detect_candidate_kind(selected_candidate)
     expert_pool = None
     route_thresholds = tuple(float(v) for v in (selected_summary.get("search", {}).get("route_thresholds") or (0.35, 0.50, 0.65, 0.80)))
@@ -437,7 +470,11 @@ def load_strategy_bundle(summary_path: str | Path, base_summary_path: str | Path
             expert_pool = embedded_pool
         else:
             search_meta = selected_summary.get("search") or {}
-            expert_summaries = [part for part in (search_meta.get("expert_summaries") or []) if part]
+            expert_summaries = [
+                str(resolve_strategy_artifact_path(part, summary_file))
+                for part in (search_meta.get("expert_summaries") or [])
+                if part
+            ]
             pool_size = int(search_meta.get("expert_pool_size", 0) or 0)
             summary_pairs = tuple(selected_summary.get("pairs") or DEFAULT_PAIRS)
             if expert_summaries and pool_size > 0:
@@ -445,9 +482,10 @@ def load_strategy_bundle(summary_path: str | Path, base_summary_path: str | Path
     payload = {
         "summary_path": str(summary_file),
         "base_summary_path": str(base_summary_file),
-        "model_path": str(Path(model_path)),
+        "model_path": str(model_file),
         "library_size": len(library),
         "selected_candidate": selected_candidate,
+        "candidate_key": candidate_key,
         "candidate_kind": candidate_kind,
         "summary_metadata": selected_summary,
         "base_summary_metadata": base_summary,

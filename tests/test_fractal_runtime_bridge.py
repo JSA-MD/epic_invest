@@ -233,6 +233,33 @@ class FractalRuntimeBridgeTests(unittest.TestCase):
         self.assertAlmostEqual(float(df.iloc[-1]["BTCUSDT_close"]), 2.1)
         self.assertAlmostEqual(float(df.iloc[-1]["BNBUSDT_close"]), 4.1)
 
+    def test_load_live_frame_raises_when_latest_common_bar_is_stale(self) -> None:
+        base_index = pd.date_range("2026-04-09 10:00", periods=25, freq="5min", tz="UTC")
+        base = pd.DataFrame(
+            {
+                "BTCUSDT_close": [float(i) for i in range(25)],
+                "BNBUSDT_close": [float(i + 100) for i in range(25)],
+            },
+            index=base_index,
+        )
+        recent_index = pd.date_range("2026-04-10 12:00", periods=2, freq="5min", tz="UTC")
+        recent_btc = pd.DataFrame({"close": [2.1, 2.2]}, index=recent_index)
+        recent_bnb = pd.DataFrame({"close": []}, index=pd.DatetimeIndex([], tz="UTC"))
+
+        with (
+            patch("pairwise_regime_mixture_shadow_live.gp.load_all_pairs", return_value=base),
+            patch(
+                "pairwise_regime_mixture_shadow_live.gp.fetch_klines",
+                side_effect=[recent_btc, recent_bnb],
+            ),
+            patch(
+                "pairwise_regime_mixture_shadow_live.utc_now",
+                return_value=datetime(2026, 4, 10, 12, 7, tzinfo=timezone.utc),
+            ),
+        ):
+            with self.assertRaises(ValueError):
+                load_live_frame(("BTCUSDT", "BNBUSDT"), refresh_live_data=True, recent_days=1)
+
 
 if __name__ == "__main__":
     unittest.main()

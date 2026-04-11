@@ -17,6 +17,7 @@ from backtest_core_stop_loss_compare import resolve_period_windows
 from fractal_genome_core import deserialize_tree, evaluate_tree_leaf_codes
 from pairwise_regime_mixture_shadow_live import (
     detect_candidate_kind,
+    extract_strategy_artifact_reference,
     load_strategy_bundle,
     resolve_strategy_artifact_path,
 )
@@ -42,6 +43,8 @@ MODELS_DIR = ROOT / "models"
 FULL_DAY_BARS_5M = gp.periods_per_day(gp.TIMEFRAME)
 DEFAULT_BASE_SUMMARY = MODELS_DIR / "gp_regime_mixture_btc_bnb_pairwise_repair_summary.json"
 DEFAULT_MODEL_PATH = MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill"
+WINDOW_SOURCE_ARTIFACT_LOCKED = "artifact_locked"
+WINDOW_SOURCE_CURRENT_MARKET = "current_market"
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +59,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-summary", default=None)
     parser.add_argument("--model", default=None)
     parser.add_argument("--derivative-lookback-days", type=int, default=30)
+    parser.add_argument(
+        "--window-source",
+        choices=(WINDOW_SOURCE_ARTIFACT_LOCKED, WINDOW_SOURCE_CURRENT_MARKET),
+        default=WINDOW_SOURCE_ARTIFACT_LOCKED,
+        help="Anchor replay windows to the artifact end-date or the latest local market data.",
+    )
+    parser.add_argument(
+        "--allow-truncated-data",
+        action="store_true",
+        help="Allow replay windows to silently shrink when local data does not fully cover the requested period.",
+    )
     parser.add_argument(
         "--no-strict-summary-audit",
         action="store_true",
@@ -124,6 +138,59 @@ def infer_last_complete_day(index: pd.DatetimeIndex) -> pd.Timestamp:
     return last_day
 
 
+def build_pair_data_coverage(pairs: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    coverage: dict[str, dict[str, Any]] = {}
+    for pair in pairs:
+        df = gp.load_pair(pair, start=None, end=None, refresh_cache=False)
+        if df.empty:
+            coverage[pair] = {
+                "rows": 0,
+                "start": None,
+                "end": None,
+            }
+            continue
+        index = pd.DatetimeIndex(df.index)
+        start = pd.Timestamp(index.min())
+        end = pd.Timestamp(index.max())
+        coverage[pair] = {
+            "rows": int(len(df)),
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+        }
+    return coverage
+
+
+def infer_artifact_anchor_end_day(selected: Mapping[str, Any]) -> pd.Timestamp | None:
+    windows = selected.get("windows") or {}
+    ends: list[pd.Timestamp] = []
+    for window in windows.values():
+        if not isinstance(window, dict):
+            continue
+        end_raw = window.get("end")
+        if not end_raw:
+            continue
+        ends.append(pd.Timestamp(end_raw).normalize())
+    if not ends:
+        return None
+    return max(ends)
+
+
+def build_period_anchor_end_day(
+    *,
+    selected: Mapping[str, Any],
+    dataset_end_day: pd.Timestamp,
+    window_source: str,
+) -> pd.Timestamp:
+    if window_source == WINDOW_SOURCE_CURRENT_MARKET:
+        return dataset_end_day
+    anchor = infer_artifact_anchor_end_day(selected)
+    if anchor is None:
+        raise RuntimeError(
+            "Artifact does not embed replay window end dates. Use --window-source current_market only for ad-hoc analysis."
+        )
+    return normalize_window_day(anchor, dataset_end_day)
+
+
 def normalize_window_day(value: Any, reference: pd.Timestamp) -> pd.Timestamp:
     ts = pd.Timestamp(value)
     if reference.tzinfo is not None:
@@ -144,6 +211,8 @@ def evaluate_summary_periods(
     candidate_role: str,
     derivative_lookback_days: int,
     strict_summary_audit: bool,
+    window_source: str = WINDOW_SOURCE_ARTIFACT_LOCKED,
+    allow_truncated_data: bool = False,
 ) -> dict[str, Any]:
     summary = load_json(summary_path)
     pipeline = load_json(pipeline_path) if pipeline_path is not None and pipeline_path.exists() else {}
@@ -160,6 +229,7 @@ def evaluate_summary_periods(
     if not isinstance(selected, dict) or not selected:
         raise RuntimeError(f"Summary is missing {candidate_key}.")
     pairs = tuple(summary.get("pairs") or ("BTCUSDT", "BNBUSDT"))
+    pair_data_coverage = build_pair_data_coverage(pairs)
     bundle = load_strategy_bundle(summary_path, base_summary, model_path, candidate_key=candidate_key)
     candidate_kind = detect_candidate_kind(selected)
     expert_pool = bundle.get("expert_pool") or []
@@ -167,8 +237,19 @@ def evaluate_summary_periods(
         raise RuntimeError("Fractal winner is missing expert pool metadata.")
 
     df_all = gp.load_all_pairs(pairs=list(pairs), start=None, end=None, refresh_cache=False)
-    end_day = infer_last_complete_day(pd.DatetimeIndex(df_all.index))
-    df_all = df_all.loc[: str(end_day.date())].copy()
+    dataset_end_day = infer_last_complete_day(pd.DatetimeIndex(df_all.index))
+    period_anchor_end_day = build_period_anchor_end_day(
+        selected=selected,
+        dataset_end_day=dataset_end_day,
+        window_source=str(window_source),
+    )
+    if period_anchor_end_day > dataset_end_day and not allow_truncated_data:
+        raise RuntimeError(
+            "Local data does not fully cover the artifact replay horizon. "
+            f"artifact_end_day={period_anchor_end_day.date()} dataset_end_day={dataset_end_day.date()} "
+            f"coverage={json.dumps(pair_data_coverage, ensure_ascii=False)}"
+        )
+    df_all = df_all.loc[: str(dataset_end_day.date())].copy()
     if df_all.empty:
         raise RuntimeError("Filtered dataset is empty.")
 
@@ -194,8 +275,18 @@ def evaluate_summary_periods(
     period_reports: list[dict[str, Any]] = []
 
     def replay_period(label: str, start_day: pd.Timestamp, end_window_day: pd.Timestamp) -> dict[str, Any] | None:
-        actual_start = max(pd.Timestamp(start_day).normalize(), first_day)
-        actual_end = min(pd.Timestamp(end_window_day).normalize(), end_day)
+        requested_start = pd.Timestamp(start_day).normalize()
+        requested_end = pd.Timestamp(end_window_day).normalize()
+        actual_start = max(requested_start, first_day)
+        actual_end = min(requested_end, dataset_end_day)
+        if (actual_start != requested_start or actual_end != requested_end) and not allow_truncated_data:
+            raise RuntimeError(
+                "Replay window is not fully covered by local data. "
+                f"label={label} requested=({requested_start.date()}..{requested_end.date()}) "
+                f"actual=({actual_start.date()}..{actual_end.date()}) "
+                f"dataset=({first_day.date()}..{dataset_end_day.date()}) "
+                f"coverage={json.dumps(pair_data_coverage, ensure_ascii=False)}"
+            )
         if actual_start > actual_end:
             return None
         df = df_all.loc[str(actual_start.date()) : str(actual_end.date())].copy()
@@ -275,6 +366,8 @@ def evaluate_summary_periods(
 
         return {
             "label": label,
+            "requested_start": str(requested_start.date()),
+            "requested_end": str(requested_end.date()),
             "start": str(actual_start.date()),
             "end": str(actual_end.date()),
             "bars": int(len(df)),
@@ -282,8 +375,8 @@ def evaluate_summary_periods(
             "aggregate": aggregate_metrics(per_pair),
         }
 
-    for label, window_start in resolve_period_windows(end_day):
-        report = replay_period(label, normalize_window_day(window_start, end_day), end_day)
+    for label, window_start in resolve_period_windows(period_anchor_end_day):
+        report = replay_period(label, normalize_window_day(window_start, period_anchor_end_day), period_anchor_end_day)
         if report is not None:
             period_reports.append(report)
 
@@ -298,8 +391,8 @@ def evaluate_summary_periods(
             continue
         report = replay_period(
             label,
-            normalize_window_day(start_raw, end_day),
-            normalize_window_day(end_raw, end_day),
+            normalize_window_day(start_raw, dataset_end_day),
+            normalize_window_day(end_raw, dataset_end_day),
         )
         if report is not None:
             replay_contract_periods.append(report)
@@ -329,6 +422,14 @@ def evaluate_summary_periods(
         },
         "promotion_decision": pipeline.get("decision"),
         "artifact_provenance": artifact_provenance,
+        "input_contract": {
+            "window_source": str(window_source),
+            "allow_truncated_data": bool(allow_truncated_data),
+            "period_anchor_end_day": str(period_anchor_end_day.date()),
+            "dataset_first_day": str(first_day.date()),
+            "dataset_last_complete_day": str(dataset_end_day.date()),
+            "pair_data_coverage": pair_data_coverage,
+        },
         "replay_audit": replay_audit,
         "replay_contract_periods": replay_contract_periods,
         "periods": period_reports,
@@ -345,16 +446,35 @@ def main() -> None:
     if not summary_ref:
         raise RuntimeError("Unable to resolve summary path from campaign report.")
     summary_path = resolve_strategy_artifact_path(summary_ref, campaign_report_path)
+    summary_payload = load_json(summary_path)
     pipeline_path_str = args.pipeline_report or artifacts.get("pipeline_report")
     pipeline_path = resolve_strategy_artifact_path(pipeline_path_str, campaign_report_path) if pipeline_path_str else None
+    embedded_base_summary = extract_strategy_artifact_reference(
+        summary_payload,
+        "baseline_summary_path",
+        "base_summary_path",
+    )
+    embedded_model = extract_strategy_artifact_reference(summary_payload, "model_path")
+    base_summary_ref = args.base_summary or embedded_base_summary
+    if not base_summary_ref:
+        raise RuntimeError(
+            "Summary does not embed baseline_summary_path/base_summary_path. Pass --base-summary explicitly."
+        )
+    model_ref = args.model or embedded_model
+    if not model_ref:
+        raise RuntimeError(
+            "Summary does not embed model_path. Pass --model explicitly to reproduce the artifact deterministically."
+        )
     report = evaluate_summary_periods(
         summary_path=summary_path,
         pipeline_path=pipeline_path,
-        base_summary=resolve_default_bundle_path(args.base_summary, summary_path, DEFAULT_BASE_SUMMARY),
-        model_path=resolve_default_bundle_path(args.model, summary_path, DEFAULT_MODEL_PATH),
+        base_summary=resolve_strategy_artifact_path(base_summary_ref, summary_path),
+        model_path=resolve_strategy_artifact_path(model_ref, summary_path),
         candidate_role=str(args.candidate_role),
         derivative_lookback_days=int(args.derivative_lookback_days),
         strict_summary_audit=not bool(args.no_strict_summary_audit),
+        window_source=str(args.window_source),
+        allow_truncated_data=bool(args.allow_truncated_data),
     )
     output_path = Path(args.summary_out)
     write_json(output_path, report)

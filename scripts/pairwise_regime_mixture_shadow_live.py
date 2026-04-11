@@ -343,6 +343,33 @@ def drop_incomplete_bar(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def align_complete_common_pair_frame(
+    df: pd.DataFrame,
+    pairs: tuple[str, ...],
+    *,
+    max_stale_bars: int = 2,
+) -> pd.DataFrame:
+    required_cols = [f"{pair}_close" for pair in pairs]
+    aligned = df.dropna(subset=required_cols).sort_index()
+    if aligned.empty:
+        raise ValueError("No complete common pair bars available for pairwise shadow runner.")
+    latest_common = pd.Timestamp(aligned.index[-1])
+    if latest_common.tzinfo is None:
+        latest_common = latest_common.tz_localize(timezone.utc)
+    else:
+        latest_common = latest_common.tz_convert(timezone.utc)
+    interval_delta = pd.Timedelta(pandas_timeframe(gp.TIMEFRAME))
+    current_bar_open = pd.Timestamp(utc_now()).tz_convert(timezone.utc).floor(pandas_timeframe(gp.TIMEFRAME))
+    latest_completed_bar = current_bar_open - interval_delta
+    stale_cap = latest_completed_bar - interval_delta * max(int(max_stale_bars), 0)
+    if latest_common < stale_cap:
+        raise ValueError(
+            "Common pair frame is stale for pairwise shadow runner. "
+            f"latest_common={latest_common.isoformat()} latest_completed_bar={latest_completed_bar.isoformat()}"
+        )
+    return aligned
+
+
 def merge_recent_pair_frame(df: pd.DataFrame, pair: str, recent: pd.DataFrame) -> pd.DataFrame:
     if recent.empty:
         return df
@@ -375,6 +402,7 @@ def load_live_frame(pairs: tuple[str, ...], refresh_live_data: bool, recent_days
                 print(f"  {pair}: live refresh skipped ({exc})")
                 continue
     df = drop_incomplete_bar(df)
+    df = align_complete_common_pair_frame(df, pairs)
     if len(df) < 20:
         raise ValueError("No local market data available for pairwise shadow runner.")
     return df

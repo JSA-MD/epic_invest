@@ -2,7 +2,9 @@ import sys
 import unittest
 from argparse import Namespace
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -77,6 +79,24 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         )
         self.assertAlmostEqual(baseline, 1.5)
         self.assertAlmostEqual(reduced, 1.2)
+
+    def test_resolve_strategy_artifact_path_prefers_embedded_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            nested = tmp / "artifacts"
+            nested.mkdir()
+            summary_path = nested / "summary.json"
+            embedded_model = nested / "embedded_model.dill"
+            fallback_model = nested / "fallback_model.dill"
+            embedded_model.write_text("embedded")
+            fallback_model.write_text("fallback")
+            summary_path.write_text(json.dumps({"model_path": embedded_model.name, "selected_candidate": {"pair_configs": {}}}))
+
+            payload = pairwise_live.load_selected_candidate(summary_path)
+            embedded_ref = pairwise_live.extract_strategy_artifact_reference(payload, "model_path")
+            resolved = pairwise_live.resolve_strategy_artifact_path(embedded_ref or fallback_model, summary_path)
+
+        self.assertEqual(resolved.name, "embedded_model.dill")
 
     def test_live_execute_blocks_when_gate_fails_without_force(self) -> None:
         args = make_args(execute=True, force_execute=False)
@@ -183,6 +203,35 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertIsInstance(first_call.args[2], datetime)
         self.assertIsInstance(first_call.args[3], datetime)
         self.assertEqual(df.index.max().isoformat(), "2026-04-10T12:05:00+00:00")
+
+    def test_load_live_frame_raises_when_latest_common_bar_is_stale(self) -> None:
+        base_index = pd.date_range("2026-04-09 10:00", periods=25, freq="5min", tz="UTC")
+        base = pd.DataFrame(
+            {
+                "BTCUSDT_close": [float(i) for i in range(25)],
+                "BNBUSDT_close": [float(i + 100) for i in range(25)],
+            },
+            index=base_index,
+        )
+        recent_index = pd.date_range("2026-04-10 12:00", periods=2, freq="5min", tz="UTC")
+        recent_btc = pd.DataFrame({"close": [2.1, 2.2]}, index=recent_index)
+        recent_bnb = pd.DataFrame({"close": []}, index=pd.DatetimeIndex([], tz="UTC"))
+
+        with (
+            patch.object(pairwise_live.gp, "load_all_pairs", return_value=base),
+            patch.object(
+                pairwise_live.gp,
+                "fetch_klines",
+                side_effect=[recent_btc, recent_bnb],
+            ),
+            patch.object(
+                pairwise_live,
+                "utc_now",
+                return_value=datetime(2026, 4, 10, 12, 7, tzinfo=timezone.utc),
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                pairwise_live.load_live_frame(("BTCUSDT", "BNBUSDT"), refresh_live_data=True, recent_days=1)
 
 
 if __name__ == "__main__":

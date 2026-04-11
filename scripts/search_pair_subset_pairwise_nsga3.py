@@ -768,6 +768,7 @@ def main() -> None:
             "validation_candidate_count": int(validation_candidate_count),
         },
         "pairs": list(pairs),
+        "model_path": str(args.model),
         "baseline_summary_path": str(args.baseline_summary),
         "base_summary_path": str(args.base_summary),
         "baseline_candidate": {

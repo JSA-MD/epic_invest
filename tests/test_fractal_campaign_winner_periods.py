@@ -129,6 +129,7 @@ class FractalCampaignWinnerPeriodsTests(unittest.TestCase):
                 candidate_role="selected",
                 derivative_lookback_days=30,
                 strict_summary_audit=False,
+                window_source=winner_periods.WINDOW_SOURCE_CURRENT_MARKET,
             )
 
         self.assertEqual(report["selected_candidate"]["candidate_kind"], "pairwise_candidate")
@@ -245,6 +246,153 @@ class FractalCampaignWinnerPeriodsTests(unittest.TestCase):
                     candidate_role="selected",
                     derivative_lookback_days=30,
                     strict_summary_audit=True,
+                )
+
+    def test_evaluate_summary_periods_anchors_periods_to_artifact_end_day_by_default(self) -> None:
+        index = winner_periods.pd.date_range("2026-04-08", periods=4, freq="5min", tz="UTC")
+        df = winner_periods.pd.DataFrame(
+            {
+                "BTCUSDT_close": [1.0, 1.0, 1.0, 1.0],
+                "BNBUSDT_close": [1.0, 1.0, 1.0, 1.0],
+            },
+            index=index,
+        )
+        summary = {
+            "pairs": ["BTCUSDT", "BNBUSDT"],
+            "selected_candidate": {
+                "candidate_kind": "pairwise_candidate",
+                "pair_configs": {
+                    "BTCUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [0] * 12, "route_state_mode": "equity_corr"},
+                    "BNBUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [0] * 12, "route_state_mode": "equity_corr"},
+                },
+                "windows": {
+                    "recent_2m": {"start": "2026-02-06", "end": "2026-04-06"},
+                    "recent_6m": {"start": "2025-10-06", "end": "2026-04-06"},
+                    "full_4y": {"start": "2022-04-06", "end": "2026-04-06"},
+                },
+            },
+        }
+        observed_anchors: list[str] = []
+        fake_result = {
+            "avg_daily_return": 0.01,
+            "total_return": 0.10,
+            "max_drawdown": -0.05,
+            "sharpe": 1.0,
+            "n_trades": 1,
+            "daily_target_hit_rate": 0.5,
+            "daily_win_rate": 0.5,
+            "worst_day": -0.01,
+            "best_day": 0.02,
+        }
+
+        def fake_load_json(path: str | Path) -> dict:
+            if str(path).endswith("summary.json"):
+                return summary
+            return {}
+
+        def fake_resolve_period_windows(end_day):
+            observed_anchors.append(str(winner_periods.pd.Timestamp(end_day).date()))
+            return []
+
+        with (
+            patch.object(winner_periods, "load_json", side_effect=fake_load_json),
+            patch.object(
+                winner_periods,
+                "load_strategy_bundle",
+                return_value={"library": [{"dummy": True}], "compiled_model": lambda *args: [0.0] * len(index)},
+            ),
+            patch.object(winner_periods, "build_pair_data_coverage", return_value={"BTCUSDT": {}, "BNBUSDT": {}}),
+            patch.object(winner_periods.gp, "load_all_pairs", return_value=df),
+            patch.object(
+                winner_periods,
+                "infer_last_complete_day",
+                return_value=winner_periods.pd.Timestamp("2026-04-09", tz="UTC"),
+            ),
+            patch.object(winner_periods, "resolve_period_windows", side_effect=fake_resolve_period_windows),
+            patch.object(winner_periods.gp, "get_feature_arrays", return_value=([],)),
+            patch.object(winner_periods, "build_market_features", return_value={}),
+            patch.object(winner_periods, "build_overlay_inputs", return_value={}),
+            patch.object(winner_periods, "load_funding_from_cache_or_empty", return_value=winner_periods.pd.DataFrame()),
+            patch.object(winner_periods, "load_derivative_bundle", return_value={}),
+            patch.object(winner_periods, "slice_derivative_bundle", return_value={}),
+            patch.object(winner_periods, "build_library_lookup", return_value={"spans": [1]}),
+            patch.object(winner_periods, "build_fast_context", return_value={"route_state_mode": "equity_corr"}),
+            patch.object(winner_periods, "replay_candidate_from_context", return_value=fake_result),
+        ):
+            winner_periods.evaluate_summary_periods(
+                summary_path=Path("summary.json"),
+                pipeline_path=None,
+                base_summary=Path("base_summary.json"),
+                model_path=Path("model.dill"),
+                candidate_role="selected",
+                derivative_lookback_days=30,
+                strict_summary_audit=False,
+                allow_truncated_data=True,
+            )
+
+        self.assertEqual(observed_anchors, ["2026-04-06"])
+
+    def test_evaluate_summary_periods_fails_when_requested_window_is_truncated(self) -> None:
+        index = winner_periods.pd.date_range("2022-04-06", periods=4, freq="5min", tz="UTC")
+        df = winner_periods.pd.DataFrame(
+            {
+                "BTCUSDT_close": [1.0, 1.0, 1.0, 1.0],
+                "BNBUSDT_close": [1.0, 1.0, 1.0, 1.0],
+            },
+            index=index,
+        )
+        summary = {
+            "pairs": ["BTCUSDT", "BNBUSDT"],
+            "selected_candidate": {
+                "candidate_kind": "pairwise_candidate",
+                "pair_configs": {
+                    "BTCUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [0] * 12, "route_state_mode": "equity_corr"},
+                    "BNBUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [0] * 12, "route_state_mode": "equity_corr"},
+                },
+                "windows": {
+                    "recent_2m": {"start": "2026-02-06", "end": "2026-04-06"},
+                    "recent_6m": {"start": "2025-10-06", "end": "2026-04-06"},
+                    "full_4y": {"start": "2022-04-06", "end": "2026-04-06"},
+                },
+            },
+        }
+
+        def fake_load_json(path: str | Path) -> dict:
+            if str(path).endswith("summary.json"):
+                return summary
+            return {}
+
+        with (
+            patch.object(winner_periods, "load_json", side_effect=fake_load_json),
+            patch.object(
+                winner_periods,
+                "load_strategy_bundle",
+                return_value={"library": [{"dummy": True}], "compiled_model": lambda *args: [0.0] * len(index)},
+            ),
+            patch.object(
+                winner_periods,
+                "build_pair_data_coverage",
+                return_value={
+                    "BTCUSDT": {"rows": 4, "start": "2022-04-06T00:00:00+00:00", "end": "2022-04-06T00:15:00+00:00"},
+                    "BNBUSDT": {"rows": 4, "start": "2022-04-06T00:00:00+00:00", "end": "2022-04-06T00:15:00+00:00"},
+                },
+            ),
+            patch.object(winner_periods.gp, "load_all_pairs", return_value=df),
+            patch.object(
+                winner_periods,
+                "infer_last_complete_day",
+                return_value=winner_periods.pd.Timestamp("2022-04-06", tz="UTC"),
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                winner_periods.evaluate_summary_periods(
+                    summary_path=Path("summary.json"),
+                    pipeline_path=None,
+                    base_summary=Path("base_summary.json"),
+                    model_path=Path("model.dill"),
+                    candidate_role="selected",
+                    derivative_lookback_days=30,
+                    strict_summary_audit=False,
                 )
 
     def test_summary_audit_detects_pairwise_replay_drift(self) -> None:

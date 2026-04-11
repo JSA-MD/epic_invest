@@ -1263,6 +1263,7 @@ def main() -> None:
             "target_daily_return": target_daily_return,
         },
         "pairs": list(pairs),
+        "model_path": str(args.model),
         "baseline_summary_path": str(args.baseline_summary),
         "baseline_candidate": {"pair_configs": baseline_configs},
         "baseline_realistic": baseline_summary["selected_candidate"]["windows"],

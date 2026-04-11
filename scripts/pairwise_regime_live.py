@@ -173,6 +173,45 @@ def load_selected_candidate(summary_path: Path) -> Dict[str, Any]:
     return payload
 
 
+def extract_strategy_artifact_reference(summary_payload: Mapping[str, Any], *field_names: str) -> str | None:
+    containers = [
+        summary_payload,
+        summary_payload.get("search") or {},
+        summary_payload.get("artifacts") or {},
+    ]
+    for container in containers:
+        if not isinstance(container, Mapping):
+            continue
+        for field_name in field_names:
+            value = container.get(field_name)
+            if value:
+                return str(value)
+    return None
+
+
+def resolve_strategy_artifact_path(path: str | Path, anchor_file: Path) -> Path:
+    candidate = Path(path)
+    candidates = []
+    if candidate.is_absolute():
+        candidates.append(candidate)
+    else:
+        candidates.extend(
+            [
+                anchor_file.parent / candidate,
+                ROOT / candidate,
+            ]
+        )
+    seen: set[str] = set()
+    for option in candidates:
+        key = str(option)
+        if key in seen:
+            continue
+        seen.add(key)
+        if option.exists():
+            return option
+    return candidates[0] if candidates else anchor_file.parent / candidate
+
+
 def pandas_timeframe(interval: str) -> str:
     if interval.endswith("m"):
         return f"{interval[:-1]}min"
@@ -266,6 +305,33 @@ def _drop_incomplete_bar(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _align_complete_common_pair_frame(
+    df: pd.DataFrame,
+    pairs: Iterable[str],
+    *,
+    max_stale_bars: int = 2,
+) -> pd.DataFrame:
+    required_cols = [f"{pair}_close" for pair in pairs]
+    aligned = df.dropna(subset=required_cols).sort_index()
+    if aligned.empty:
+        raise RuntimeError("No complete common pair bars available after alignment.")
+    latest_common = pd.Timestamp(aligned.index[-1])
+    if latest_common.tzinfo is None:
+        latest_common = latest_common.tz_localize(UTC)
+    else:
+        latest_common = latest_common.tz_convert(UTC)
+    interval_delta = pd.Timedelta(pandas_timeframe(gp.TIMEFRAME))
+    current_bar_open = pd.Timestamp(utc_now()).tz_convert(UTC).floor(pandas_timeframe(gp.TIMEFRAME))
+    latest_completed_bar = current_bar_open - interval_delta
+    stale_cap = latest_completed_bar - interval_delta * max(int(max_stale_bars), 0)
+    if latest_common < stale_cap:
+        raise RuntimeError(
+            "Common pair frame is stale. "
+            f"latest_common={latest_common.isoformat()} latest_completed_bar={latest_completed_bar.isoformat()}"
+        )
+    return aligned
+
+
 def _merge_recent_pair_frame(df: pd.DataFrame, pair: str, recent: pd.DataFrame) -> pd.DataFrame:
     if recent.empty:
         return df
@@ -303,6 +369,7 @@ def load_live_frame(
                 print(f"  {pair}: live refresh skipped ({exc})")
                 continue
     df = _drop_incomplete_bar(df)
+    df = _align_complete_common_pair_frame(df, pairs)
     if len(df) < 20:
         raise RuntimeError("Not enough bars available for pairwise live planning")
     return df
@@ -347,9 +414,11 @@ def build_pairwise_plan(
     state: Mapping[str, Any],
 ) -> Dict[str, Any]:
     summary = load_selected_candidate(summary_path)
+    embedded_model_ref = extract_strategy_artifact_reference(summary, "model_path")
+    resolved_model_path = resolve_strategy_artifact_path(embedded_model_ref or model_path, summary_path)
     config = summary["selected_candidate"]["pair_configs"]
     library = list(iter_params())
-    model_tree, _ = load_signal_model(model_path)
+    model_tree, _ = load_signal_model(resolved_model_path)
     compiled = gp.toolbox.compile(expr=model_tree)
     df = load_live_frame(PAIRS, refresh_live_data=refresh_live_data)
     signal_index = len(df) - 1
@@ -472,7 +541,7 @@ def build_pairwise_plan(
         "latest_prices": latest_prices,
         "equity_corr_risk_enabled": PAIRWISE_EQUITY_CORR_RISK_ENABLED,
         "summary_path": str(summary_path),
-        "model_path": str(model_path),
+        "model_path": str(resolved_model_path),
     }
 
 

@@ -139,7 +139,11 @@ TELEGRAM_NOTIFY_CHAT_IDS = resolve_telegram_chat_ids()
 TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS = int(
     os.getenv("TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS", "3600")
 )
-CRITICAL_NOTIFICATION_TITLES = {"코어 킬 스위치 발동"}
+POSITION_LOSS_ALERT_RETURN_THRESHOLD = float(
+    os.getenv("TELEGRAM_POSITION_LOSS_ALERT_RETURN_THRESHOLD", "-0.02")
+)
+POSITION_LOSS_ALERT_TITLE = "포지션 손실 경고"
+CRITICAL_NOTIFICATION_TITLES = {"코어 킬 스위치 발동", POSITION_LOSS_ALERT_TITLE}
 
 
 def resolve_strategy_profile() -> str:
@@ -482,44 +486,71 @@ def build_session_change_notification(previous_session: str, current_session: st
     )
 
 
+def compute_position_signed_return(position: dict[str, Any]) -> float | None:
+    entry_price = float(position.get("entry_price", 0.0) or 0.0)
+    mark_price = float(position.get("mark_price", 0.0) or 0.0)
+    side = str(position.get("side") or "").upper()
+    if entry_price <= EPSILON or mark_price <= EPSILON or side not in {"LONG", "SHORT"}:
+        return None
+    direction = 1.0 if side == "LONG" else -1.0
+    return direction * (mark_price / entry_price - 1.0)
+
+
+def build_position_loss_notification(position: dict[str, Any], signed_return: float) -> str:
+    return "\n".join(
+        [
+            POSITION_LOSS_ALERT_TITLE,
+            f"- 종목: {position.get('pair')}",
+            f"- 방향: {side_label_from_name(str(position.get('side') or ''))}",
+            f"- 수익률: {format_notification_pct(signed_return)}",
+            f"- 진입가: {format_notification_price(position.get('entry_price'))}",
+            f"- 현재가: {format_notification_price(position.get('mark_price'))}",
+        ]
+    )
+
+
+def collect_position_loss_notifications(state: dict[str, Any]) -> list[str]:
+    notification_state = state.setdefault("notification_state", {})
+    alerted = notification_state.setdefault("position_loss_alerted", {})
+    snapshot = state.get("latest_runtime_snapshot") or {}
+    positions = snapshot.get("positions") or []
+    messages: list[str] = []
+    active_keys: set[str] = set()
+    for position in positions:
+        signed_return = compute_position_signed_return(position)
+        pair = str(position.get("pair") or "")
+        side = str(position.get("side") or "")
+        entry_price = float(position.get("entry_price", 0.0) or 0.0)
+        key = f"{pair}|{side}|{entry_price:.8f}"
+        active_keys.add(key)
+        if signed_return is None:
+            alerted.pop(key, None)
+            continue
+        if float(signed_return) <= POSITION_LOSS_ALERT_RETURN_THRESHOLD:
+            if not alerted.get(key):
+                messages.append(build_position_loss_notification(position, float(signed_return)))
+                alerted[key] = utc_now().isoformat()
+        else:
+            alerted.pop(key, None)
+    for key in list(alerted.keys()):
+        if key not in active_keys:
+            alerted.pop(key, None)
+    return messages
+
+
 def dispatch_notifications(state: dict[str, Any], messages: list[str]) -> None:
     notification_state = state.setdefault("notification_state", {})
     critical_messages: list[str] = []
-    routine_messages: list[str] = []
     for message in messages:
         payload = message.strip()
         if not payload:
             continue
         if is_critical_notification(payload):
             critical_messages.append(payload)
-        else:
-            routine_messages.append(payload)
 
     for message in critical_messages:
         send_telegram_notification(message)
-
-    if routine_messages:
-        queue_routine_notifications(notification_state, routine_messages)
-
-    pending = [
-        str(item).strip()
-        for item in (notification_state.get("pending_routine_notifications") or [])
-        if str(item).strip()
-    ]
-    if not pending:
-        return
-
-    now = utc_now()
-    last_sent_at = parse_runtime_timestamp(notification_state.get("last_routine_notification_sent_at"))
-    if last_sent_at is not None:
-        elapsed = (now - last_sent_at).total_seconds()
-        if elapsed < TELEGRAM_ROUTINE_NOTIFICATION_INTERVAL_SECONDS:
-            return
-
-    digest = build_routine_notification_digest(pending, now)
-    if send_telegram_notification(digest):
-        notification_state["last_routine_notification_sent_at"] = now.isoformat()
-        notification_state["pending_routine_notifications"] = []
+    notification_state["pending_routine_notifications"] = []
 
 
 def normalize_day(value: Any) -> pd.Timestamp:
@@ -718,6 +749,7 @@ def load_state(path: str | Path) -> dict[str, Any]:
                 "last_session_type": None,
                 "last_routine_notification_sent_at": None,
                 "pending_routine_notifications": [],
+                "position_loss_alerted": {},
             },
             "runtime_health": {
                 "process_started_at": None,
@@ -761,6 +793,7 @@ def load_state(path: str | Path) -> dict[str, Any]:
     state["notification_state"].setdefault("last_session_type", None)
     state["notification_state"].setdefault("last_routine_notification_sent_at", None)
     state["notification_state"].setdefault("pending_routine_notifications", [])
+    state["notification_state"].setdefault("position_loss_alerted", {})
     state.setdefault("runtime_health", {})
     state["runtime_health"].setdefault("process_started_at", None)
     state["runtime_health"].setdefault("last_loop_started_at", None)
@@ -2543,6 +2576,8 @@ def run_once(args: argparse.Namespace) -> None:
                     notifications.append(note)
 
         update_latest_runtime_snapshot(exchange, state, plan, equity_hint=equity)
+        if args.execute:
+            notifications.extend(collect_position_loss_notifications(state))
         refresh_decision_snapshot_and_journal(state)
         save_state(args.state_path, state)
         print(f"\nState saved: {args.state_path}")

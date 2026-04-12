@@ -158,26 +158,16 @@ class CoreLiveSmokeTests(unittest.TestCase):
         self.assertEqual(report["placed_count"], 2)
         self.assertEqual(report["protections"][0]["status"], "placed")
 
-    def test_routine_notifications_are_sent_at_most_once_per_hour(self) -> None:
+    def test_routine_notifications_are_suppressed(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
 
         sent: list[str] = []
-        base = datetime(2026, 4, 11, 0, 0, tzinfo=timezone.utc)
         with (
             patch.object(
                 rotation_target_050_live,
                 "send_telegram_notification",
                 side_effect=lambda text: sent.append(text) or True,
-            ),
-            patch.object(
-                rotation_target_050_live,
-                "utc_now",
-                side_effect=[
-                    base,
-                    base + timedelta(minutes=10),
-                    base + timedelta(minutes=61),
-                ],
             ),
         ):
             rotation_target_050_live.dispatch_notifications(
@@ -190,10 +180,7 @@ class CoreLiveSmokeTests(unittest.TestCase):
             )
             rotation_target_050_live.dispatch_notifications(state, [])
 
-        self.assertEqual(len(sent), 2)
-        self.assertIn("운영 정기 요약", sent[0])
-        self.assertIn("일일 시작 브리핑", sent[0])
-        self.assertIn("오버레이 진입", sent[1])
+        self.assertEqual(sent, [])
         self.assertEqual(state["notification_state"]["pending_routine_notifications"], [])
 
     def test_critical_notifications_bypass_hourly_digest(self) -> None:
@@ -231,10 +218,54 @@ class CoreLiveSmokeTests(unittest.TestCase):
             )
             rotation_target_050_live.dispatch_notifications(state, [])
 
-        self.assertEqual(len(sent), 3)
-        self.assertIn("운영 정기 요약", sent[0])
-        self.assertEqual(sent[1], "코어 킬 스위치 발동\n- 손실률: -5.00%")
-        self.assertIn("세션 상태 변경", sent[2])
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0], "코어 킬 스위치 발동\n- 손실률: -5.00%")
+
+    def test_collect_position_loss_notifications_triggers_once_per_open_position(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
+
+        state["latest_runtime_snapshot"]["positions"] = [
+            {
+                "pair": "BTCUSDT",
+                "side": "LONG",
+                "qty": 0.1,
+                "entry_price": 100.0,
+                "mark_price": 97.5,
+            }
+        ]
+        with patch.object(rotation_target_050_live, "utc_now", return_value=datetime(2026, 4, 12, 0, 0, tzinfo=timezone.utc)):
+            first = rotation_target_050_live.collect_position_loss_notifications(state)
+            second = rotation_target_050_live.collect_position_loss_notifications(state)
+
+        self.assertEqual(len(first), 1)
+        self.assertIn("포지션 손실 경고", first[0])
+        self.assertIn("- 수익률: -2.50%", first[0])
+        self.assertEqual(second, [])
+
+    def test_collect_position_loss_notifications_rearms_after_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
+
+        position = {
+            "pair": "BTCUSDT",
+            "side": "LONG",
+            "qty": 0.1,
+            "entry_price": 100.0,
+            "mark_price": 97.5,
+        }
+        state["latest_runtime_snapshot"]["positions"] = [dict(position)]
+        with patch.object(rotation_target_050_live, "utc_now", return_value=datetime(2026, 4, 12, 0, 0, tzinfo=timezone.utc)):
+            self.assertEqual(len(rotation_target_050_live.collect_position_loss_notifications(state)), 1)
+
+        state["latest_runtime_snapshot"]["positions"] = [{**position, "mark_price": 99.0}]
+        rotation_target_050_live.collect_position_loss_notifications(state)
+        self.assertEqual(state["notification_state"]["position_loss_alerted"], {})
+
+        state["latest_runtime_snapshot"]["positions"] = [{**position, "mark_price": 97.0}]
+        with patch.object(rotation_target_050_live, "utc_now", return_value=datetime(2026, 4, 12, 1, 0, tzinfo=timezone.utc)):
+            rearmed = rotation_target_050_live.collect_position_loss_notifications(state)
+        self.assertEqual(len(rearmed), 1)
 
 
 if __name__ == "__main__":

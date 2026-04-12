@@ -12,6 +12,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from search_bnb_weak_window_cutoffs import (
+    ADAPTATION_LABEL,
     BNB_PAIR,
     STATIC_PAIR,
     build_bnb_neighbor_variants,
@@ -49,6 +50,7 @@ class BnbWeakWindowCutoffTests(unittest.TestCase):
 
     def test_guard_and_score_reward_target_improvement_without_durable_damage(self) -> None:
         compare = {
+            ADAPTATION_LABEL: {"delta_worst_total_return": 0.02, "delta_worst_max_drawdown": 0.0, "delta_worst_win_rate": 0.01, "delta_mean_win_rate": 0.02},
             "recent_6m": {"delta_worst_total_return": 0.05, "delta_worst_max_drawdown": 0.001, "delta_worst_win_rate": 0.01},
             "recent_1y": {"delta_worst_total_return": 0.08, "delta_worst_max_drawdown": 0.0005, "delta_worst_win_rate": 0.01},
             "full_4y": {"delta_worst_total_return": 0.10, "delta_worst_max_drawdown": 0.0, "delta_worst_win_rate": 0.02},

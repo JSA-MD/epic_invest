@@ -38,14 +38,16 @@ TARGET_WINDOWS: tuple[tuple[str, str, str], ...] = (
     ("weak_2024_03", "2024-03-06", "2024-09-06"),
     ("weak_2025_05", "2025-05-06", "2025-11-06"),
 )
+ADAPTATION_WINDOW: tuple[str, str, str] = ("recent_adaptation", "2025-10-07", "2026-02-04")
 GUARD_WINDOWS: tuple[tuple[str, str, str], ...] = (
     ("recent_6m", "2025-10-06", "2026-04-06"),
     ("recent_1y", "2025-04-07", "2026-04-06"),
     ("full_4y", "2022-04-06", "2026-04-06"),
 )
-SEARCH_WINDOWS: tuple[tuple[str, str, str], ...] = TARGET_WINDOWS + GUARD_WINDOWS
+SEARCH_WINDOWS: tuple[tuple[str, str, str], ...] = TARGET_WINDOWS + (ADAPTATION_WINDOW,) + GUARD_WINDOWS
 TARGET_WINDOW_LABELS: tuple[str, ...] = tuple(label for label, _, _ in TARGET_WINDOWS)
 GUARD_WINDOW_LABELS: tuple[str, ...] = tuple(label for label, _, _ in GUARD_WINDOWS)
+ADAPTATION_LABEL = ADAPTATION_WINDOW[0]
 TARGET_EXECUTION_KEYS: tuple[str, ...] = (
     "signal_gate_pct",
     "regime_buffer_mult",
@@ -275,9 +277,11 @@ def evaluate_guard(compare: dict[str, Any], weak_compare: dict[str, Any]) -> dic
     durable_return_floor = min(float(compare[label]["delta_worst_total_return"]) for label in GUARD_WINDOW_LABELS)
     durable_mdd_floor = min(float(compare[label]["delta_worst_max_drawdown"]) for label in GUARD_WINDOW_LABELS)
     durable_win_floor = min(float(compare[label]["delta_worst_win_rate"]) for label in GUARD_WINDOW_LABELS)
+    adaptation_mean_win_delta = float(compare[ADAPTATION_LABEL]["delta_mean_win_rate"])
+    adaptation_worst_win_delta = float(compare[ADAPTATION_LABEL]["delta_worst_win_rate"])
     guard_pass = durable_return_floor >= -1e-12 and durable_mdd_floor >= -1e-12
     weak_pass = weak_improvement_count == len(TARGET_WINDOW_LABELS) and weak_mdd_improvement_count >= 2
-    traffic_light = "green" if (guard_pass and weak_pass) else ("yellow" if weak_improvement_count >= 2 else "red")
+    traffic_light = "green" if (guard_pass and weak_pass and adaptation_mean_win_delta >= 0.0) else ("yellow" if weak_improvement_count >= 2 else "red")
     return {
         "guard_pass": bool(guard_pass),
         "weak_pass": bool(weak_pass),
@@ -290,6 +294,8 @@ def evaluate_guard(compare: dict[str, Any], weak_compare: dict[str, Any]) -> dic
         "durable_return_floor": float(durable_return_floor),
         "durable_mdd_floor": float(durable_mdd_floor),
         "durable_win_floor": float(durable_win_floor),
+        "adaptation_mean_win_delta": float(adaptation_mean_win_delta),
+        "adaptation_worst_win_delta": float(adaptation_worst_win_delta),
     }
 
 
@@ -308,9 +314,17 @@ def candidate_score(compare: dict[str, Any], weak_compare: dict[str, Any], guard
         score += float(item["delta_worst_win_rate"]) * 8000.0
         score -= max(0.0, -float(item["delta_worst_total_return"])) * 450.0
         score -= max(0.0, -float(item["delta_worst_max_drawdown"])) * 240000.0
+    adaptation = compare[ADAPTATION_LABEL]
+    score += float(adaptation["delta_mean_win_rate"]) * 30000.0
+    score += float(adaptation["delta_worst_win_rate"]) * 36000.0
+    score += float(adaptation["delta_worst_total_return"]) * 180.0
+    score -= max(0.0, -float(adaptation["delta_mean_win_rate"])) * 52000.0
+    score -= max(0.0, -float(adaptation["delta_worst_win_rate"])) * 62000.0
+    score -= max(0.0, -float(adaptation["delta_worst_total_return"])) * 600.0
     score += float(guard["weak_improvement_count"]) * 9000.0
     score += float(guard["weak_mdd_improvement_count"]) * 4500.0
     score += float(guard["durable_win_floor"]) * 2000.0
+    score += float(guard["adaptation_mean_win_delta"]) * 12000.0
     if guard["guard_pass"]:
         score += 12000.0
     if guard["weak_pass"]:
@@ -323,6 +337,8 @@ def candidate_rank_key(row: dict[str, Any]) -> tuple[Any, ...]:
     return (
         1 if guard["guard_pass"] else 0,
         1 if guard["weak_pass"] else 0,
+        float(guard["adaptation_mean_win_delta"]),
+        float(guard["adaptation_worst_win_delta"]),
         int(guard["weak_improvement_count"]),
         float(guard["weak_return_floor"]),
         float(guard["durable_return_floor"]),

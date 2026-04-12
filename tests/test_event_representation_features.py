@@ -173,6 +173,9 @@ class EventRepresentationFeatureTests(unittest.TestCase):
         self.assertTrue(np.allclose(context["equity_corr"], 0.0))
         self.assertTrue(np.allclose(context["equity_corr_gross_scale"], 1.0))
         self.assertTrue(np.allclose(context["equity_corr_regime_mult"], 1.0))
+        self.assertTrue(np.isnan(context["btc_qqq_corr_5d"]).all())
+        self.assertTrue(np.isnan(context["btc_qqq_corr_20d"]).all())
+        self.assertTrue(np.isnan(context["btc_spy_beta_20d"]).all())
 
 
 if __name__ == "__main__":

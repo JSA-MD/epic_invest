@@ -27,8 +27,10 @@ VALIDATION_THRESHOLDS = {
     "false_positive_risk_max": 0.45,
     "validation_quality_score_min": 0.55,
     "market_os_fitness_min": 0.50,
+    "daily_win_rate_oos_min": 0.50,
     "corr_state_robustness_min": 0.40,
     "regime_coverage_min": 0.35,
+    "special_regime_robustness_min": 0.35,
     "parameter_instability_max": 0.85,
     "final_oos_total_return_min": 0.0,
     "final_oos_max_drawdown_cap": 0.18,
@@ -36,11 +38,13 @@ VALIDATION_THRESHOLDS = {
 RECENT_VALIDATION_DAYS = 182
 FINAL_OOS_DAYS = 61
 OPERATING_SYSTEM_FITNESS_WEIGHTS = {
-    "dsr_oos": 0.25,
-    "calmar_oos": 0.20,
-    "median_fold_expectancy": 0.15,
-    "regime_coverage": 0.10,
-    "corr_state_robustness": 0.10,
+    "dsr_oos": 0.23,
+    "calmar_oos": 0.16,
+    "median_fold_expectancy": 0.14,
+    "daily_win_rate_oos": 0.12,
+    "regime_coverage": 0.08,
+    "corr_state_robustness": 0.08,
+    "special_regime_robustness": 0.07,
     "max_drawdown": -0.10,
     "cvar_95": -0.05,
     "turnover_cost": -0.03,
@@ -54,8 +58,10 @@ VALIDATION_ROBUSTNESS_WEIGHTS = {
     "pbo_avg_selected_test_percentile": 0.07,
     "pbo_selection_share": 0.03,
     "market_os_fitness": 0.12,
+    "daily_win_rate_oos": 0.05,
     "corr_state_robustness": 0.08,
-    "regime_coverage": 0.05,
+    "special_regime_robustness": 0.07,
+    "regime_coverage": 0.03,
     "parameter_instability": 0.10,
 }
 
@@ -230,6 +236,7 @@ def summarize_stage_frame(
         "max_drawdown": float(metrics["max_drawdown"]),
         "sharpe": float(metrics["sharpe"]),
         "avg_daily_return": float(metrics["daily_metrics"]["avg_daily_return"]),
+        "daily_win_rate": float(metrics["daily_metrics"]["daily_win_rate"]),
         "daily_target_hit_rate": float(metrics["daily_metrics"]["daily_target_hit_rate"]),
         "cvar_95": float(compute_cvar_95(returns)),
         "calmar": float(compute_calmar_ratio(metrics["total_return"], metrics["max_drawdown"], len(frame))),
@@ -241,6 +248,7 @@ def period_selection_score(metrics: dict[str, Any]) -> float:
     return float(
         metrics["total_return"] * 140.0
         + metrics["sharpe"] * 12.0
+        + metrics["daily_metrics"]["daily_win_rate"] * 18.0
         + metrics["daily_metrics"]["daily_target_hit_rate"] * 12.0
         + metrics["monthly_metrics"]["monthly_target_hit_rate"] * 8.0
         - abs(metrics["max_drawdown"]) * 170.0
@@ -252,12 +260,14 @@ def validation_score_generic(train_metrics: dict[str, Any], test_metrics: dict[s
     score = (
         test_metrics["total_return"] * 140.0
         + test_metrics["sharpe"] * 12.0
+        + test_metrics["daily_metrics"]["daily_win_rate"] * 18.0
         + test_metrics["daily_metrics"]["daily_target_hit_rate"] * 12.0
         + test_metrics["monthly_metrics"]["monthly_target_hit_rate"] * 8.0
         - abs(test_metrics["max_drawdown"]) * 170.0
         - test_metrics["daily_metrics"]["daily_shortfall_mean"] * 120.0
         + train_metrics["total_return"] * 18.0
         + train_metrics["sharpe"] * 3.0
+        + train_metrics["daily_metrics"]["daily_win_rate"] * 3.0
         - abs(train_metrics["max_drawdown"]) * 20.0
     )
     if test_metrics["total_return"] <= 0.0:
@@ -570,6 +580,16 @@ def summarize_state_payload(state_payload: dict[str, Any] | None) -> dict[str, A
         for name, values in (payload.get("corr_bucket_returns") or {}).items()
         if values
     }
+    special_regime_returns = {
+        str(name): np.asarray(values, dtype="float64")
+        for name, values in (payload.get("special_regime_returns") or {}).items()
+        if values
+    }
+    corr_input_samples = {
+        str(name): np.asarray(values, dtype="float64")
+        for name, values in (payload.get("corr_input_samples") or {}).items()
+        if values
+    }
     total_states = max(int(payload.get("total_route_states", 0)), 1)
     observed_states = len(route_state_returns)
     state_mean_returns = {
@@ -603,14 +623,48 @@ def summarize_state_payload(state_payload: dict[str, Any] | None) -> dict[str, A
         corr_worst_bucket = 0.0
         corr_dispersion = 0.0
 
+    special_regime_mean_returns = {
+        name: float(values.mean())
+        for name, values in special_regime_returns.items()
+    }
+    observed_special_regimes = len(special_regime_mean_returns)
+    positive_special_regimes = int(sum(1 for value in special_regime_mean_returns.values() if value >= 0.0))
+    special_regime_coverage = float(observed_special_regimes / 4.0)
+    if special_regime_mean_returns:
+        special_values = np.asarray(list(special_regime_mean_returns.values()), dtype="float64")
+        special_positive_share = float(np.mean(special_values >= 0.0))
+        special_worst = float(np.min(special_values))
+        special_dispersion = float(np.std(special_values))
+        special_regime_robustness = clip01(
+            0.35 * special_regime_coverage
+            + 0.30 * special_positive_share
+            + 0.20 * normalize_positive_metric(special_worst + 0.0015, 0.0030)
+            + 0.15 * (1.0 - normalize_negative_metric(special_dispersion, 0.0040))
+        )
+    else:
+        special_regime_robustness = 0.0
+        special_worst = 0.0
+        special_dispersion = 0.0
+    corr_input_means = {
+        name: float(values.mean())
+        for name, values in corr_input_samples.items()
+    }
+
     return {
         "route_state_mean_returns": state_mean_returns,
         "corr_bucket_mean_returns": bucket_mean_returns,
+        "special_regime_mean_returns": special_regime_mean_returns,
+        "corr_input_means": corr_input_means,
         "observed_state_count": int(observed_states),
         "positive_state_count": int(positive_states),
         "state_coverage_share": float(coverage_share),
         "regime_coverage": float(regime_coverage),
         "corr_state_robustness": float(corr_state_robustness),
+        "special_regime_coverage": float(special_regime_coverage),
+        "special_regime_robustness": float(special_regime_robustness),
+        "positive_special_regime_count": int(positive_special_regimes),
+        "special_regime_worst_return": float(special_worst),
+        "special_regime_dispersion": float(special_dispersion),
         "corr_worst_bucket_return": float(corr_worst_bucket),
         "corr_bucket_dispersion": float(corr_dispersion),
     }
@@ -670,8 +724,10 @@ def build_market_operating_system(
         "dsr_oos": float(recent_adaptation["dsr_proxy"]),
         "calmar_oos": normalize_positive_metric(recent_adaptation["calmar"], 3.0),
         "median_fold_expectancy": normalize_positive_metric(median_fold_expectancy, 0.002),
+        "daily_win_rate_oos": normalize_positive_metric(recent_adaptation["daily_win_rate"], 0.55),
         "regime_coverage": float(state_summary["regime_coverage"]),
         "corr_state_robustness": float(state_summary["corr_state_robustness"]),
+        "special_regime_robustness": float(state_summary.get("special_regime_robustness", 0.0)),
         "max_drawdown": normalize_negative_metric(
             min(float(stages["structure_train"]["max_drawdown"]), float(recent_adaptation["max_drawdown"])),
             0.25,
@@ -691,8 +747,12 @@ def build_market_operating_system(
             "dsr_oos": float(recent_adaptation["dsr_proxy"]),
             "calmar_oos": float(recent_adaptation["calmar"]),
             "median_fold_expectancy": float(median_fold_expectancy),
+            "daily_win_rate_oos": float(recent_adaptation["daily_win_rate"]),
+            "final_oos_daily_win_rate": float(final_oos["daily_win_rate"]),
             "regime_coverage": float(state_summary["regime_coverage"]),
             "corr_state_robustness": float(state_summary["corr_state_robustness"]),
+            "special_regime_coverage": float(state_summary.get("special_regime_coverage", 0.0)),
+            "special_regime_robustness": float(state_summary.get("special_regime_robustness", 0.0)),
             "max_drawdown": float(min(stages["structure_train"]["max_drawdown"], recent_adaptation["max_drawdown"])),
             "cvar_95": float(recent_adaptation["cvar_95"]),
             "turnover_cost": float(cost_summary["mean_cost_ratio"]),
@@ -701,6 +761,9 @@ def build_market_operating_system(
     }
     gate = {
         "passes_market_os_fitness": bool(fitness["score"] >= VALIDATION_THRESHOLDS["market_os_fitness_min"]),
+        "passes_daily_win_rate_oos": bool(
+            recent_adaptation["daily_win_rate"] >= VALIDATION_THRESHOLDS["daily_win_rate_oos_min"]
+        ),
         "passes_corr_state_robustness": bool(
             state_summary["corr_state_robustness"] >= VALIDATION_THRESHOLDS["corr_state_robustness_min"]
         ),
@@ -858,9 +921,17 @@ def build_validation_robustness_profile(validation_engine: dict[str, Any] | None
             market_os_fitness.get("score", 0.0),
             VALIDATION_THRESHOLDS["market_os_fitness_min"],
         ),
+        "daily_win_rate_oos": threshold_shortfall(
+            market_os_raw.get("daily_win_rate_oos", 0.0),
+            VALIDATION_THRESHOLDS["daily_win_rate_oos_min"],
+        ),
         "corr_state_robustness": threshold_shortfall(
             state_summary.get("corr_state_robustness", market_os_raw.get("corr_state_robustness", 0.0)),
             VALIDATION_THRESHOLDS["corr_state_robustness_min"],
+        ),
+        "special_regime_robustness": threshold_shortfall(
+            state_summary.get("special_regime_robustness", market_os_raw.get("special_regime_robustness", 0.0)),
+            VALIDATION_THRESHOLDS["special_regime_robustness_min"],
         ),
         "regime_coverage": threshold_shortfall(
             state_summary.get("regime_coverage", market_os_raw.get("regime_coverage", 0.0)),
@@ -950,6 +1021,7 @@ def build_candidate_validation_bundle(
             "max_drawdown": float(metrics["max_drawdown"]),
             "sharpe": float(metrics["sharpe"]),
             "avg_daily_return": float(daily_metrics["avg_daily_return"]),
+            "daily_win_rate": float(daily_metrics["daily_win_rate"]),
             "daily_target_hit_rate": float(daily_metrics["daily_target_hit_rate"]),
             "worst_day": float(daily_metrics["worst_day"]),
             "best_day": float(daily_metrics["best_day"]),

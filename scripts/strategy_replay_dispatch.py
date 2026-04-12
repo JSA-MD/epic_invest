@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from execution_gene_utils import extract_pair_execution_gene
 from pairwise_regime_mixture_shadow_live import detect_candidate_kind
 from search_pair_subset_fractal_genome import fast_fractal_replay_from_context
 from search_pair_subset_regime_mixture import realistic_overlay_replay_from_context
@@ -42,11 +43,13 @@ def replay_candidate_from_context(
     candidate_kind = detect_candidate_kind(candidate)
     if candidate_kind == "pairwise_candidate":
         pair_config = candidate["pair_configs"][pair]
+        execution_gene = extract_pair_execution_gene(candidate, pair)
         return realistic_overlay_replay_from_context(
             context,
             library_lookup,
             tuple(int(v) for v in pair_config["mapping_indices"]),
             float(pair_config["route_breadth_threshold"]),
+            execution_gene=execution_gene,
         )
     if candidate_kind == "fractal_tree":
         if leaf_runtime_array is None or leaf_codes is None:

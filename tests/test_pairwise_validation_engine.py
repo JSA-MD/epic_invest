@@ -92,6 +92,38 @@ class PairwiseValidationEngineTests(unittest.TestCase):
             fragile["fitness"]["raw"]["corr_state_robustness"],
         )
         self.assertGreater(robust["fitness"]["score"], fragile["fitness"]["score"])
+        self.assertIn("special_regime_mean_returns", robust["state_summary"])
+        self.assertIn("corr_input_means", robust["state_summary"])
+
+    def test_summarize_state_payload_tracks_special_regimes_and_corr_inputs(self) -> None:
+        summary = engine.summarize_state_payload(
+            {
+                "route_state_returns": {
+                    "equity_aligned:bull_broad": [0.0030, 0.0031],
+                    "equity_inverse:bear_narrow": [0.0010, 0.0012],
+                },
+                "corr_bucket_returns": {
+                    "equity_aligned": [0.0030, 0.0031],
+                    "equity_inverse": [0.0010, 0.0012],
+                },
+                "special_regime_returns": {
+                    "trend_specialist_regime": [0.0030, 0.0031],
+                    "carry_basis_regime": [0.0010, 0.0012],
+                    "range_repair_regime": [0.0008, 0.0007],
+                },
+                "corr_input_samples": {
+                    "btc_qqq_corr_5d": [0.2, 0.1],
+                    "btc_spy_beta_20d": [1.1, 1.2],
+                },
+                "total_route_states": 12,
+                "total_corr_buckets": 3,
+            }
+        )
+
+        self.assertIn("trend_specialist_regime", summary["special_regime_mean_returns"])
+        self.assertGreater(summary["special_regime_coverage"], 0.0)
+        self.assertGreater(summary["special_regime_robustness"], 0.0)
+        self.assertAlmostEqual(summary["corr_input_means"]["btc_spy_beta_20d"], 1.15, places=6)
 
     def test_market_operating_system_keeps_final_oos_as_audit_only(self) -> None:
         index = pd.date_range("2024-01-01", periods=420, freq="D", tz="UTC")
@@ -146,11 +178,13 @@ class PairwiseValidationEngineTests(unittest.TestCase):
                         "raw": {
                             "parameter_instability": 0.22,
                             "corr_state_robustness": 0.67,
+                            "special_regime_robustness": 0.62,
                             "regime_coverage": 0.58,
                         },
                     },
                     "state_summary": {
                         "corr_state_robustness": 0.67,
+                        "special_regime_robustness": 0.62,
                         "regime_coverage": 0.58,
                     },
                 },
@@ -178,11 +212,13 @@ class PairwiseValidationEngineTests(unittest.TestCase):
                         "raw": {
                             "parameter_instability": 0.96,
                             "corr_state_robustness": 0.21,
+                            "special_regime_robustness": 0.18,
                             "regime_coverage": 0.19,
                         },
                     },
                     "state_summary": {
                         "corr_state_robustness": 0.21,
+                        "special_regime_robustness": 0.18,
                         "regime_coverage": 0.19,
                     },
                 },

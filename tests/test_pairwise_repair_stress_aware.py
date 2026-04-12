@@ -113,6 +113,121 @@ def make_windows(
 
 
 class PairwiseRepairStressAwareTests(unittest.TestCase):
+    def test_build_pairwise_pareto_vector_exposes_expected_objectives(self) -> None:
+        item = {
+            "candidate_id": "pairwise-a",
+            "windows": make_windows(
+                recent_2m=0.0072,
+                recent_6m=0.0076,
+                full_4y=0.0068,
+                full_4y_mean=0.0070,
+                bnb_full_4y=0.0067,
+                recent_6m_mdd=-0.08,
+                full_4y_mdd=-0.12,
+                dispersion=0.002,
+            ),
+            "validation_engine": {
+                "market_operating_system": {
+                    "fitness": {"score": 0.7, "raw": {"turnover_cost": 0.02}},
+                    "state_summary": {"corr_state_robustness": 0.61},
+                },
+                "profile": {
+                    "validation_quality_score": 0.88,
+                    "false_positive_risk": 0.12,
+                },
+            },
+        }
+
+        pareto_vector = repair_pairwise.build_pairwise_pareto_vector(item)
+
+        self.assertEqual(
+            set(pareto_vector.keys()),
+            {
+                "market_os_fitness",
+                "validation_quality_score",
+                "recent_2m_worst_pair_avg_daily_return",
+                "recent_6m_worst_pair_avg_daily_return",
+                "full_4y_worst_pair_avg_daily_return",
+                "bnb_full_4y_avg_daily_return",
+                "corr_state_robustness",
+                "target_060_shortfall",
+                "bnb_full_4y_target_shortfall",
+                "full_4y_worst_max_drawdown_abs",
+                "false_positive_risk",
+                "turnover_cost",
+            },
+        )
+        self.assertGreater(pareto_vector["market_os_fitness"], 0.0)
+        self.assertLess(pareto_vector["target_060_shortfall"], repair_pairwise.TARGET_060_DAILY_RETURN)
+
+    def test_assign_pairwise_pareto_metadata_marks_dominant_candidate_first_front(self) -> None:
+        dominant = {
+            "candidate_id": "dominant",
+            "windows": make_windows(
+                recent_2m=0.0075,
+                recent_6m=0.0079,
+                full_4y=0.0070,
+                full_4y_mean=0.0072,
+                bnb_full_4y=0.0069,
+                recent_6m_mdd=-0.07,
+                full_4y_mdd=-0.10,
+                hit_rate=0.65,
+                win_rate=0.67,
+                sharpe=2.0,
+                worst_day=-0.015,
+                n_trades=32,
+                dispersion=0.0018,
+            ),
+            "validation_engine": {
+                "market_operating_system": {
+                    "fitness": {"score": 0.82, "raw": {"turnover_cost": 0.01}},
+                    "state_summary": {"corr_state_robustness": 0.72},
+                },
+                "profile": {
+                    "validation_quality_score": 0.93,
+                    "false_positive_risk": 0.08,
+                },
+            },
+        }
+        dominated = {
+            "candidate_id": "dominated",
+            "windows": make_windows(
+                recent_2m=0.0062,
+                recent_6m=0.0064,
+                full_4y=0.0058,
+                full_4y_mean=0.0060,
+                bnb_full_4y=0.0056,
+                recent_6m_mdd=-0.15,
+                full_4y_mdd=-0.22,
+                hit_rate=0.48,
+                win_rate=0.50,
+                sharpe=1.1,
+                worst_day=-0.028,
+                n_trades=80,
+                dispersion=0.006,
+            ),
+            "validation_engine": {
+                "market_operating_system": {
+                    "fitness": {"score": 0.40, "raw": {"turnover_cost": 0.08}},
+                    "state_summary": {"corr_state_robustness": 0.31},
+                },
+                "profile": {
+                    "validation_quality_score": 0.44,
+                    "false_positive_risk": 0.34,
+                },
+            },
+        }
+
+        for item in (dominant, dominated):
+            item["pareto_vector"] = repair_pairwise.build_pairwise_pareto_vector(item)
+
+        metadata = repair_pairwise.assign_pairwise_pareto_metadata([dominant, dominated])
+
+        self.assertEqual(metadata["dominant"]["rank"], 1)
+        self.assertTrue(metadata["dominant"]["is_nondominated"])
+        self.assertEqual(metadata["dominated"]["rank"], 2)
+        self.assertFalse(metadata["dominated"]["is_nondominated"])
+
     def test_candidate_score_penalizes_bnb_full_4y_shortfall(self) -> None:
         stronger = make_windows(
             recent_2m=0.0068,

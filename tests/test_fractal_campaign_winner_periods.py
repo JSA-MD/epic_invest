@@ -43,6 +43,18 @@ class FractalCampaignWinnerPeriodsTests(unittest.TestCase):
     def test_resolve_pairwise_route_state_mode_defaults_to_base(self) -> None:
         self.assertEqual(winner_periods.resolve_pairwise_route_state_mode({}, "BTCUSDT"), "base")
 
+    def test_resolve_pairwise_route_state_mode_reads_pair_config(self) -> None:
+        candidate = {
+            "pair_configs": {
+                "BTCUSDT": {
+                    "route_state_mode": "equity_corr",
+                    "mapping_indices": [0] * 12,
+                    "route_breadth_threshold": 0.5,
+                }
+            }
+        }
+        self.assertEqual(winner_periods.resolve_pairwise_route_state_mode(candidate, "BTCUSDT"), "equity_corr")
+
     def test_evaluate_summary_periods_uses_pairwise_route_state_mode(self) -> None:
         index = winner_periods.pd.date_range("2026-04-08", periods=4, freq="5min", tz="UTC")
         df = winner_periods.pd.DataFrame(
@@ -456,6 +468,10 @@ class FractalCampaignWinnerPeriodsTests(unittest.TestCase):
                 "BTCUSDT": {
                     "mapping_indices": [0] * 12,
                     "route_breadth_threshold": 0.5,
+                    "execution_gene": {
+                        "maker_priority": 0.80,
+                        "max_wait_bars": 1,
+                    },
                 }
             }
         }
@@ -479,6 +495,7 @@ class FractalCampaignWinnerPeriodsTests(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True})
         realistic_mock.assert_called_once()
+        self.assertEqual(realistic_mock.call_args.kwargs["execution_gene"]["maker_priority"], 0.80)
 
     def test_replay_dispatch_routes_fractal_to_fractal_engine(self) -> None:
         candidate = {"candidate_kind": "fractal_tree", "tree": {"type": "leaf", "expert_idx": 0}}

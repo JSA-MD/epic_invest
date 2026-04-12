@@ -23,6 +23,14 @@ except ImportError:  # pragma: no cover - optional dependency
 
 import gp_crypto_evolution as gp
 from equity_corr_regime import build_btc_equity_corr_overlay
+from execution_gene_utils import (
+    SPECIALIST_ROLE_NAMES,
+    dc_alignment_score,
+    derive_execution_profile,
+    legacy_execution_profile,
+    microstructure_alignment_score,
+    should_abstain_for_alignment,
+)
 from replay_regime_mixture_realistic import (
     fetch_funding_rates,
     load_model,
@@ -155,6 +163,22 @@ def route_state_count(route_state_mode: str) -> int:
     return len(route_state_names(route_state_mode))
 
 
+def default_state_specialists_for_router(route_names: tuple[str, ...]) -> tuple[int, ...]:
+    role_to_idx = {name: idx for idx, name in enumerate(SPECIALIST_ROLE_NAMES)}
+    assignments: list[int] = []
+    for route_name in route_names:
+        if "bear_broad" in route_name:
+            role = "panic"
+        elif "bull_broad" in route_name:
+            role = "trend"
+        elif "equity_inverse" in route_name or "bear_narrow" in route_name:
+            role = "carry"
+        else:
+            role = "range"
+        assignments.append(int(role_to_idx[role]))
+    return tuple(assignments)
+
+
 def normalize_mapping_indices(mapping: tuple[int, ...] | list[int], route_state_mode: str) -> tuple[int, ...]:
     mode = normalize_route_state_mode(route_state_mode)
     values = tuple(int(v) for v in mapping)
@@ -238,6 +262,16 @@ def build_fast_context(
             funding_series.reindex(idx, fill_value=0.0)
             .to_numpy(dtype="float64")
         )
+    def pair_feature_series(suffix: str, *, fill_value: float = 0.0) -> pd.Series:
+        column = f"{pair}_{suffix}"
+        if column not in df.columns:
+            return pd.Series(fill_value, index=idx, dtype="float64")
+        return (
+            pd.to_numeric(df[column], errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(fill_value)
+            .astype("float64")
+        )
     equity_corr_daily = overlay_inputs.get(
         "equity_corr_daily",
         pd.Series(0.0, index=validation_daily_index, dtype="float64"),
@@ -249,6 +283,26 @@ def build_fast_context(
     equity_corr_regime_mult_daily = overlay_inputs.get(
         "equity_corr_regime_threshold_mult_daily",
         pd.Series(1.0, index=validation_daily_index, dtype="float64"),
+    )
+    btc_qqq_corr_5d_daily = overlay_inputs.get(
+        "btc_qqq_corr_5d_daily",
+        pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
+    )
+    btc_qqq_corr_20d_daily = overlay_inputs.get(
+        "btc_qqq_corr_20d_daily",
+        pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
+    )
+    btc_spy_beta_20d_daily = overlay_inputs.get(
+        "btc_spy_beta_20d_daily",
+        pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
+    )
+    btc_dxy_corr_20d_daily = overlay_inputs.get(
+        "btc_dxy_corr_20d_daily",
+        pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
+    )
+    btc_gold_corr_20d_daily = overlay_inputs.get(
+        "btc_gold_corr_20d_daily",
+        pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
     )
     return {
         "open": df[f"{pair}_open"].to_numpy(dtype="float64"),
@@ -265,12 +319,24 @@ def build_fast_context(
         "equity_corr": equity_corr_daily.reindex(effective_day_index, method="ffill").fillna(0.0).to_numpy(dtype="float64"),
         "equity_corr_gross_scale": equity_corr_gross_scale_daily.reindex(effective_day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
         "equity_corr_regime_mult": equity_corr_regime_mult_daily.reindex(effective_day_index, method="ffill").fillna(1.0).to_numpy(dtype="float64"),
+        "btc_qqq_corr_5d": btc_qqq_corr_5d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
+        "btc_qqq_corr_20d": btc_qqq_corr_20d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
+        "btc_spy_beta_20d": btc_spy_beta_20d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
+        "btc_dxy_corr_20d": btc_dxy_corr_20d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
+        "btc_gold_corr_20d": btc_gold_corr_20d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
+        "buy_volume_share": pair_feature_series("buy_volume_share", fill_value=0.5).to_numpy(dtype="float64"),
+        "order_imbalance": pair_feature_series("order_imbalance", fill_value=0.0).to_numpy(dtype="float64"),
+        "dc_trend_05": pair_feature_series("dc_trend_05", fill_value=0.0).to_numpy(dtype="float64"),
+        "dc_event_05": pair_feature_series("dc_event_05", fill_value=0.0).to_numpy(dtype="float64"),
+        "dc_overshoot_05": pair_feature_series("dc_overshoot_05", fill_value=0.0).to_numpy(dtype="float64"),
+        "dc_run_05": pair_feature_series("dc_run_05", fill_value=0.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
         "funding_rates": funding_rates,
         "equity_corr_context": overlay_inputs.get("equity_corr_context"),
         "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
         "route_state_mode": route_state_mode,
         "route_state_names": route_state_names(route_state_mode),
+        "route_state_specialists": np.asarray(default_state_specialists_for_router(route_state_names(route_state_mode)), dtype="int64"),
         "validation_daily_index": validation_daily_index,
     }
 
@@ -292,10 +358,25 @@ def _fast_overlay_replay_kernel_impl(
     library_gross_cap: np.ndarray,
     library_kill_switch_pct: np.ndarray,
     library_cooldown_days: np.ndarray,
+    order_imbalance: np.ndarray,
+    buy_volume_share: np.ndarray,
+    dc_trend_05: np.ndarray,
+    dc_run_05: np.ndarray,
     mapping: np.ndarray,
     initial_cash: float,
     commission_pct: float,
     no_trade_band_pct: float,
+    signal_gate_pct: float,
+    regime_buffer_mult: float,
+    confirm_bars: int,
+    state_specialists: np.ndarray,
+    role_signal_gate_mults: np.ndarray,
+    role_regime_buffer_mults: np.ndarray,
+    abstain_edge_pct: float,
+    specialist_isolation_mult: float,
+    microstructure_align_gate_pct: float,
+    dc_align_gate_pct: float,
+    min_alignment_votes: int,
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
@@ -319,11 +400,21 @@ def _fast_overlay_replay_kernel_impl(
     day_hits = 0
     worst_day = 0.0
     best_day = 0.0
+    confirm_side = 0
+    confirm_count = 0
+    last_role_idx = -1
 
     for i in range(close.shape[0] - 1):
         active_idx = mapping[bucket_codes[i]]
+        role_idx = state_specialists[bucket_codes[i]]
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
+
+        role_changed = role_idx != last_role_idx
+        if role_changed:
+            confirm_side = 0
+            confirm_count = 0
+            last_role_idx = role_idx
 
         signal_pct = smooth_signal_matrix[library_signal_pos[active_idx], i]
         if signal_pct > 500.0:
@@ -334,14 +425,36 @@ def _fast_overlay_replay_kernel_impl(
         requested_weight = signal_pct / 100.0
         regime_score = regime[i]
         breadth_score = breadth[i]
-        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[i]
+        role_signal_gate_pct = signal_gate_pct * role_signal_gate_mults[role_idx]
+        role_regime_buffer_mult = regime_buffer_mult * role_regime_buffer_mults[role_idx]
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[i] * (1.0 + role_regime_buffer_mult)
         effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[i]
         long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
         short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
-        if requested_weight > 0.0 and not long_ok:
+        if abs(signal_pct) < (role_signal_gate_pct + abstain_edge_pct):
+            requested_weight = 0.0
+        elif requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
             requested_weight = 0.0
+        else:
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if requested_side != 0:
+                alignment_votes = 0
+                if requested_side * (
+                    0.70 * order_imbalance[i] + 0.30 * (2.0 * buy_volume_share[i] - 1.0)
+                ) >= microstructure_align_gate_pct:
+                    alignment_votes += 1
+                if requested_side * (
+                    0.75 * dc_trend_05[i] + 0.25 * dc_run_05[i]
+                ) >= dc_align_gate_pct:
+                    alignment_votes += 1
+                if alignment_votes < min_alignment_votes:
+                    requested_weight = 0.0
 
         bar_vol_ann = vol_ann[i]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
@@ -365,6 +478,24 @@ def _fast_overlay_replay_kernel_impl(
         if cooldown_bars_left > 0:
             target_weight = 0.0
         elif i % library_rebalance_bars[active_idx] == 0:
+            role_confirm_bars = confirm_bars
+            if role_changed:
+                role_confirm_bars = confirm_bars + int(np.rint(specialist_isolation_mult * 2.0))
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if requested_side == 0:
+                confirm_side = 0
+                confirm_count = 0
+            elif requested_side == confirm_side:
+                confirm_count += 1
+            else:
+                confirm_side = requested_side
+                confirm_count = 1
+            if requested_side != 0 and current_weight * requested_side <= 0.0 and confirm_count < role_confirm_bars:
+                requested_weight = 0.0
             target_weight = requested_weight
 
         if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
@@ -475,6 +606,10 @@ def _realistic_overlay_replay_kernel_impl(
     library_gross_cap: np.ndarray,
     library_kill_switch_pct: np.ndarray,
     library_cooldown_days: np.ndarray,
+    order_imbalance: np.ndarray,
+    buy_volume_share: np.ndarray,
+    dc_trend_05: np.ndarray,
+    dc_run_05: np.ndarray,
     mapping: np.ndarray,
     initial_cash: float,
     fee_rate: float,
@@ -482,6 +617,17 @@ def _realistic_overlay_replay_kernel_impl(
     amount_step: float,
     min_qty: float,
     no_trade_band_pct: float,
+    signal_gate_pct: float,
+    regime_buffer_mult: float,
+    confirm_bars: int,
+    state_specialists: np.ndarray,
+    role_signal_gate_mults: np.ndarray,
+    role_regime_buffer_mults: np.ndarray,
+    abstain_edge_pct: float,
+    specialist_isolation_mult: float,
+    microstructure_align_gate_pct: float,
+    dc_align_gate_pct: float,
+    min_alignment_votes: int,
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
@@ -509,6 +655,9 @@ def _realistic_overlay_replay_kernel_impl(
     day_hits = 0
     worst_day = 0.0
     best_day = 0.0
+    confirm_side = 0
+    confirm_count = 0
+    last_role_idx = -1
 
     for exec_idx in range(1, open_p.shape[0] - 1):
         signal_idx = exec_idx - 1
@@ -530,8 +679,15 @@ def _realistic_overlay_replay_kernel_impl(
             peak_equity = equity_before
 
         active_idx = mapping[bucket_codes[signal_idx]]
+        role_idx = state_specialists[bucket_codes[signal_idx]]
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
+
+        role_changed = role_idx != last_role_idx
+        if role_changed:
+            confirm_side = 0
+            confirm_count = 0
+            last_role_idx = role_idx
 
         signal_pct = smooth_signal_matrix[library_signal_pos[active_idx], signal_idx]
         if signal_pct > 500.0:
@@ -542,14 +698,36 @@ def _realistic_overlay_replay_kernel_impl(
         requested_weight = signal_pct / 100.0
         regime_score = regime[signal_idx]
         breadth_score = breadth[signal_idx]
-        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[signal_idx]
+        role_signal_gate_pct = signal_gate_pct * role_signal_gate_mults[role_idx]
+        role_regime_buffer_mult = regime_buffer_mult * role_regime_buffer_mults[role_idx]
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[signal_idx] * (1.0 + role_regime_buffer_mult)
         effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[signal_idx]
         long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
         short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
-        if requested_weight > 0.0 and not long_ok:
+        if abs(signal_pct) < (role_signal_gate_pct + abstain_edge_pct):
+            requested_weight = 0.0
+        elif requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
             requested_weight = 0.0
+        else:
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if requested_side != 0:
+                alignment_votes = 0
+                if requested_side * (
+                    0.70 * order_imbalance[signal_idx] + 0.30 * (2.0 * buy_volume_share[signal_idx] - 1.0)
+                ) >= microstructure_align_gate_pct:
+                    alignment_votes += 1
+                if requested_side * (
+                    0.75 * dc_trend_05[signal_idx] + 0.25 * dc_run_05[signal_idx]
+                ) >= dc_align_gate_pct:
+                    alignment_votes += 1
+                if alignment_votes < min_alignment_votes:
+                    requested_weight = 0.0
 
         bar_vol_ann = vol_ann[signal_idx]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
@@ -576,6 +754,24 @@ def _realistic_overlay_replay_kernel_impl(
         if cooldown_bars_left > 0:
             target_weight = 0.0
         elif signal_idx % library_rebalance_bars[active_idx] == 0:
+            role_confirm_bars = confirm_bars
+            if role_changed:
+                role_confirm_bars = confirm_bars + int(np.rint(specialist_isolation_mult * 2.0))
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if requested_side == 0:
+                confirm_side = 0
+                confirm_count = 0
+            elif requested_side == confirm_side:
+                confirm_count += 1
+            else:
+                confirm_side = requested_side
+                confirm_count = 1
+            if requested_side != 0 and current_weight * requested_side <= 0.0 and confirm_count < role_confirm_bars:
+                requested_weight = 0.0
             target_weight = requested_weight
 
         if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
@@ -745,11 +941,19 @@ def aggregate_metrics(per_pair: dict[str, dict[str, Any]]) -> dict[str, Any]:
     avg_daily = np.asarray([m["avg_daily_return"] for m in per_pair.values()], dtype="float64")
     total = np.asarray([m["total_return"] for m in per_pair.values()], dtype="float64")
     max_dd = np.asarray([m["max_drawdown"] for m in per_pair.values()], dtype="float64")
+    daily_win = np.asarray([m.get("daily_win_rate", 0.0) for m in per_pair.values()], dtype="float64")
+    daily_target = np.asarray([m.get("daily_target_hit_rate", 0.0) for m in per_pair.values()], dtype="float64")
+    n_trades = np.asarray([m.get("n_trades", 0.0) for m in per_pair.values()], dtype="float64")
     return {
         "mean_avg_daily_return": float(np.mean(avg_daily)),
         "worst_pair_avg_daily_return": float(np.min(avg_daily)),
         "best_pair_avg_daily_return": float(np.max(avg_daily)),
         "positive_pair_count": int(np.sum(avg_daily > 0.0)),
+        "mean_daily_win_rate": float(np.mean(daily_win)),
+        "worst_pair_daily_win_rate": float(np.min(daily_win)),
+        "mean_daily_target_hit_rate": float(np.mean(daily_target)),
+        "worst_pair_daily_target_hit_rate": float(np.min(daily_target)),
+        "mean_n_trades": float(np.mean(n_trades)),
         "mean_total_return": float(np.mean(total)),
         "worst_pair_total_return": float(np.min(total)),
         "worst_max_drawdown": float(np.min(max_dd)),
@@ -764,11 +968,36 @@ def fast_overlay_replay_from_context(
     mapping: tuple[int, ...],
     route_breadth_threshold: float,
     fast_engine: str,
+    commission_pct: float | None = None,
+    no_trade_band_pct: float | None = None,
+    signal_gate_pct: float | None = None,
+    regime_buffer_mult: float | None = None,
+    confirm_bars: int | None = None,
     *,
     use_equity_corr_risk: bool = False,
+    execution_gene: dict[str, Any] | None = None,
+    state_specialists: tuple[int, ...] | list[int] | None = None,
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
+    expected_state_count = len(route_state_names(route_state_mode))
     mapping = normalize_mapping_indices(mapping, route_state_mode)
+    execution_profile = legacy_execution_profile() if execution_gene is None else derive_execution_profile(execution_gene)
+    effective_commission_pct = float(gp.COMMISSION_PCT if commission_pct is None else commission_pct)
+    effective_no_trade_band_pct = float(gp.NO_TRADE_BAND if no_trade_band_pct is None else no_trade_band_pct)
+    effective_signal_gate_pct = 0.0 if signal_gate_pct is None else float(signal_gate_pct)
+    effective_regime_buffer_mult = 0.0 if regime_buffer_mult is None else float(regime_buffer_mult)
+    effective_confirm_bars = 1 if confirm_bars is None else int(confirm_bars)
+    state_specialists_source = state_specialists if state_specialists is not None else context.get("route_state_specialists")
+    if state_specialists_source is None or len(state_specialists_source) != expected_state_count:
+        state_specialists_source = default_state_specialists_for_router(route_state_names(route_state_mode))
+    effective_state_specialists = np.asarray(state_specialists_source, dtype="int64")
+    role_signal_gate_mults = np.asarray(execution_profile["role_signal_gate_mults"], dtype="float64")
+    role_regime_buffer_mults = np.asarray(execution_profile["role_regime_buffer_mults"], dtype="float64")
+    abstain_edge_pct = float(execution_profile["abstain_edge_pct"])
+    specialist_isolation_mult = float(execution_profile["specialist_isolation_mult"])
+    microstructure_align_gate_pct = float(execution_profile["microstructure_align_gate_pct"])
+    dc_align_gate_pct = float(execution_profile["dc_align_gate_pct"])
+    min_alignment_votes = int(execution_profile["min_alignment_votes"])
     corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
     corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
     if fast_engine == "numba":
@@ -789,10 +1018,25 @@ def fast_overlay_replay_from_context(
             library_lookup["gross_cap"],
             library_lookup["kill_switch_pct"],
             library_lookup["cooldown_days"],
+            context["order_imbalance"],
+            context["buy_volume_share"],
+            context["dc_trend_05"],
+            context["dc_run_05"],
             np.asarray(mapping, dtype="int64"),
             float(gp.INITIAL_CASH),
-            float(gp.COMMISSION_PCT),
-            float(gp.NO_TRADE_BAND),
+            float(effective_commission_pct),
+            float(effective_no_trade_band_pct),
+            float(effective_signal_gate_pct),
+            float(effective_regime_buffer_mult),
+            int(effective_confirm_bars),
+            effective_state_specialists,
+            role_signal_gate_mults,
+            role_regime_buffer_mults,
+            float(abstain_edge_pct),
+            float(specialist_isolation_mult),
+            float(microstructure_align_gate_pct),
+            float(dc_align_gate_pct),
+            int(min_alignment_votes),
             int(BARS_PER_DAY),
             float(gp.DAILY_TARGET_PCT),
             float(BAR_FACTOR),
@@ -829,26 +1073,61 @@ def fast_overlay_replay_from_context(
     net_ret: list[float] = []
     equity_curve = [float(gp.INITIAL_CASH)]
     n_trades = 0
+    confirm_side = 0
+    confirm_count = 0
+    last_role_idx = -1
 
     for i in range(len(close) - 1):
         active_idx = int(mapping[int(bucket_codes[i])])
+        role_idx = int(effective_state_specialists[int(bucket_codes[i])])
         params = library[active_idx]
 
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
 
+        role_changed = role_idx != last_role_idx
+        if role_changed:
+            confirm_side = 0
+            confirm_count = 0
+            last_role_idx = role_idx
+
         signal_pct = float(np.clip(smooth_signal_matrix[signal_positions[active_idx], i], -500.0, 500.0))
         requested_weight = signal_pct / 100.0
         regime_score = float(regime[i])
         breadth_score = float(breadth[i])
-        effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult[i])
+        role_signal_gate_pct = float(effective_signal_gate_pct) * float(role_signal_gate_mults[role_idx])
+        role_regime_buffer_mult = float(effective_regime_buffer_mult) * float(role_regime_buffer_mults[role_idx])
+        effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult[i]) * (1.0 + float(role_regime_buffer_mult))
         effective_gross_cap = float(params.gross_cap) * float(equity_corr_gross_scale[i])
         long_ok = regime_score >= effective_regime_threshold and breadth_score >= params.breadth_threshold
         short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
-        if requested_weight > 0.0 and not long_ok:
+        if abs(signal_pct) < float(role_signal_gate_pct + abstain_edge_pct):
+            requested_weight = 0.0
+        elif requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
             requested_weight = 0.0
+        else:
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if should_abstain_for_alignment(
+                requested_side,
+                microstructure_alignment_score(
+                    float(context["order_imbalance"][i]),
+                    float(context["buy_volume_share"][i]),
+                ),
+                dc_alignment_score(
+                    float(context["dc_trend_05"][i]),
+                    float(context["dc_run_05"][i]),
+                ),
+                float(microstructure_align_gate_pct),
+                float(dc_align_gate_pct),
+                int(min_alignment_votes),
+            ):
+                requested_weight = 0.0
 
         bar_vol_ann = float(vol_ann[i])
         if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
@@ -867,9 +1146,27 @@ def fast_overlay_replay_from_context(
         if cooldown_bars_left > 0:
             target_weight = 0.0
         elif i % params.rebalance_bars == 0:
+            role_confirm_bars = int(effective_confirm_bars)
+            if role_changed:
+                role_confirm_bars += int(np.rint(specialist_isolation_mult * 2.0))
+            requested_side = 0
+            if requested_weight > 1e-12:
+                requested_side = 1
+            elif requested_weight < -1e-12:
+                requested_side = -1
+            if requested_side == 0:
+                confirm_side = 0
+                confirm_count = 0
+            elif requested_side == confirm_side:
+                confirm_count += 1
+            else:
+                confirm_side = requested_side
+                confirm_count = 1
+            if requested_side != 0 and current_weight * requested_side <= 0.0 and confirm_count < role_confirm_bars:
+                requested_weight = 0.0
             target_weight = requested_weight
 
-        if abs(target_weight - current_weight) < gp.NO_TRADE_BAND / 100.0:
+        if abs(target_weight - current_weight) < effective_no_trade_band_pct / 100.0:
             target_weight = current_weight
 
         turnover = abs(target_weight - current_weight)
@@ -877,7 +1174,7 @@ def fast_overlay_replay_from_context(
             n_trades += 1
 
         price_ret = float(close[i + 1] / close[i] - 1.0)
-        bar_net = target_weight * price_ret - turnover * gp.COMMISSION_PCT * 2
+        bar_net = target_weight * price_ret - turnover * effective_commission_pct * 2
         equity *= (1.0 + bar_net)
         peak_equity = max(peak_equity, equity)
         current_weight = target_weight
@@ -905,12 +1202,39 @@ def realistic_overlay_replay_from_context(
     min_qty: float = 0.001,
     *,
     use_equity_corr_risk: bool = False,
+    execution_gene: dict[str, Any] | None = None,
+    state_specialists: tuple[int, ...] | list[int] | None = None,
+    engine: str = "auto",
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
+    expected_state_count = len(route_state_names(route_state_mode))
     mapping = normalize_mapping_indices(mapping, route_state_mode)
+    execution_profile = legacy_execution_profile() if execution_gene is None else derive_execution_profile(execution_gene)
+    state_specialists_source = state_specialists if state_specialists is not None else context.get("route_state_specialists")
+    if state_specialists_source is None or len(state_specialists_source) != expected_state_count:
+        state_specialists_source = default_state_specialists_for_router(route_state_names(route_state_mode))
+    effective_state_specialists = np.asarray(state_specialists_source, dtype="int64")
     corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
     corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
-    result = _realistic_overlay_replay_kernel(
+    if execution_gene is not None:
+        fee_rate = float(execution_profile["fee_rate"])
+        slippage = float(execution_profile["slippage"])
+        amount_step = float(execution_profile["amount_step"])
+        min_qty = float(execution_profile["min_qty"])
+        no_trade_band_pct = float(execution_profile["no_trade_band_pct"])
+        signal_gate_pct = float(execution_profile["signal_gate_pct"])
+        regime_buffer_mult = float(execution_profile["regime_buffer_mult"])
+        confirm_bars = int(execution_profile["confirm_bars"])
+    else:
+        no_trade_band_pct = float(gp.NO_TRADE_BAND)
+        signal_gate_pct = 0.0
+        regime_buffer_mult = 0.0
+        confirm_bars = 1
+    min_alignment_votes = int(execution_profile["min_alignment_votes"])
+    kernel = _realistic_overlay_replay_kernel
+    if str(engine) == "python":
+        kernel = _realistic_overlay_replay_kernel_impl
+    result = kernel(
         context["open"],
         context["close"],
         context["funding_rates"],
@@ -929,13 +1253,28 @@ def realistic_overlay_replay_from_context(
         library_lookup["gross_cap"],
         library_lookup["kill_switch_pct"],
         library_lookup["cooldown_days"],
+        context["order_imbalance"],
+        context["buy_volume_share"],
+        context["dc_trend_05"],
+        context["dc_run_05"],
         np.asarray(mapping, dtype="int64"),
         float(gp.INITIAL_CASH),
         float(fee_rate),
         float(slippage),
         float(amount_step),
         float(min_qty),
-        float(gp.NO_TRADE_BAND),
+        float(no_trade_band_pct),
+        float(signal_gate_pct),
+        float(regime_buffer_mult),
+        int(confirm_bars),
+        effective_state_specialists,
+        np.asarray(execution_profile["role_signal_gate_mults"], dtype="float64"),
+        np.asarray(execution_profile["role_regime_buffer_mults"], dtype="float64"),
+        float(execution_profile["abstain_edge_pct"]),
+        float(execution_profile["specialist_isolation_mult"]),
+        float(execution_profile["microstructure_align_gate_pct"]),
+        float(execution_profile["dc_align_gate_pct"]),
+        int(min_alignment_votes),
         int(BARS_PER_DAY),
         float(gp.DAILY_TARGET_PCT),
         float(BAR_FACTOR),
@@ -970,6 +1309,8 @@ def realistic_overlay_replay(
     *,
     use_equity_corr_risk: bool = False,
     route_state_mode: str = ROUTE_STATE_MODE_BASE,
+    execution_gene: dict[str, Any] | None = None,
+    state_specialists: tuple[int, ...] | list[int] | None = None,
 ) -> dict[str, Any]:
     library_lookup = build_library_lookup(library)
     context = build_fast_context(
@@ -988,6 +1329,8 @@ def realistic_overlay_replay(
         mapping,
         route_breadth_threshold,
         use_equity_corr_risk=use_equity_corr_risk,
+        execution_gene=execution_gene,
+        state_specialists=state_specialists,
     )
 
 

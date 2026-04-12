@@ -13,7 +13,9 @@ from market_context import load_market_context_dataset
 
 
 DEFAULT_CONTEXT_PREFERENCE: tuple[str, ...] = ("QQQ", "SPY")
+EXTENDED_CONTEXT_NAMES: tuple[str, ...] = ("QQQ", "SPY", "GLD", "DXY")
 DEFAULT_CORR_WINDOW = 20
+FAST_CORR_WINDOW = 5
 POSITIVE_CORR_THRESHOLD = 0.15
 NEGATIVE_CORR_THRESHOLD = -0.15
 
@@ -71,8 +73,9 @@ def build_btc_equity_corr_overlay(
             "equity_corr_high_cut": None,
         }
 
+    requested_context_names = tuple(dict.fromkeys((*context_preference, *EXTENDED_CONTEXT_NAMES)))
     market_context_close, market_context_status = load_market_context_dataset(
-        names=context_preference,
+        names=requested_context_names,
         refresh=False,
         allow_fetch_on_miss=False,
         target_index=daily_close.index,
@@ -120,12 +123,31 @@ def build_btc_equity_corr_overlay(
         regime_mult_values.append(float(regime_mult))
 
     index = daily_close.index
+    btc_returns = daily_close[btc_asset].pct_change()
+    qqq_returns = market_context_close["QQQ"].pct_change() if "QQQ" in market_context_close.columns else pd.Series(index=index, dtype="float64")
+    spy_returns = market_context_close["SPY"].pct_change() if "SPY" in market_context_close.columns else pd.Series(index=index, dtype="float64")
+    gld_returns = market_context_close["GLD"].pct_change() if "GLD" in market_context_close.columns else pd.Series(index=index, dtype="float64")
+    dxy_returns = market_context_close["DXY"].pct_change() if "DXY" in market_context_close.columns else pd.Series(index=index, dtype="float64")
+    qqq_corr_5d = btc_returns.rolling(FAST_CORR_WINDOW).corr(qqq_returns).reindex(index).astype("float64")
+    qqq_corr_20d = btc_returns.rolling(corr_window).corr(qqq_returns).reindex(index).astype("float64")
+    dxy_corr_20d = btc_returns.rolling(corr_window).corr(dxy_returns).reindex(index).astype("float64")
+    gold_corr_20d = btc_returns.rolling(corr_window).corr(gld_returns).reindex(index).astype("float64")
+    spy_var_20d = spy_returns.rolling(corr_window).var()
+    btc_spy_cov_20d = btc_returns.rolling(corr_window).cov(spy_returns)
+    spy_beta_20d = (
+        btc_spy_cov_20d / spy_var_20d.replace(0.0, np.nan)
+    ).replace([np.inf, -np.inf], np.nan).reindex(index).astype("float64")
     return {
         "equity_corr_daily": rolling_corr.astype("float64"),
         "equity_corr_quantile_state_daily": quantile_state,
         "equity_corr_bucket_daily": pd.Series(bucket_values, index=index, dtype="object"),
         "equity_corr_gross_scale_daily": pd.Series(gross_values, index=index, dtype="float64"),
         "equity_corr_regime_threshold_mult_daily": pd.Series(regime_mult_values, index=index, dtype="float64"),
+        "btc_qqq_corr_5d_daily": qqq_corr_5d,
+        "btc_qqq_corr_20d_daily": qqq_corr_20d,
+        "btc_spy_beta_20d_daily": spy_beta_20d,
+        "btc_dxy_corr_20d_daily": dxy_corr_20d,
+        "btc_gold_corr_20d_daily": gold_corr_20d,
         "equity_corr_context": str(chosen_context),
         "equity_corr_source_mode": str(corr_profiles.get("source_mode", "missing")),
         "equity_corr_market_context_status": market_context_status,

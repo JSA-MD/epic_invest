@@ -46,6 +46,11 @@ class EquityCorrRegimeTests(unittest.TestCase):
         self.assertEqual(overlay["equity_corr_source_mode"], "market_context")
         self.assertIn("equity_corr_daily", overlay)
         self.assertIn("equity_corr_bucket_daily", overlay)
+        self.assertIn("btc_qqq_corr_5d_daily", overlay)
+        self.assertIn("btc_qqq_corr_20d_daily", overlay)
+        self.assertIn("btc_spy_beta_20d_daily", overlay)
+        self.assertIn("btc_dxy_corr_20d_daily", overlay)
+        self.assertIn("btc_gold_corr_20d_daily", overlay)
         self.assertEqual(len(overlay["equity_corr_daily"]), len(close.resample("1D").last().dropna()))
 
 

@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from execution_gene_utils import derive_execution_profile, extract_pair_execution_gene
 import gp_crypto_evolution as gp
 from pairwise_validation_engine import (
     build_candidate_validation_bundle,
@@ -598,6 +599,187 @@ def assign_pairwise_pareto_metadata(rows: list[dict[str, Any]]) -> dict[str, dic
     return metadata
 
 
+def _aggregate_fast_context_daily(
+    fast_context: dict[str, Any],
+    key: str,
+    *,
+    pair_daily_index: pd.DatetimeIndex,
+    how: str = "last",
+    fill_value: float = 0.0,
+) -> np.ndarray:
+    values = np.asarray(
+        fast_context.get(key, np.full(len(fast_context["bar_day_index"]), np.nan)),
+        dtype="float64",
+    )
+    base = pd.Series(values, index=pd.DatetimeIndex(fast_context["bar_day_index"]))
+    if how == "mean":
+        aggregated = base.groupby(level=0).mean()
+        reindexed = aggregated.reindex(pair_daily_index, method="ffill")
+    elif how == "sum":
+        aggregated = base.groupby(level=0).sum()
+        reindexed = aggregated.reindex(pair_daily_index).fillna(0.0)
+    else:
+        aggregated = base.groupby(level=0).last()
+        reindexed = aggregated.reindex(pair_daily_index, method="ffill")
+    return reindexed.fillna(fill_value).to_numpy(dtype="float64")
+
+
+def summarize_special_regime_payload_from_fast_context(
+    fast_context: dict[str, Any],
+    daily_returns: np.ndarray,
+) -> dict[str, Any]:
+    pair_daily_index = pd.DatetimeIndex(fast_context["validation_daily_index"])
+    common_len = min(len(pair_daily_index), len(daily_returns))
+    if common_len == 0:
+        return {
+            "special_regime_returns": {
+                "trend_specialist_regime": [],
+                "range_repair_regime": [],
+                "panic_deleveraging_regime": [],
+                "carry_basis_regime": [],
+            },
+            "daily_features": {},
+        }
+
+    pair_daily_index = pair_daily_index[:common_len]
+    returns = np.asarray(daily_returns[:common_len], dtype="float64")
+    regime = _aggregate_fast_context_daily(
+        fast_context,
+        "regime",
+        pair_daily_index=pair_daily_index,
+        how="last",
+        fill_value=0.0,
+    )
+    breadth = _aggregate_fast_context_daily(
+        fast_context,
+        "breadth",
+        pair_daily_index=pair_daily_index,
+        how="last",
+        fill_value=0.5,
+    )
+    vol_ann = _aggregate_fast_context_daily(
+        fast_context,
+        "vol_ann",
+        pair_daily_index=pair_daily_index,
+        how="mean",
+        fill_value=0.0,
+    )
+    equity_corr = _aggregate_fast_context_daily(
+        fast_context,
+        "equity_corr",
+        pair_daily_index=pair_daily_index,
+        how="last",
+        fill_value=0.0,
+    )
+    order_imbalance = _aggregate_fast_context_daily(
+        fast_context,
+        "order_imbalance",
+        pair_daily_index=pair_daily_index,
+        how="mean",
+        fill_value=0.0,
+    )
+    dc_trend = _aggregate_fast_context_daily(
+        fast_context,
+        "dc_trend_05",
+        pair_daily_index=pair_daily_index,
+        how="last",
+        fill_value=0.0,
+    )
+    dc_event = _aggregate_fast_context_daily(
+        fast_context,
+        "dc_event_05",
+        pair_daily_index=pair_daily_index,
+        how="sum",
+        fill_value=0.0,
+    )
+    dc_run = _aggregate_fast_context_daily(
+        fast_context,
+        "dc_run_05",
+        pair_daily_index=pair_daily_index,
+        how="mean",
+        fill_value=0.0,
+    )
+    funding_daily = _aggregate_fast_context_daily(
+        fast_context,
+        "funding_rates",
+        pair_daily_index=pair_daily_index,
+        how="sum",
+        fill_value=0.0,
+    )
+
+    finite_vol = vol_ann[np.isfinite(vol_ann)]
+    panic_vol_threshold = float(np.quantile(finite_vol, 0.75)) if finite_vol.size else 0.0
+    funding_abs = np.abs(funding_daily[np.isfinite(funding_daily)])
+    funding_threshold = float(np.quantile(funding_abs, 0.65)) if funding_abs.size and np.max(funding_abs) > 0.0 else np.inf
+
+    special_regime_returns: dict[str, list[float]] = {
+        "trend_specialist_regime": [],
+        "range_repair_regime": [],
+        "panic_deleveraging_regime": [],
+        "carry_basis_regime": [],
+    }
+    for idx, value in enumerate(returns):
+        regime_value = float(regime[idx]) if np.isfinite(regime[idx]) else 0.0
+        breadth_value = float(breadth[idx]) if np.isfinite(breadth[idx]) else 0.5
+        vol_value = float(vol_ann[idx]) if np.isfinite(vol_ann[idx]) else 0.0
+        corr_value = float(equity_corr[idx]) if np.isfinite(equity_corr[idx]) else 0.0
+        imbalance_value = float(order_imbalance[idx]) if np.isfinite(order_imbalance[idx]) else 0.0
+        dc_trend_value = float(dc_trend[idx]) if np.isfinite(dc_trend[idx]) else 0.0
+        dc_event_value = float(dc_event[idx]) if np.isfinite(dc_event[idx]) else 0.0
+        dc_run_value = float(dc_run[idx]) if np.isfinite(dc_run[idx]) else 0.0
+        funding_value = float(funding_daily[idx]) if np.isfinite(funding_daily[idx]) else 0.0
+
+        trend_flag = (
+            regime_value > 0.02
+            and breadth_value > 0.55
+            and (corr_value >= -0.05 or dc_trend_value > 0.0)
+            and imbalance_value > -0.15
+        )
+        range_flag = (
+            abs(regime_value) < 0.02
+            and abs(breadth_value - 0.5) < 0.15
+            and abs(imbalance_value) < 0.20
+            and abs(dc_event_value) <= 1.0
+            and abs(dc_run_value) < 0.02
+        )
+        panic_flag = (
+            regime_value < -0.01
+            and breadth_value < 0.45
+            and vol_value >= panic_vol_threshold
+            and (dc_event_value < 0.0 or imbalance_value < -0.15)
+        )
+        carry_flag = (
+            np.isfinite(funding_threshold)
+            and abs(funding_value) >= funding_threshold
+            and abs(regime_value) < 0.06
+            and abs(imbalance_value) < 0.35
+        )
+
+        if trend_flag:
+            special_regime_returns["trend_specialist_regime"].append(float(value))
+        if range_flag:
+            special_regime_returns["range_repair_regime"].append(float(value))
+        if panic_flag:
+            special_regime_returns["panic_deleveraging_regime"].append(float(value))
+        if carry_flag:
+            special_regime_returns["carry_basis_regime"].append(float(value))
+
+    return {
+        "special_regime_returns": special_regime_returns,
+        "daily_features": {
+            "regime": regime,
+            "breadth": breadth,
+            "vol_ann": vol_ann,
+            "equity_corr": equity_corr,
+            "order_imbalance": order_imbalance,
+            "dc_trend_05": dc_trend,
+            "dc_event_05": dc_event,
+            "dc_run_05": dc_run,
+            "funding_daily": funding_daily,
+        },
+    }
+
+
 def build_candidate_validation_input(
     candidate: dict[str, Any],
     *,
@@ -611,6 +793,8 @@ def build_candidate_validation_input(
     for pair in pairs:
         cfg = candidate["pair_configs"][pair]
         fast_context = window_pairs[pair]["fast_context"]
+        execution_gene = extract_pair_execution_gene(candidate, pair)
+        execution_profile = derive_execution_profile(execution_gene) if execution_gene is not None else None
         result = fast_overlay_replay_from_context(
             fast_context,
             library,
@@ -618,6 +802,11 @@ def build_candidate_validation_input(
             tuple(int(v) for v in cfg["mapping_indices"]),
             float(cfg["route_breadth_threshold"]),
             "python",
+            commission_pct=None if execution_profile is None else float(execution_profile["fast_commission_pct"]),
+            no_trade_band_pct=None if execution_profile is None else float(execution_profile["no_trade_band_pct"]),
+            signal_gate_pct=None if execution_profile is None else float(execution_profile["signal_gate_pct"]),
+            regime_buffer_mult=None if execution_profile is None else float(execution_profile["regime_buffer_mult"]),
+            confirm_bars=None if execution_profile is None else int(execution_profile["confirm_bars"]),
         )
         pair_daily_returns = np.asarray(result["daily_metrics"]["daily_returns"], dtype="float64")
         pair_daily_index = pd.DatetimeIndex(fast_context["validation_daily_index"])
@@ -639,6 +828,75 @@ def build_candidate_validation_input(
                 "daily_returns": pair_daily_returns,
                 "daily_index": pair_daily_index,
                 "daily_state_codes": daily_state_codes,
+                "daily_regime": _aggregate_fast_context_daily(
+                    fast_context,
+                    "regime",
+                    pair_daily_index=pair_daily_index,
+                    how="last",
+                    fill_value=0.0,
+                ),
+                "daily_breadth": _aggregate_fast_context_daily(
+                    fast_context,
+                    "breadth",
+                    pair_daily_index=pair_daily_index,
+                    how="last",
+                    fill_value=0.5,
+                ),
+                "daily_vol_ann": _aggregate_fast_context_daily(
+                    fast_context,
+                    "vol_ann",
+                    pair_daily_index=pair_daily_index,
+                    how="mean",
+                    fill_value=0.0,
+                ),
+                "daily_equity_corr": _aggregate_fast_context_daily(
+                    fast_context,
+                    "equity_corr",
+                    pair_daily_index=pair_daily_index,
+                    how="last",
+                    fill_value=0.0,
+                ),
+                "daily_corr_inputs": {
+                    "btc_qqq_corr_5d": _aggregate_fast_context_daily(
+                        fast_context,
+                        "btc_qqq_corr_5d",
+                        pair_daily_index=pair_daily_index,
+                        how="last",
+                        fill_value=np.nan,
+                    ),
+                    "btc_qqq_corr_20d": _aggregate_fast_context_daily(
+                        fast_context,
+                        "btc_qqq_corr_20d",
+                        pair_daily_index=pair_daily_index,
+                        how="last",
+                        fill_value=np.nan,
+                    ),
+                    "btc_spy_beta_20d": _aggregate_fast_context_daily(
+                        fast_context,
+                        "btc_spy_beta_20d",
+                        pair_daily_index=pair_daily_index,
+                        how="last",
+                        fill_value=np.nan,
+                    ),
+                    "btc_dxy_corr_20d": _aggregate_fast_context_daily(
+                        fast_context,
+                        "btc_dxy_corr_20d",
+                        pair_daily_index=pair_daily_index,
+                        how="last",
+                        fill_value=np.nan,
+                    ),
+                    "btc_gold_corr_20d": _aggregate_fast_context_daily(
+                        fast_context,
+                        "btc_gold_corr_20d",
+                        pair_daily_index=pair_daily_index,
+                        how="last",
+                        fill_value=np.nan,
+                    ),
+                },
+                "special_regime_payload": summarize_special_regime_payload_from_fast_context(
+                    fast_context,
+                    pair_daily_returns,
+                ),
                 "route_state_names": list(fast_context["route_state_names"]),
             }
         )
@@ -658,6 +916,19 @@ def build_candidate_validation_input(
     aligned = np.vstack([item["daily_returns"][:common_len] for item in pair_payloads])
     route_state_returns: dict[str, list[float]] = {}
     corr_bucket_returns: dict[str, list[float]] = {}
+    special_regime_returns: dict[str, list[float]] = {
+        "trend_specialist_regime": [],
+        "panic_deleveraging_regime": [],
+        "range_repair_regime": [],
+        "carry_basis_regime": [],
+    }
+    corr_input_samples: dict[str, list[float]] = {
+        "btc_qqq_corr_5d": [],
+        "btc_qqq_corr_20d": [],
+        "btc_spy_beta_20d": [],
+        "btc_dxy_corr_20d": [],
+        "btc_gold_corr_20d": [],
+    }
     total_route_states = max(len(item["route_state_names"]) for item in pair_payloads)
     total_corr_buckets = max(
         len(
@@ -673,17 +944,27 @@ def build_candidate_validation_input(
         codes = item["daily_state_codes"][:common_len]
         returns = item["daily_returns"][:common_len]
         names = item["route_state_names"]
-        for code, value in zip(codes, returns, strict=False):
+        corr_inputs = item["daily_corr_inputs"]
+        special_payload = item.get("special_regime_payload") or {}
+        for regime_name, values in (special_payload.get("special_regime_returns") or {}).items():
+            special_regime_returns.setdefault(str(regime_name), []).extend(float(v) for v in values)
+        for idx, (code, value) in enumerate(zip(codes, returns, strict=False)):
             route_state_name = names[int(code)] if 0 <= int(code) < len(names) else f"state_{int(code)}"
             route_state_returns.setdefault(route_state_name, []).append(float(value))
             corr_bucket = route_state_name.split(":", 1)[0] if ":" in route_state_name else "base"
             corr_bucket_returns.setdefault(corr_bucket, []).append(float(value))
+            for feature_name, feature_values in corr_inputs.items():
+                feature_value = feature_values[idx] if idx < len(feature_values) else np.nan
+                if np.isfinite(feature_value):
+                    corr_input_samples[feature_name].append(float(feature_value))
     return {
         "daily_returns": np.mean(aligned, axis=0),
         "daily_index": daily_index,
         "state_payload": {
             "route_state_returns": route_state_returns,
             "corr_bucket_returns": corr_bucket_returns,
+            "special_regime_returns": special_regime_returns,
+            "corr_input_samples": corr_input_samples,
             "total_route_states": int(total_route_states),
             "total_corr_buckets": int(total_corr_buckets),
         },
@@ -791,6 +1072,7 @@ def main() -> None:
             per_pair = {}
             for pair in pairs:
                 cfg = candidate["pair_configs"][pair]
+                execution_profile = derive_execution_profile(extract_pair_execution_gene(candidate, pair))
                 per_pair[pair] = summarize_single_result(
                     fast_overlay_replay_from_context(
                         window_cache[label]["pairs"][pair]["fast_context"],
@@ -799,6 +1081,11 @@ def main() -> None:
                         tuple(int(v) for v in cfg["mapping_indices"]),
                         float(cfg["route_breadth_threshold"]),
                         "numba",
+                        commission_pct=float(execution_profile["fast_commission_pct"]),
+                        no_trade_band_pct=float(execution_profile["no_trade_band_pct"]),
+                        signal_gate_pct=float(execution_profile["signal_gate_pct"]),
+                        regime_buffer_mult=float(execution_profile["regime_buffer_mult"]),
+                        confirm_bars=int(execution_profile["confirm_bars"]),
                     )
                 )
             windows[label] = {

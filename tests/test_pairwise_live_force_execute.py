@@ -40,6 +40,32 @@ def make_args(*, execute: bool, force_execute: bool) -> Namespace:
 
 
 class PairwiseLiveForceExecuteTests(unittest.TestCase):
+    def test_sync_position_loss_notifications_updates_snapshot_and_dispatches(self) -> None:
+        state = {"latest_runtime_snapshot": {}}
+        rotation = MagicMock()
+        rotation.collect_position_loss_notifications.return_value = ["포지션 손실 경고\n- 수익률: -2.10%"]
+
+        with patch.object(pairwise_live, "load_notification_bridge", return_value=rotation):
+            pairwise_live.sync_position_loss_notifications(
+                state,
+                {
+                    "BNBUSDT": {
+                        "pair": "BNBUSDT",
+                        "side": "SHORT",
+                        "entry_price": 600.0,
+                        "mark_price": 612.6,
+                    }
+                },
+            )
+
+        self.assertEqual(state["latest_runtime_snapshot"]["positions"][0]["pair"], "BNBUSDT")
+        self.assertIn("position_loss_alerted", state["notification_state"])
+        rotation.collect_position_loss_notifications.assert_called_once_with(state)
+        rotation.dispatch_notifications.assert_called_once_with(
+            state,
+            ["포지션 손실 경고\n- 수익률: -2.10%"],
+        )
+
     def test_operational_defaults_use_validated_pairwise_summary(self) -> None:
         self.assertEqual(pairwise_live.DEFAULT_SUMMARY_PATH, ROOT_DIR / "models" / VALIDATED_SUMMARY_NAME)
 
@@ -101,6 +127,8 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
     def test_live_execute_blocks_when_gate_fails_without_force(self) -> None:
         args = make_args(execute=True, force_execute=False)
         bridge = MagicMock()
+        bridge.get_exchange.return_value = object()
+        bridge.fetch_open_position_map.return_value = {}
 
         with (
             patch.object(pairwise_live, "load_state", side_effect=[{}, {}]),
@@ -108,6 +136,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             patch.object(pairwise_live, "default_promotion_eval_args", return_value=Namespace()),
             patch.object(pairwise_live, "build_shadow_evaluation", return_value={"promotion_ready": False}),
             patch.object(pairwise_live, "record_runtime_success"),
+            patch.object(pairwise_live, "sync_position_loss_notifications"),
             patch.object(pairwise_live, "append_jsonl"),
             patch.object(pairwise_live, "save_state"),
             patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
@@ -115,7 +144,8 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             result = pairwise_live.run_live_once(args)
 
         self.assertEqual(result, 2)
-        bridge.get_exchange.assert_not_called()
+        bridge.get_exchange.assert_called_once_with("demo")
+        bridge.fetch_open_position_map.assert_called_once()
 
     def test_live_execute_bypasses_failed_gate_when_forced(self) -> None:
         args = make_args(execute=True, force_execute=True)
@@ -124,6 +154,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         bridge.fetch_equity.return_value = 12345.0
         bridge.reconcile_target_positions.return_value = [{"pair": "BNBUSDT", "action": "SELL"}]
         bridge.install_shutdown_protection.return_value = {"installed": True}
+        bridge.fetch_open_position_map.return_value = {}
 
         with (
             patch.object(pairwise_live, "load_state", side_effect=[{}, {}]),
@@ -131,6 +162,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             patch.object(pairwise_live, "default_promotion_eval_args", return_value=Namespace()),
             patch.object(pairwise_live, "build_shadow_evaluation", return_value={"promotion_ready": False}),
             patch.object(pairwise_live, "record_runtime_success"),
+            patch.object(pairwise_live, "sync_position_loss_notifications"),
             patch.object(pairwise_live, "append_jsonl"),
             patch.object(pairwise_live, "save_state"),
             patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
@@ -142,10 +174,13 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         bridge.fetch_equity.assert_called_once()
         bridge.reconcile_target_positions.assert_called_once()
         bridge.install_shutdown_protection.assert_called_once()
+        bridge.fetch_open_position_map.assert_called_once()
 
     def test_live_execute_blocks_forced_order_when_shadow_feed_is_stale(self) -> None:
         args = make_args(execute=True, force_execute=True)
         bridge = MagicMock()
+        bridge.get_exchange.return_value = object()
+        bridge.fetch_open_position_map.return_value = {}
 
         with (
             patch.object(pairwise_live, "load_state", side_effect=[{}, {}]),
@@ -162,6 +197,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
                 },
             ),
             patch.object(pairwise_live, "record_runtime_success"),
+            patch.object(pairwise_live, "sync_position_loss_notifications"),
             patch.object(pairwise_live, "append_jsonl"),
             patch.object(pairwise_live, "save_state"),
             patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
@@ -169,7 +205,8 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             result = pairwise_live.run_live_once(args)
 
         self.assertEqual(result, 2)
-        bridge.get_exchange.assert_not_called()
+        bridge.get_exchange.assert_called_once_with("demo")
+        bridge.fetch_open_position_map.assert_called_once()
 
     def test_load_live_frame_requests_recent_klines_with_datetimes(self) -> None:
         base_index = pd.date_range("2026-04-10 10:00", periods=25, freq="5min", tz="UTC")

@@ -143,12 +143,18 @@ def load_state(path: Path) -> Dict[str, Any]:
                 "last_error": None,
                 "last_success_at": None,
             },
+            "notification_state": {
+                "position_loss_alerted": {},
+            },
             "latest_runtime_snapshot": {},
             "latest_decision_snapshot": {},
             "promotion_gate": {},
             "decision_journal": [],
         }
-    return json.loads(path.read_text())
+    state = json.loads(path.read_text())
+    notification_state = state.setdefault("notification_state", {})
+    notification_state.setdefault("position_loss_alerted", {})
+    return state
 
 
 def save_state(path: Path, state: Mapping[str, Any]) -> None:
@@ -723,6 +729,22 @@ def load_execution_bridge():
     return rotation
 
 
+def load_notification_bridge():
+    import rotation_target_050_live as rotation
+
+    return rotation
+
+
+def sync_position_loss_notifications(state: Dict[str, Any], positions_by_pair: Mapping[str, Mapping[str, Any]]) -> None:
+    snapshot = state.setdefault("latest_runtime_snapshot", {})
+    snapshot["positions"] = [dict(position) for position in positions_by_pair.values()]
+    notification_state = state.setdefault("notification_state", {})
+    notification_state.setdefault("position_loss_alerted", {})
+    rotation = load_notification_bridge()
+    messages = rotation.collect_position_loss_notifications(state)
+    rotation.dispatch_notifications(state, messages)
+
+
 def record_runtime_success(state: Dict[str, Any], plan: Mapping[str, Any], extra: Optional[Mapping[str, Any]] = None) -> None:
     state.setdefault("runtime_health", {})
     state["runtime_health"].update(
@@ -847,6 +869,8 @@ def run_live_once(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
     plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
     if args.execute:
+        bridge = load_execution_bridge()
+        exchange = bridge.get_exchange(args.mode)
         shadow_state = load_state(args.shadow_state_path)
         evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
         state["promotion_gate"] = evaluation
@@ -858,6 +882,7 @@ def run_live_once(args: argparse.Namespace) -> int:
             and (evaluation.get("shadow_feed_stale") or evaluation.get("shadow_signal_stale"))
         )
         if not evaluation["promotion_ready"] and (not force_execute or force_blocked_by_stale_shadow):
+            positions = bridge.fetch_open_position_map(exchange)
             blocked_mode = "live-force-blocked" if force_blocked_by_stale_shadow else "live-blocked"
             record_runtime_success(
                 state,
@@ -873,6 +898,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                     }
                 },
             )
+            sync_position_loss_notifications(state, positions)
             append_jsonl(
                 args.decision_log_path,
                 {
@@ -902,8 +928,6 @@ def run_live_once(args: argparse.Namespace) -> int:
             )
             return 2
 
-        bridge = load_execution_bridge()
-        exchange = bridge.get_exchange(args.mode)
         equity = float(bridge.fetch_equity(exchange))
         actions = bridge.reconcile_target_positions(
             exchange,
@@ -913,6 +937,7 @@ def run_live_once(args: argparse.Namespace) -> int:
             pairs=list(PAIRS),
         )
         protection_report = bridge.install_shutdown_protection(exchange, state, execute=True)
+        positions = bridge.fetch_open_position_map(exchange)
         execution_mode = "live-executed"
         execution_override: Dict[str, Any] | None = None
         if force_execute and not evaluation["promotion_ready"]:
@@ -937,6 +962,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                 }
             },
         )
+        sync_position_loss_notifications(state, positions)
         append_jsonl(
             args.decision_log_path,
             {

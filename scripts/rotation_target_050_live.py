@@ -144,6 +144,12 @@ POSITION_LOSS_ALERT_RETURN_THRESHOLD = float(
 )
 POSITION_LOSS_ALERT_TITLE = "포지션 손실 경고"
 CRITICAL_NOTIFICATION_TITLES = {"코어 킬 스위치 발동", POSITION_LOSS_ALERT_TITLE}
+TRADER_RUNTIME_ERROR_ALERTS_ENABLED = os.getenv("TRADER_RUNTIME_ERROR_ALERTS_ENABLED", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def resolve_strategy_profile() -> str:
@@ -2701,15 +2707,16 @@ def main() -> None:
                 runtime_health["loop_error_count"] = int(runtime_health.get("loop_error_count", 0)) + 1
                 save_state(args.state_path, loop_state)
                 print(f"[ERROR] {exc}")
-                send_telegram_notification(
-                    "\n".join(
-                        [
-                            "트레이더 루프 오류",
-                            f"- 시각: {utc_now().isoformat()}",
-                            f"- 내용: {exc}",
-                        ]
+                if TRADER_RUNTIME_ERROR_ALERTS_ENABLED:
+                    send_telegram_notification(
+                        "\n".join(
+                            [
+                                "트레이더 루프 오류",
+                                f"- 시각: {utc_now().isoformat()}",
+                                f"- 내용: {exc}",
+                            ]
+                        )
                     )
-                )
             time.sleep(max(5, int(args.poll_seconds)))
 
 

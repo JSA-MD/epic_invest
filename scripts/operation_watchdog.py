@@ -77,6 +77,12 @@ WATCHDOG_ERROR_ESCALATION_COUNT = int(os.getenv("WATCHDOG_ERROR_ESCALATION_COUNT
 WATCHDOG_ALERT_COOLDOWN_SECONDS = int(os.getenv("WATCHDOG_ALERT_COOLDOWN_SECONDS", "300"))
 WATCHDOG_TRADER_GRACE_SECONDS = int(os.getenv("WATCHDOG_TRADER_GRACE_SECONDS", "90"))
 PAIRWISE_POLL_SECONDS = int(os.getenv("PAIRWISE_LIVE_POLL_SECONDS", "300"))
+WATCHDOG_TELEGRAM_ALERTS_ENABLED = os.getenv("WATCHDOG_TELEGRAM_ALERTS_ENABLED", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -351,6 +357,8 @@ def build_alert_fingerprint(report: dict[str, Any]) -> str:
 
 
 def maybe_send_alert(report: dict[str, Any]) -> None:
+    if not WATCHDOG_TELEGRAM_ALERTS_ENABLED:
+        return
     issues = []
     if report["trader"]["status"] != "ok":
         issues.append(

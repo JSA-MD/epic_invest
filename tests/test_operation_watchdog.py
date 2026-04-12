@@ -13,6 +13,28 @@ import operation_watchdog as watchdog
 
 
 class OperationWatchdogTests(unittest.TestCase):
+    def test_maybe_send_alert_is_suppressed_by_default(self) -> None:
+        report = {
+            "generated_at": "2026-04-12T12:00:00+00:00",
+            "trader": {
+                "active_profile": "pairwise",
+                "status": "critical",
+                "stale_seconds": 400.0,
+                "consecutive_errors": 0,
+                "reasons": ["shadow_signal_stale"],
+            },
+            "bot": {
+                "status": "ok",
+                "stale_seconds": 5.0,
+                "consecutive_poll_errors": 0,
+                "reasons": [],
+            },
+            "recovery_actions": [],
+        }
+        with patch.object(watchdog, "send_telegram_notification") as send_notification:
+            watchdog.maybe_send_alert(report)
+        send_notification.assert_not_called()
+
     def test_is_pid_running_treats_permission_error_as_alive(self) -> None:
         with patch.object(watchdog.os, "kill", side_effect=PermissionError("denied")):
             self.assertTrue(watchdog.is_pid_running(12345))

@@ -43,6 +43,7 @@ PAIR_TO_MARKET = {
 
 DEFAULT_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
 DEFAULT_MODEL_PATH = ROOT / "models" / "recent_6m_gp_vectorized_big_capped_rerun.dill"
+DEFAULT_PROMOTION_REPORT_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json"
 DEFAULT_STATE_PATH = ROOT / "models" / "pairwise_regime_live_state.json"
 DEFAULT_DECISION_LOG_PATH = ROOT / "logs" / "pairwise_regime_decisions.jsonl"
 DEFAULT_SHADOW_STATE_PATH = ROOT / "models" / "pairwise_regime_shadow_state.json"
@@ -233,6 +234,7 @@ def parse_args() -> argparse.Namespace:
     def add_common(cmd: argparse.ArgumentParser) -> None:
         cmd.add_argument("--summary-path", type=Path, default=DEFAULT_SUMMARY_PATH)
         cmd.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH)
+        cmd.add_argument("--promotion-report", type=Path, default=DEFAULT_PROMOTION_REPORT_PATH)
         cmd.add_argument("--state-path", type=Path, default=DEFAULT_STATE_PATH)
         cmd.add_argument("--decision-log-path", type=Path, default=DEFAULT_DECISION_LOG_PATH)
         cmd.add_argument("--equity", type=float, default=SHADOW_DEFAULT_EQUITY)
@@ -735,6 +737,50 @@ def load_notification_bridge():
     return rotation
 
 
+def load_promotion_gate(report_path: Path) -> Dict[str, Any]:
+    if not report_path.exists():
+        return {
+            "status": "missing",
+            "ready_for_shadow_live": False,
+            "ready_for_live": False,
+            "ready_for_merge": False,
+            "failed_checks": ["promotion_report_missing"],
+            "path": str(report_path),
+            "decision": {},
+        }
+    payload = json.loads(report_path.read_text())
+    decision = payload.get("decision")
+    if not isinstance(decision, Mapping):
+        decision = payload.get("promotion_decision")
+    if not isinstance(decision, Mapping):
+        decision = {}
+    ready_for_merge = bool(
+        decision.get("ready_for_merge", decision.get("selected_candidate_ready_for_merge", False))
+    )
+    ready_for_live = bool(
+        decision.get("ready_for_live", decision.get("selected_candidate_ready_for_live", ready_for_merge))
+    )
+    ready_for_shadow_live = bool(
+        decision.get("ready_for_shadow_live", decision.get("selected_candidate_ready_for_live", ready_for_live))
+    )
+    return {
+        "status": str(decision.get("status", "unknown")),
+        "ready_for_shadow_live": ready_for_shadow_live,
+        "ready_for_live": ready_for_live,
+        "ready_for_merge": ready_for_merge,
+        "failed_checks": list(decision.get("failed_checks") or []),
+        "path": str(report_path),
+        "decision": dict(decision),
+    }
+
+
+def promotion_gate_allows_execution(gate: Mapping[str, Any], mode: str) -> bool:
+    mode_name = str(mode or "demo").lower()
+    if mode_name == "demo":
+        return bool(gate.get("ready_for_shadow_live", False))
+    return bool(gate.get("ready_for_live", gate.get("ready_for_merge", False)))
+
+
 def sync_position_loss_notifications(state: Dict[str, Any], positions_by_pair: Mapping[str, Mapping[str, Any]]) -> None:
     snapshot = state.setdefault("latest_runtime_snapshot", {})
     snapshot["positions"] = [dict(position) for position in positions_by_pair.values()]
@@ -868,22 +914,19 @@ def run_evaluate_shadow(args: argparse.Namespace) -> int:
 def run_live_once(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
     plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
+    promotion_gate = load_promotion_gate(args.promotion_report)
+    state["promotion_gate"] = promotion_gate
     if args.execute:
         bridge = load_execution_bridge()
         exchange = bridge.get_exchange(args.mode)
         shadow_state = load_state(args.shadow_state_path)
-        evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
-        state["promotion_gate"] = evaluation
+        shadow_evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
-        force_blocked_by_stale_shadow = bool(
-            force_execute
-            and not evaluation["promotion_ready"]
-            and (evaluation.get("shadow_feed_stale") or evaluation.get("shadow_signal_stale"))
-        )
-        if not evaluation["promotion_ready"] and (not force_execute or force_blocked_by_stale_shadow):
+        gate_ready = promotion_gate_allows_execution(promotion_gate, args.mode)
+        force_blocked_by_stale_shadow = False
+        if not gate_ready and not force_execute:
             positions = bridge.fetch_open_position_map(exchange)
-            blocked_mode = "live-force-blocked" if force_blocked_by_stale_shadow else "live-blocked"
             record_runtime_success(
                 state,
                 plan,
@@ -892,9 +935,10 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "enabled": False,
                         "blocked": True,
                         "mode": args.mode,
-                        "promotion_gate": evaluation,
+                        "promotion_gate": promotion_gate,
+                        "shadow_runtime_gate": shadow_evaluation,
                         "force_requested": force_execute,
-                        "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
+                        "force_blocked_by_stale_shadow": False,
                     }
                 },
             )
@@ -903,12 +947,13 @@ def run_live_once(args: argparse.Namespace) -> int:
                 args.decision_log_path,
                 {
                     "at": iso_now(),
-                    "mode": blocked_mode,
+                    "mode": "live-blocked",
                     "execute": True,
                     "plan": plan,
-                    "promotion_gate": evaluation,
+                    "promotion_gate": promotion_gate,
+                    "shadow_runtime_gate": shadow_evaluation,
                     "force_requested": force_execute,
-                    "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
+                    "force_blocked_by_stale_shadow": False,
                 },
             )
             save_state(args.state_path, state)
@@ -917,9 +962,10 @@ def run_live_once(args: argparse.Namespace) -> int:
                     json_ready(
                         {
                             "plan": plan,
-                            "promotion_gate": evaluation,
+                            "promotion_gate": promotion_gate,
+                            "shadow_runtime_gate": shadow_evaluation,
                             "force_requested": force_execute,
-                            "force_blocked_by_stale_shadow": force_blocked_by_stale_shadow,
+                            "force_blocked_by_stale_shadow": False,
                         }
                     ),
                     indent=2,
@@ -940,7 +986,7 @@ def run_live_once(args: argparse.Namespace) -> int:
         positions = bridge.fetch_open_position_map(exchange)
         execution_mode = "live-executed"
         execution_override: Dict[str, Any] | None = None
-        if force_execute and not evaluation["promotion_ready"]:
+        if force_execute and not gate_ready:
             execution_mode = "live-forced"
             execution_override = {
                 "force_execute": True,
@@ -957,7 +1003,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                     "equity": equity,
                     "actions": actions,
                     "shutdown_protection": protection_report,
-                    "promotion_gate": evaluation,
+                    "promotion_gate": promotion_gate,
+                    "shadow_runtime_gate": shadow_evaluation,
                     "override": execution_override,
                 }
             },
@@ -973,7 +1020,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                 "equity": equity,
                 "actions": actions,
                 "shutdown_protection": protection_report,
-                "promotion_gate": evaluation,
+                "promotion_gate": promotion_gate,
+                "shadow_runtime_gate": shadow_evaluation,
                 "override": execution_override,
             },
         )
@@ -986,7 +1034,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "equity": equity,
                         "actions": actions,
                         "shutdown_protection": protection_report,
-                        "promotion_gate": evaluation,
+                        "promotion_gate": promotion_gate,
+                        "shadow_runtime_gate": shadow_evaluation,
                         "override": execution_override,
                     }
                 ),
@@ -1003,6 +1052,7 @@ def run_live_once(args: argparse.Namespace) -> int:
             "execution": {
                 "enabled": bool(args.execute),
                 "mode": args.mode,
+                "promotion_gate": promotion_gate,
                 "note": "promotion path prepared; order routing intentionally left disabled until shadow gate passes",
             }
         },

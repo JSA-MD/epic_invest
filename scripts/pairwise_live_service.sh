@@ -10,6 +10,7 @@ POLL_SECONDS="${PAIRWISE_LIVE_POLL_SECONDS:-300}"
 MODE="${PAIRWISE_LIVE_MODE:-demo}"
 FORCE_EXECUTE="${PAIRWISE_FORCE_EXECUTE:-0}"
 FORCE_NOTE="${PAIRWISE_FORCE_NOTE:-manual_primary_switch}"
+PROMOTION_REPORT_PATH="${PAIRWISE_LIVE_PROMOTION_REPORT_PATH:-$ROOT_DIR/models/gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json}"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$STATE_PATH")" "$(dirname "$DECISION_LOG_PATH")"
 
@@ -41,6 +42,7 @@ case "${1:-}" in
         --execute \
         --mode "$MODE" \
         --poll-seconds "$POLL_SECONDS" \
+        --promotion-report "$PROMOTION_REPORT_PATH" \
         --state-path "$STATE_PATH" \
         --decision-log-path "$DECISION_LOG_PATH" \
         "${extra_args[@]}" \
@@ -50,6 +52,7 @@ case "${1:-}" in
         --execute \
         --mode "$MODE" \
         --poll-seconds "$POLL_SECONDS" \
+        --promotion-report "$PROMOTION_REPORT_PATH" \
         --state-path "$STATE_PATH" \
         --decision-log-path "$DECISION_LOG_PATH" \
         >>"$LOG_FILE" 2>&1 &

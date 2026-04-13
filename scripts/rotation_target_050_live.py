@@ -1393,7 +1393,10 @@ def build_shutdown_protection_plan(
     qty = float(position["qty"])
     close_side = "sell" if qty > 0.0 else "buy"
     amount = quantize_amount(exchange, symbol, qty)
-    reference_price = float(position["mark_price"] or position["entry_price"])
+    entry_price = float(position.get("entry_price") or 0.0)
+    mark_price = float(position.get("mark_price") or 0.0)
+    reference_price = entry_price if entry_price > 0.0 else mark_price
+    reference_basis = "entry_price" if entry_price > 0.0 else "mark_price"
     if amount <= 0.0 or reference_price <= 0.0:
         return {
             "pair": pair,
@@ -1409,7 +1412,11 @@ def build_shutdown_protection_plan(
         "pair": pair,
         "symbol": symbol,
         "qty": qty,
+        "side": str(position["side"]),
+        "entry_price": entry_price,
+        "mark_price": mark_price,
         "reference_price": reference_price,
+        "reference_basis": reference_basis,
         "stop_price": stop_price,
         "take_price": take_price,
         "close_side": close_side,
@@ -1438,6 +1445,26 @@ def build_shutdown_protection_plan(
         },
     ]
     return result
+
+
+def protection_threshold_breach_reason(plan: dict[str, Any]) -> str | None:
+    side = str(plan.get("side") or "").upper()
+    mark_price = float(plan.get("mark_price") or 0.0)
+    stop_price = float(plan.get("stop_price") or 0.0)
+    take_price = float(plan.get("take_price") or 0.0)
+    if mark_price <= 0.0 or side not in {"LONG", "SHORT"}:
+        return None
+    if side == "LONG":
+        if stop_price > 0.0 and mark_price <= stop_price:
+            return "stop_breached"
+        if take_price > 0.0 and mark_price >= take_price:
+            return "take_breached"
+        return None
+    if stop_price > 0.0 and mark_price >= stop_price:
+        return "stop_breached"
+    if take_price > 0.0 and mark_price <= take_price:
+        return "take_breached"
+    return None
 
 
 def place_shutdown_protection_order(
@@ -1883,10 +1910,18 @@ def install_shutdown_protection(
     existing_orders = fetch_strategy_protection_orders(exchange)
     installed: list[dict[str, Any]] = []
     desired_orders: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    breached_plans: list[dict[str, Any]] = []
     for _, position in positions.items():
         plan = build_shutdown_protection_plan(exchange, position)
         installed.append(plan)
         if plan.get("status") == "skipped":
+            continue
+        breach_reason = protection_threshold_breach_reason(plan)
+        if breach_reason is not None:
+            plan["status"] = breach_reason
+            plan["exit_reason"] = breach_reason
+            plan["orders"] = []
+            breached_plans.append(plan)
             continue
         for desired in plan.get("desired_orders", []):
             desired_orders.append((plan, desired))
@@ -1924,9 +1959,22 @@ def install_shutdown_protection(
 
     orders_to_cancel = [order for order in existing_orders if id(order) not in retained_order_ids]
     cancel_actions = cancel_strategy_protection_orders(exchange, orders_to_cancel, execute)
+    flatten_actions: list[dict[str, Any]] = []
+    for plan in breached_plans:
+        flatten_action = close_pair_position(
+            exchange,
+            str(plan["pair"]),
+            float(plan["qty"]),
+            execute,
+        )
+        flatten_action["reason"] = plan["status"]
+        plan["flatten_action"] = flatten_action
+        flatten_actions.append(flatten_action)
 
     for plan in installed:
         if plan.get("status") == "skipped":
+            continue
+        if plan.get("status") in {"stop_breached", "take_breached"}:
             continue
         retained_orders = retained_reports_by_plan.get(id(plan), [])
         planned_orders = [
@@ -1957,7 +2005,9 @@ def install_shutdown_protection(
         state["shutdown_protection"] = installed
     status = "planned"
     if execute:
-        if orders_to_place:
+        if flatten_actions:
+            status = "flattened"
+        elif orders_to_place:
             status = "placed"
         elif cancel_actions:
             status = "cancelled"
@@ -1979,6 +2029,7 @@ def install_shutdown_protection(
         ],
         "cancel_actions": cancel_actions,
         "protections": installed,
+        "flatten_actions": flatten_actions,
         "retained_count": int(len(retained_order_ids)),
         "placed_count": int(len(orders_to_place)) if execute else 0,
         "planned_place_count": int(len(orders_to_place)) if not execute else 0,

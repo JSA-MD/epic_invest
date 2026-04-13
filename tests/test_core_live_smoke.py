@@ -20,6 +20,7 @@ class FakeProtectionExchange:
     def __init__(self) -> None:
         self.cancelled: list[tuple[str, str]] = []
         self.created: list[dict[str, object]] = []
+        self.market_orders: list[dict[str, object]] = []
 
     def market(self, _symbol: str) -> dict[str, object]:
         return {
@@ -59,6 +60,24 @@ class FakeProtectionExchange:
             "clientOrderId": params["clientOrderId"],
         }
         self.created.append(row)
+        return row
+
+    def create_market_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        params: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        order_id = f"market-{len(self.market_orders) + 1}"
+        row = {
+            "id": order_id,
+            "symbol": symbol,
+            "side": side,
+            "amount": amount,
+            "params": params or {},
+        }
+        self.market_orders.append(row)
         return row
 
 
@@ -120,8 +139,8 @@ class CoreLiveSmokeTests(unittest.TestCase):
         exchange = FakeProtectionExchange()
         state: dict[str, object] = {}
         existing_orders = [
-            managed_order("sl-1", "SL", 9_950.0),
-            managed_order("tp-1", "TP", 10_125.0),
+            managed_order("sl-1", "SL", 9_900.25),
+            managed_order("tp-1", "TP", 10_074.38),
         ]
 
         with (
@@ -136,6 +155,8 @@ class CoreLiveSmokeTests(unittest.TestCase):
         self.assertEqual(report["retained_count"], 2)
         self.assertEqual(report["placed_count"], 0)
         self.assertEqual(report["protections"][0]["status"], "retained")
+        self.assertEqual(report["protections"][0]["reference_price"], 9_950.0)
+        self.assertEqual(report["protections"][0]["reference_basis"], "entry_price")
 
     def test_shutdown_protection_replaces_when_order_is_materially_different(self) -> None:
         exchange = FakeProtectionExchange()
@@ -157,6 +178,51 @@ class CoreLiveSmokeTests(unittest.TestCase):
         self.assertEqual(report["retained_count"], 0)
         self.assertEqual(report["placed_count"], 2)
         self.assertEqual(report["protections"][0]["status"], "placed")
+        self.assertEqual(exchange.created[0]["params"]["stopLossPrice"], 9900.25)
+        self.assertEqual(exchange.created[1]["params"]["takeProfitPrice"], 10074.38)
+
+    def test_shutdown_protection_prefers_entry_price_over_mark_price(self) -> None:
+        exchange = FakeProtectionExchange()
+        state: dict[str, object] = {}
+
+        with (
+            patch.object(rotation_target_050_live, "fetch_open_position_map", return_value=btc_long_position(mark_price=10_500.0)),
+            patch.object(rotation_target_050_live, "fetch_strategy_protection_orders", return_value=[]),
+        ):
+            report = rotation_target_050_live.install_shutdown_protection(exchange, state, execute=False)
+
+        protection = report["protections"][0]
+        self.assertEqual(protection["reference_price"], 9_950.0)
+        self.assertEqual(protection["reference_basis"], "entry_price")
+        self.assertEqual(protection["stop_price"], 9900.25)
+        self.assertEqual(protection["take_price"], 10074.38)
+
+    def test_shutdown_protection_flattens_when_stop_is_already_breached(self) -> None:
+        exchange = FakeProtectionExchange()
+        state: dict[str, object] = {}
+        position = btc_long_position(mark_price=9800.0)
+
+        with (
+            patch.object(rotation_target_050_live, "fetch_open_position_map", return_value=position),
+            patch.object(
+                rotation_target_050_live,
+                "fetch_strategy_protection_orders",
+                return_value=[
+                    managed_order("sl-1", "SL", 9900.25),
+                    managed_order("tp-1", "TP", 10074.38),
+                ],
+            ),
+        ):
+            report = rotation_target_050_live.install_shutdown_protection(exchange, state, execute=True)
+
+        self.assertEqual(report["status"], "flattened")
+        self.assertEqual(len(report["flatten_actions"]), 1)
+        self.assertEqual(report["flatten_actions"][0]["reason"], "stop_breached")
+        self.assertTrue(report["flatten_actions"][0]["placed"])
+        self.assertEqual(exchange.cancelled, [("sl-1", "BTC/USDT:USDT"), ("tp-1", "BTC/USDT:USDT")])
+        self.assertEqual(len(exchange.market_orders), 1)
+        self.assertEqual(exchange.created, [])
+        self.assertEqual(report["protections"][0]["status"], "stop_breached")
 
     def test_routine_notifications_are_suppressed(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

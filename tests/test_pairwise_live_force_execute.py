@@ -286,6 +286,46 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 pairwise_live.load_live_frame(("BTCUSDT", "BNBUSDT"), refresh_live_data=True, recent_days=1)
 
+    def test_run_sync_state_execute_reconciles_protection_orders(self) -> None:
+        args = Namespace(
+            command="sync-state",
+            summary_path=Path("models/mock_summary.json"),
+            model_path=Path("models/mock_model.dill"),
+            promotion_report=Path("models/mock_promotion_report.json"),
+            state_path=Path("models/mock_live_state.json"),
+            decision_log_path=Path("logs/mock_pairwise_live.jsonl"),
+            equity=100000.0,
+            refresh_live_data=False,
+            execute=True,
+            force_execute=False,
+            force_note="manual_primary_switch",
+            mode="demo",
+            shadow_state_path=Path("models/mock_shadow_state.json"),
+        )
+        state = {"runtime_health": {}}
+        bridge = MagicMock()
+        bridge.get_exchange.return_value = object()
+        bridge.install_shutdown_protection.return_value = {"status": "placed", "cancelled_count": 3}
+        bridge.fetch_equity.return_value = 1234.5
+        bridge.fetch_open_position_map.return_value = {"BNBUSDT": {"side": "SHORT"}}
+        bridge.fetch_strategy_protection_orders.return_value = [{"id": "1"}]
+
+        saved: dict[str, object] = {}
+
+        def _save(_path, payload):
+            saved["state"] = payload
+
+        with (
+            patch.object(pairwise_live, "load_state", return_value=state),
+            patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
+            patch.object(pairwise_live, "save_state", side_effect=_save),
+        ):
+            rc = pairwise_live.run_sync_state(args)
+
+        self.assertEqual(rc, 0)
+        bridge.install_shutdown_protection.assert_called_once()
+        self.assertEqual(saved["state"]["latest_live_sync"]["protection_cleanup"]["cancelled_count"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

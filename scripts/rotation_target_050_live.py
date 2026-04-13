@@ -492,7 +492,7 @@ def build_session_change_notification(previous_session: str, current_session: st
     )
 
 
-def compute_position_signed_return(position: dict[str, Any]) -> float | None:
+def compute_position_price_signed_return(position: dict[str, Any]) -> float | None:
     entry_price = float(position.get("entry_price", 0.0) or 0.0)
     mark_price = float(position.get("mark_price", 0.0) or 0.0)
     side = str(position.get("side") or "").upper()
@@ -502,17 +502,40 @@ def compute_position_signed_return(position: dict[str, Any]) -> float | None:
     return direction * (mark_price / entry_price - 1.0)
 
 
+def compute_position_signed_return(position: dict[str, Any]) -> float | None:
+    percentage = position.get("percentage")
+    if percentage not in (None, ""):
+        try:
+            return float(percentage) / 100.0
+        except (TypeError, ValueError):
+            pass
+
+    unrealized_pnl = position.get("unrealized_pnl")
+    initial_margin = position.get("initial_margin")
+    if unrealized_pnl not in (None, "") and initial_margin not in (None, ""):
+        try:
+            margin_value = float(initial_margin)
+            if margin_value > EPSILON:
+                return float(unrealized_pnl) / margin_value
+        except (TypeError, ValueError):
+            pass
+
+    return compute_position_price_signed_return(position)
+
+
 def build_position_loss_notification(position: dict[str, Any], signed_return: float) -> str:
-    return "\n".join(
-        [
-            POSITION_LOSS_ALERT_TITLE,
-            f"- 종목: {position.get('pair')}",
-            f"- 방향: {side_label_from_name(str(position.get('side') or ''))}",
-            f"- 수익률: {format_notification_pct(signed_return)}",
-            f"- 진입가: {format_notification_price(position.get('entry_price'))}",
-            f"- 현재가: {format_notification_price(position.get('mark_price'))}",
-        ]
-    )
+    lines = [
+        POSITION_LOSS_ALERT_TITLE,
+        f"- 종목: {position.get('pair')}",
+        f"- 방향: {side_label_from_name(str(position.get('side') or ''))}",
+        f"- 수익률: {format_notification_pct(signed_return)}",
+        f"- 진입가: {format_notification_price(position.get('entry_price'))}",
+        f"- 현재가: {format_notification_price(position.get('mark_price'))}",
+    ]
+    price_signed_return = compute_position_price_signed_return(position)
+    if price_signed_return is not None and abs(price_signed_return - signed_return) >= 0.005:
+        lines.append(f"- 가격기준 변동률: {format_notification_pct(price_signed_return)}")
+    return "\n".join(lines)
 
 
 def collect_position_loss_notifications(state: dict[str, Any]) -> list[str]:
@@ -1233,6 +1256,16 @@ def fetch_open_position_map(exchange: ccxt.binanceusdm) -> dict[str, dict[str, A
         leverage = info.get("leverage")
         if leverage is None:
             leverage = pos.get("leverage")
+        unrealized_pnl = info.get("unRealizedProfit")
+        if unrealized_pnl is None:
+            unrealized_pnl = pos.get("unrealizedPnl")
+        collateral = info.get("isolatedMargin")
+        if collateral is None:
+            collateral = pos.get("collateral")
+        initial_margin = info.get("positionInitialMargin")
+        if initial_margin is None:
+            initial_margin = pos.get("initialMargin")
+        percentage = pos.get("percentage")
         positions_by_pair[pair] = {
             "pair": pair,
             "symbol": symbol,
@@ -1242,6 +1275,10 @@ def fetch_open_position_map(exchange: ccxt.binanceusdm) -> dict[str, dict[str, A
             "mark_price": float(mark_price) if mark_price is not None else 0.0,
             "margin_mode": str(margin_mode).lower() if margin_mode is not None else None,
             "leverage": float(leverage) if leverage not in (None, "") else None,
+            "unrealized_pnl": float(unrealized_pnl) if unrealized_pnl not in (None, "") else None,
+            "collateral": float(collateral) if collateral not in (None, "") else None,
+            "initial_margin": float(initial_margin) if initial_margin not in (None, "") else None,
+            "percentage": float(percentage) if percentage not in (None, "") else None,
             "position_side": info.get("positionSide"),
         }
     return positions_by_pair

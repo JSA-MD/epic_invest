@@ -14,7 +14,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -38,7 +38,9 @@ load_dotenv()
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PYTHON_BIN = ROOT_DIR / ".venv" / "bin" / "python"
+RUNTIME_PROFILE_PATH = ROOT_DIR / "models" / "active_runtime_profile.json"
 TRADER_SCRIPT = ROOT_DIR / "scripts" / "rotation_target_050_live.py"
+PAIRWISE_TRADER_SCRIPT = ROOT_DIR / "scripts" / "pairwise_regime_live.py"
 START_SCRIPT = ROOT_DIR / "start.sh"
 STOP_SCRIPT = ROOT_DIR / "stop.sh"
 RESTART_SCRIPT = ROOT_DIR / "restart.sh"
@@ -47,6 +49,9 @@ BOT_STATE_PATH = Path(os.getenv("TELEGRAM_BOT_STATE_PATH", "/tmp/epic-invest-tel
 AUDIT_LOG_PATH = Path(os.getenv("TELEGRAM_BOT_AUDIT_LOG", "/tmp/epic-invest-telegram-audit.jsonl"))
 TRADER_LOG_PATH = Path(os.getenv("TRADER_LOG_FILE", "/tmp/epic-invest-trader.log"))
 TRADER_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
+PAIRWISE_STATE_PATH = Path(os.getenv("PAIRWISE_LIVE_STATE_PATH", str(ROOT_DIR / "models" / "pairwise_regime_live_state.json")))
+PAIRWISE_LOG_PATH = Path(os.getenv("PAIRWISE_LIVE_LOG_FILE", str(ROOT_DIR / "logs" / "pairwise_live_service.log")))
+PAIRWISE_PID_PATH = Path(os.getenv("PAIRWISE_LIVE_PID_FILE", "/tmp/epic_pairwise_live.pid"))
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_ALLOWED_CHAT_IDS = {
@@ -163,6 +168,28 @@ def load_bot_state() -> dict[str, Any]:
     return state
 
 
+def load_runtime_profile() -> dict[str, Any]:
+    if not RUNTIME_PROFILE_PATH.exists():
+        return {}
+    try:
+        with open(RUNTIME_PROFILE_PATH, "r") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def load_json_payload(path: Path, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not path.exists():
+        return dict(default or {})
+    try:
+        with open(path, "r") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return dict(default or {})
+    return payload if isinstance(payload, dict) else dict(default or {})
+
+
 def save_bot_state(state: dict[str, Any]) -> None:
     BOT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(BOT_STATE_PATH, "w") as f:
@@ -272,8 +299,54 @@ def normalize_command(text: str) -> tuple[str, list[str]]:
     return command.lower(), tokens[1:]
 
 
-def trader_process_rows() -> list[dict[str, str]]:
-    entry = str(TRADER_SCRIPT)
+def active_trader_context() -> dict[str, Any]:
+    runtime_profile = load_runtime_profile()
+    active_trader = str(runtime_profile.get("active_trader") or "").strip().lower()
+    mode = str(runtime_profile.get("mode") or DEFAULT_MODE)
+    if active_trader == "pairwise":
+        return {
+            "key": "pairwise",
+            "mode": mode,
+            "state_path": PAIRWISE_STATE_PATH,
+            "pid_path": PAIRWISE_PID_PATH,
+            "log_path": PAIRWISE_LOG_PATH,
+            "script_path": PAIRWISE_TRADER_SCRIPT,
+        }
+    return {
+        "key": "core",
+        "mode": mode,
+        "state_path": Path(STATE_PATH),
+        "pid_path": TRADER_PID_PATH,
+        "log_path": TRADER_LOG_PATH,
+        "script_path": TRADER_SCRIPT,
+    }
+
+
+def load_trader_state(context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    resolved_context = context or active_trader_context()
+    state_path = Path(resolved_context["state_path"])
+    if resolved_context.get("key") == "pairwise":
+        state = load_json_payload(
+            state_path,
+            {
+                "latest_runtime_snapshot": {},
+                "latest_decision_snapshot": {},
+                "latest_live_sync": {},
+                "runtime_health": {},
+                "updated_at": None,
+            },
+        )
+        state.setdefault("latest_runtime_snapshot", {})
+        state.setdefault("latest_decision_snapshot", {})
+        state.setdefault("latest_live_sync", {})
+        state.setdefault("runtime_health", {})
+        state.setdefault("updated_at", None)
+        return state
+    return load_state(state_path)
+
+
+def trader_process_rows(context: Mapping[str, Any] | None = None) -> list[dict[str, str]]:
+    entry = str((context or active_trader_context()).get("script_path") or TRADER_SCRIPT)
     try:
         output = subprocess.run(
             ["ps", "-ax", "-o", "pid=,ppid=,stat=,etime=,command="],
@@ -331,9 +404,10 @@ def is_pid_running(pid: int | None) -> bool:
     return True
 
 
-def trader_runtime_pid() -> int | None:
-    state = load_state(STATE_PATH)
-    runtime_health = state.get("runtime_health") or {}
+def trader_runtime_pid(context: Mapping[str, Any] | None = None, state: Mapping[str, Any] | None = None) -> int | None:
+    resolved_context = context or active_trader_context()
+    current_state = state if isinstance(state, Mapping) else load_trader_state(resolved_context)
+    runtime_health = current_state.get("runtime_health") or {}
     raw_pid = runtime_health.get("pid")
     try:
         return int(raw_pid) if raw_pid is not None else None
@@ -341,25 +415,32 @@ def trader_runtime_pid() -> int | None:
         return None
 
 
-def live_state_fresh() -> bool:
-    state = load_state(STATE_PATH)
-    runtime_health = state.get("runtime_health") or {}
+def live_state_fresh(context: Mapping[str, Any] | None = None, state: Mapping[str, Any] | None = None) -> bool:
+    resolved_context = context or active_trader_context()
+    current_state = state if isinstance(state, Mapping) else load_trader_state(resolved_context)
+    runtime_health = current_state.get("runtime_health") or {}
     last_progress_at = latest_signal(
         [
             runtime_health.get("last_success_at"),
             runtime_health.get("last_loop_started_at"),
             runtime_health.get("last_loop_completed_at"),
-            state.get("updated_at"),
+            current_state.get("updated_at"),
         ]
     )
     last_age = age_seconds(last_progress_at)
     return last_age is not None and last_age <= TRADER_STATE_STALE_SECONDS
 
 
+def snapshot_timestamp(snapshot: Mapping[str, Any] | None) -> Any:
+    if not isinstance(snapshot, Mapping):
+        return None
+    return snapshot.get("captured_at") or snapshot.get("generated_at")
+
+
 def snapshot_cache_age(snapshot: dict[str, Any] | None) -> float | None:
     if not snapshot:
         return None
-    return age_seconds(snapshot.get("captured_at"))
+    return age_seconds(snapshot_timestamp(snapshot))
 
 
 def snapshot_cache_fresh(snapshot: dict[str, Any] | None) -> bool:
@@ -378,17 +459,62 @@ def cached_positions_map(snapshot: dict[str, Any] | None) -> dict[str, dict[str,
     return result
 
 
-def is_trader_running() -> bool:
-    runtime_pid = trader_runtime_pid()
+def normalized_protections(snapshot: Mapping[str, Any] | None, state: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    if not isinstance(snapshot, Mapping):
+        snapshot = {}
+    if isinstance(state, Mapping):
+        latest_live_sync = state.get("latest_live_sync")
+        if isinstance(latest_live_sync, Mapping):
+            protection_orders = latest_live_sync.get("protection_orders")
+            if isinstance(protection_orders, list) and protection_orders:
+                normalized: list[dict[str, Any]] = []
+                for item in protection_orders:
+                    if not isinstance(item, Mapping):
+                        continue
+                    normalized.append(
+                        {
+                            "pair": item.get("pair") or item.get("symbol"),
+                            "symbol": item.get("symbol"),
+                            "status": item.get("status"),
+                            "type": item.get("type"),
+                            "side": item.get("side"),
+                            "id": item.get("id"),
+                            "clientOrderId": item.get("clientOrderId"),
+                            "stop_price": item.get("stop_price")
+                            or item.get("stopPrice")
+                            or item.get("triggerPrice"),
+                            "take_price": item.get("take_price") or item.get("takeProfitPrice"),
+                        }
+                    )
+                if normalized:
+                    return normalized
+    protections = snapshot.get("protections")
+    if isinstance(protections, list) and protections:
+        return [item for item in protections if isinstance(item, dict)]
+    extra = snapshot.get("extra")
+    if isinstance(extra, Mapping):
+        execution = extra.get("execution")
+        if isinstance(execution, Mapping):
+            shutdown_protection = execution.get("shutdown_protection")
+            if isinstance(shutdown_protection, Mapping):
+                derived = shutdown_protection.get("protections")
+                if isinstance(derived, list) and derived:
+                    return [item for item in derived if isinstance(item, dict)]
+    return []
+
+
+def is_trader_running(context: Mapping[str, Any] | None = None, state: Mapping[str, Any] | None = None) -> bool:
+    resolved_context = context or active_trader_context()
+    runtime_pid = trader_runtime_pid(resolved_context, state)
     if is_pid_running(runtime_pid):
         return True
-    pid = read_pid(TRADER_PID_PATH)
+    pid = read_pid(Path(resolved_context["pid_path"]))
     if is_pid_running(pid):
         return True
-    rows = trader_process_rows()
+    rows = trader_process_rows(resolved_context)
     if rows:
         return True
-    return live_state_fresh()
+    return live_state_fresh(resolved_context, state)
 
 
 def read_recent_lines(path: Path, max_lines: int = 20) -> list[str]:
@@ -417,29 +543,47 @@ def read_recent_audit(max_items: int = 10) -> list[dict[str, Any]]:
 def get_runtime_snapshot() -> dict[str, Any]:
     bot_state = load_bot_state()
     bot_runtime = ensure_bot_runtime(bot_state)
-    trader_state = load_state(STATE_PATH)
+    context = active_trader_context()
+    trader_state = load_trader_state(context)
     trader_runtime = trader_state.get("runtime_health") or {}
-    trader_pid = trader_runtime_pid() or read_pid(TRADER_PID_PATH)
-    trader_rows = trader_process_rows()
+    trader_pid = trader_runtime_pid(context, trader_state) or read_pid(Path(context["pid_path"]))
+    trader_rows = trader_process_rows(context)
     cached_snapshot = trader_state.get("latest_runtime_snapshot") or {}
+    cached_positions = cached_positions_map(cached_snapshot)
+    latest_live_sync = trader_state.get("latest_live_sync") or {}
+    live_sync_positions = latest_live_sync.get("positions") or {}
+    if isinstance(live_sync_positions, Mapping):
+        sync_positions = {
+            str(pair): dict(pos)
+            for pair, pos in live_sync_positions.items()
+            if pair and isinstance(pos, Mapping)
+        }
+        if not cached_positions:
+            cached_positions = sync_positions
+        else:
+            for pair, pos in sync_positions.items():
+                merged = dict(cached_positions.get(pair) or {})
+                merged.update(pos)
+                cached_positions[pair] = merged
     snapshot: dict[str, Any] = {
-        "mode": DEFAULT_MODE,
+        "trader_key": context["key"],
+        "mode": context["mode"],
         "leverage": resolve_default_leverage(),
         "processes": trader_rows,
         "state": trader_state,
-        "trader_running": bool(trader_rows) or is_pid_running(trader_pid) or live_state_fresh(),
+        "trader_running": bool(trader_rows) or is_pid_running(trader_pid) or live_state_fresh(context, trader_state),
         "trader_pid": trader_pid,
         "trader_runtime": trader_runtime,
         "bot_runtime": bot_runtime,
         "snapshot_age_seconds": snapshot_cache_age(cached_snapshot),
-        "snapshot_captured_at": cached_snapshot.get("captured_at"),
-        "snapshot_ready": bool(cached_snapshot.get("captured_at")),
+        "snapshot_captured_at": snapshot_timestamp(cached_snapshot),
+        "snapshot_ready": bool(snapshot_timestamp(cached_snapshot)),
         "decision": trader_state.get("latest_decision_snapshot"),
     }
     if cached_snapshot:
         snapshot["equity"] = cached_snapshot.get("equity")
-        snapshot["positions"] = cached_positions_map(cached_snapshot)
-        snapshot["protections"] = cached_snapshot.get("protections") or []
+        snapshot["positions"] = cached_positions
+        snapshot["protections"] = normalized_protections(cached_snapshot, trader_state)
         snapshot["exchange_error"] = cached_snapshot.get("exchange_error")
         snapshot["plan"] = cached_snapshot.get("plan")
         if not snapshot["plan"] and snapshot_cache_fresh(cached_snapshot):
@@ -472,6 +616,15 @@ def format_qty(value: Any) -> str:
     if value is None:
         return "-"
     return f"{float(value):+.6f}"
+
+
+def format_position_pct(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        return f"{float(value):+.2f}%"
+    except (TypeError, ValueError):
+        return None
 
 
 def side_label(side: str) -> str:
@@ -507,8 +660,51 @@ def format_decision(snapshot: dict[str, Any]) -> str:
     if decision.get("captured_at"):
         lines.append(f"- 데이터 기준시각: {decision['captured_at']}")
     lines.append(f"- 세션: {str(decision.get('session_type', '')).upper()}")
-    lines.append(f"- 시장 기준일: {decision.get('market_day')}")
-    lines.append(f"- 적용일: {decision.get('effective_day')}")
+    if decision.get("market_day"):
+        lines.append(f"- 시장 기준일: {decision.get('market_day')}")
+    if decision.get("effective_day"):
+        lines.append(f"- 적용일: {decision.get('effective_day')}")
+
+    if str(decision.get("strategy_class") or "").startswith("pairwise_"):
+        positions = snapshot.get("positions", {})
+        if positions:
+            lines.append("- 현재 포지션:")
+            for _, pos in positions.items():
+                lines.append(
+                    f"  {pos.get('pair')}: {side_label(str(pos.get('side')))} {format_qty(pos.get('qty'))} | "
+                    f"진입가 {format_price(pos.get('entry_price'))} | 현재가 {format_price(pos.get('mark_price'))}"
+                )
+        else:
+            lines.append("- 현재 포지션: 없음")
+        plan = snapshot.get("plan") or {}
+        if plan.get("signal_timestamp"):
+            lines.append(f"- 신호 시각: {plan.get('signal_timestamp')}")
+        lines.append("- 진입근거:")
+        pair_plans = decision.get("pair_plans") or {}
+        if isinstance(pair_plans, Mapping):
+            for pair in PAIRS:
+                pair_plan = pair_plans.get(pair) or {}
+                if not pair_plan:
+                    continue
+                lines.append(
+                    f"  {pair}: 상태 {pair_plan.get('route_state_name') or '-'} | "
+                    f"신호 {float(pair_plan.get('signal_value', 0.0)):.2f} | "
+                    f"요청비중 {float(pair_plan.get('requested_weight', 0.0)):+.3%} | "
+                    f"목표비중 {float(pair_plan.get('target_weight', 0.0)):+.3%}"
+                )
+        else:
+            for pair, weight in (decision.get("target_weights") or {}).items():
+                lines.append(f"  {pair}: 목표비중 {float(weight):+.3%}")
+        promotion_gate = (snapshot.get("state") or {}).get("promotion_gate") or {}
+        if promotion_gate:
+            lines.append(
+                f"- 승격 게이트: {promotion_gate.get('status')} | "
+                f"shadow_live={bool(promotion_gate.get('ready_for_shadow_live'))} | "
+                f"live={bool(promotion_gate.get('ready_for_live'))}"
+            )
+        lines.append("- 종료 조건:")
+        lines.extend(protection_summary_lines(snapshot.get("protections") or []))
+        return "\n".join(lines)
 
     positions = decision.get("positions") or []
     if positions:
@@ -660,6 +856,7 @@ def format_status(snapshot: dict[str, Any]) -> str:
 
     lines = ["에픽 인베스트 상태"]
     lines.append(f"- 트레이더: {'실행 중' if trader_running else '중지됨'}")
+    lines.append(f"- 활성 트레이더: {snapshot.get('trader_key', 'core')}")
     if processes:
         p = processes[0]
         lines.append(f"- PID: {p['pid']} ({p['etime']})")
@@ -680,9 +877,14 @@ def format_status(snapshot: dict[str, Any]) -> str:
 
     if plan:
         lines.append(f"- 세션: {plan['session_type'].upper()}")
-        lines.append(f"- 시장 기준일: {plan['market_day']}")
-        lines.append(f"- 적용일: {plan['effective_day']}")
-        lines.append(f"- 코어 총 레버리지: {plan['core_gross_leverage']:.3f}x")
+        if plan.get("market_day"):
+            lines.append(f"- 시장 기준일: {plan['market_day']}")
+        if plan.get("effective_day"):
+            lines.append(f"- 적용일: {plan['effective_day']}")
+        if plan.get("core_gross_leverage") is not None:
+            lines.append(f"- 코어 총 레버리지: {plan['core_gross_leverage']:.3f}x")
+        elif plan.get("gross_leverage") is not None:
+            lines.append(f"- 총 레버리지: {float(plan['gross_leverage']):.3f}x")
 
     if snapshot_ready:
         lines.append(f"- 열린 포지션 수: {len(positions)}")
@@ -715,6 +917,34 @@ def format_plan(snapshot: dict[str, Any]) -> str:
         if not snapshot.get("snapshot_ready"):
             return "전략 계획 캐시를 준비 중입니다. 첫 동기화가 끝나면 바로 조회됩니다."
         return f"전략 계획을 불러오지 못했습니다: {snapshot.get('plan_error', '알 수 없는 오류')}"
+
+    if "core_weights" not in plan:
+        lines = ["현재 pairwise 계획"]
+        if snapshot.get("snapshot_captured_at"):
+            lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
+        lines.append(f"- 세션: {str(plan.get('session_type', 'pairwise')).upper()}")
+        if plan.get("signal_timestamp"):
+            lines.append(f"- 신호 시각: {plan['signal_timestamp']}")
+        if plan.get("gross_leverage") is not None:
+            lines.append(f"- 총 레버리지: {float(plan['gross_leverage']):.2f}x")
+        target_weights = plan.get("target_weights") or {}
+        if target_weights:
+            lines.append("- 목표 비중:")
+            for pair in PAIRS:
+                if pair in target_weights:
+                    lines.append(f"  {pair}: {float(target_weights[pair]):+.3%}")
+        pair_plans = plan.get("pair_plans") or {}
+        if isinstance(pair_plans, Mapping):
+            for pair in PAIRS:
+                pair_plan = pair_plans.get(pair) or {}
+                if not pair_plan:
+                    continue
+                lines.append(
+                    f"- {pair}: 상태 {pair_plan.get('route_state_name') or '-'} | "
+                    f"요청비중 {float(pair_plan.get('requested_weight', 0.0)):+.3%} | "
+                    f"목표비중 {float(pair_plan.get('target_weight', 0.0)):+.3%}"
+                )
+        return "\n".join(lines)
 
     lines = ["오늘의 전략 계획"]
     if snapshot.get("snapshot_captured_at"):
@@ -754,6 +984,9 @@ def format_positions(snapshot: dict[str, Any]) -> str:
             f"진입가 ${pos['entry_price']:,.4f} | 현재가 ${pos['mark_price']:,.4f} | "
             f"마진 {margin_mode}"
         )
+        pct = format_position_pct(pos.get("percentage"))
+        if pct:
+            lines[-1] += f" | 손익률 {pct}"
     return "\n".join(lines)
 
 
@@ -767,10 +1000,16 @@ def format_protections(snapshot: dict[str, Any]) -> str:
     if snapshot.get("snapshot_captured_at"):
         lines.append(f"- 데이터 기준시각: {snapshot['snapshot_captured_at']}")
     for order in protections:
-        lines.append(
-            f"- {order.get('symbol')}: 유형={order.get('type')} 방향={order.get('side')} "
-            f"id={order.get('id')} client={order.get('clientOrderId') or order.get('client_order_id') or '없음'}"
-        )
+        if order.get("stop_price") is not None or order.get("take_price") is not None:
+            lines.append(
+                f"- {order.get('pair') or order.get('symbol')}: 상태={order.get('status')} | "
+                f"손절 {format_price(order.get('stop_price'))} | 익절 {format_price(order.get('take_price'))}"
+            )
+        else:
+            lines.append(
+                f"- {order.get('symbol') or order.get('pair')}: 유형={order.get('type')} 방향={order.get('side')} "
+                f"id={order.get('id')} client={order.get('clientOrderId') or order.get('client_order_id') or '없음'}"
+            )
     return "\n".join(lines)
 
 
@@ -792,7 +1031,7 @@ def format_killswitch(snapshot: dict[str, Any]) -> str:
 
 
 def format_logs() -> str:
-    lines = read_recent_lines(TRADER_LOG_PATH, max_lines=25)
+    lines = read_recent_lines(Path(active_trader_context()["log_path"]), max_lines=25)
     if not lines:
         return "트레이더 로그가 비어 있습니다."
     return "최근 트레이더 로그\n" + "\n".join(lines)
@@ -890,6 +1129,9 @@ def clear_pending_action(state: dict[str, Any], chat_id: int) -> None:
 
 
 def execute_control_action(action: str) -> str:
+    context = active_trader_context()
+    trader_key = str(context.get("key") or "core")
+    script_path = Path(context["script_path"])
     if action == "starttrader":
         result = run_local_command([str(START_SCRIPT)])
         return summarize_command_result("트레이더 시작", result)
@@ -900,17 +1142,20 @@ def execute_control_action(action: str) -> str:
         result = run_local_command([str(RESTART_SCRIPT)])
         return summarize_command_result("트레이더 재시작", result)
     if action == "sync":
-        result = run_local_command([str(PYTHON_BIN), str(TRADER_SCRIPT), "sync-state", "--execute"])
+        command = [str(PYTHON_BIN), str(script_path), "sync-state"]
+        if trader_key != "pairwise":
+            command.append("--execute")
+        result = run_local_command(command)
         return summarize_command_result("상태 동기화", result)
     if action == "protect":
-        result = run_local_command([str(PYTHON_BIN), str(TRADER_SCRIPT), "shutdown-protect", "--execute"])
+        result = run_local_command([str(PYTHON_BIN), str(script_path), "shutdown-protect", "--execute"])
         return summarize_command_result("보호주문 설치", result)
     if action in {"closeall", "flatten"}:
         steps: list[str] = []
         if is_trader_running():
             stop_result = run_local_command([str(STOP_SCRIPT)])
             steps.append(summarize_command_result("트레이더 종료", stop_result))
-        close_result = run_local_command([str(PYTHON_BIN), str(TRADER_SCRIPT), "close-all", "--execute"])
+        close_result = run_local_command([str(PYTHON_BIN), str(script_path), "close-all", "--execute"])
         steps.append(summarize_command_result("전체 포지션 종료", close_result))
         return "\n\n".join(steps)
     raise ValueError(f"Unsupported action: {action}")

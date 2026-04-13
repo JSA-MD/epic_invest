@@ -281,6 +281,7 @@ def parse_args() -> argparse.Namespace:
     sync_state = sub.add_parser("sync-state")
     add_common(sync_state)
     sync_state.add_argument("--mode", choices=("demo", "live"), default="demo")
+    sync_state.add_argument("--execute", action="store_true")
 
     shutdown_protect = sub.add_parser("shutdown-protect")
     add_common(shutdown_protect)
@@ -1102,16 +1103,22 @@ def run_sync_state(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
     bridge = load_execution_bridge()
     exchange = bridge.get_exchange(args.mode)
+    cleanup_report = None
+    if bool(args.execute):
+        cleanup_report = bridge.install_shutdown_protection(exchange, state, execute=True)
     equity = float(bridge.fetch_equity(exchange))
     positions = bridge.fetch_open_position_map(exchange)
     protections = bridge.fetch_strategy_protection_orders(exchange)
     snapshot = {
         "at": iso_now(),
         "mode": args.mode,
+        "execute": bool(args.execute),
         "equity": equity,
         "positions": positions,
         "protection_orders": protections,
     }
+    if cleanup_report is not None:
+        snapshot["protection_cleanup"] = cleanup_report
     state["latest_live_sync"] = snapshot
     save_state(args.state_path, state)
     print(json.dumps(json_ready(snapshot), indent=2, sort_keys=True))

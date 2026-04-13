@@ -267,6 +267,27 @@ class CoreLiveSmokeTests(unittest.TestCase):
             rearmed = rotation_target_050_live.collect_position_loss_notifications(state)
         self.assertEqual(len(rearmed), 1)
 
+    def test_collect_position_loss_notifications_prefers_exchange_percentage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = rotation_target_050_live.load_state(Path(tmpdir) / "state.json")
+
+        state["latest_runtime_snapshot"]["positions"] = [
+            {
+                "pair": "BNBUSDT",
+                "side": "SHORT",
+                "qty": -11.22,
+                "entry_price": 592.71,
+                "mark_price": 599.86,
+                "percentage": -5.95,
+            }
+        ]
+        with patch.object(rotation_target_050_live, "utc_now", return_value=datetime(2026, 4, 13, 6, 0, tzinfo=timezone.utc)):
+            messages = rotation_target_050_live.collect_position_loss_notifications(state)
+
+        self.assertEqual(len(messages), 1)
+        self.assertIn("- 수익률: -5.95%", messages[0])
+        self.assertIn("- 가격기준 변동률:", messages[0])
+
 
 if __name__ == "__main__":
     unittest.main()

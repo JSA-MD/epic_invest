@@ -23,6 +23,7 @@ if str(ROOT / "scripts") not in sys.path:
 from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
+from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
 from replay_regime_mixture_realistic import load_model as load_signal_model
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
@@ -444,95 +445,130 @@ def build_pairwise_plan(
     for pair in PAIRS:
         raw_signal = np.asarray(compiled(*gp.get_feature_arrays(df, pair)), dtype=float)
         overlay_inputs = build_overlay_inputs(df, PAIRS, regime_pair=pair)
-        route_state_mode = normalize_route_state_mode(config[pair].get("route_state_mode"))
-        bucket_codes = build_route_bucket_codes(
-            df.index,
-            overlay_inputs,
-            config[pair]["route_breadth_threshold"],
-            route_state_mode=route_state_mode,
-        )
-        mapping = normalize_mapping_indices(config[pair]["mapping_indices"], route_state_mode)
-        bucket_code = int(bucket_codes[signal_index])
-        active_index = int(mapping[bucket_code])
-        route_state_name = route_state_names(route_state_mode)[bucket_code]
-        params = library[active_index]
-        current_weight = float(current_weights.get(pair, 0.0))
-        cooldown_bars_left = max(int(cooldown_state.get(pair, 0)), 0)
-        if cooldown_bars_left > 0:
-            cooldown_bars_left -= 1
-        day_index = pd.DatetimeIndex(df.index).normalize()
-        regime_score = float(
-            overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
-        )
-        breadth_score = float(
-            overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
-        )
-        bar_vol_ann = float(overlay_inputs["vol_ann_bar"].fillna(np.nan).iloc[signal_index])
-        equity_corr_value = float(
-            overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").iloc[signal_index]
-        )
-        equity_corr_bucket = str(
-            overlay_inputs["equity_corr_bucket_daily"].reindex(day_index, method="ffill").fillna("equity_unknown").iloc[signal_index]
-        )
-        equity_corr_quantile_state = str(
-            overlay_inputs["equity_corr_quantile_state_daily"].reindex(day_index, method="ffill").fillna("missing").iloc[signal_index]
-        )
-        equity_corr_gross_scale = float(
-            overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
-        )
-        equity_corr_regime_mult = float(
-            overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
-        )
-        if not PAIRWISE_EQUITY_CORR_RISK_ENABLED:
-            equity_corr_gross_scale = 1.0
-            equity_corr_regime_mult = 1.0
-        requested_weight = compute_requested_weight(
-            raw_signal=raw_signal,
-            params=params,
-            regime_score=regime_score,
-            breadth_score=breadth_score,
-            bar_vol_ann=bar_vol_ann,
-            equity_corr_gross_scale=equity_corr_gross_scale,
-            equity_corr_regime_mult=equity_corr_regime_mult,
-        )
-        drawdown = current_equity / max(peak_equity, 1e-8) - 1.0
-        if drawdown <= -float(params.kill_switch_pct) and cooldown_bars_left == 0:
-            cooldown_bars_left = int(params.cooldown_days) * gp.periods_per_day(gp.TIMEFRAME)
-        rebalance_due = signal_index % max(int(params.rebalance_bars), 1) == 0
-        if cooldown_bars_left > 0:
-            target_weight = 0.0
-        elif rebalance_due or abs(current_weight) <= TARGET_WEIGHT_EPS:
-            target_weight = requested_weight
-        else:
-            target_weight = current_weight
-        if abs(target_weight - current_weight) < gp.NO_TRADE_BAND / 100.0:
-            target_weight = current_weight
-        close_price = float(df[f"{pair}_close"].iloc[signal_index])
+
+        def build_single_pair_plan(pair_config: Mapping[str, Any]) -> Dict[str, Any]:
+            route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
+            bucket_codes = build_route_bucket_codes(
+                df.index,
+                overlay_inputs,
+                pair_config["route_breadth_threshold"],
+                route_state_mode=route_state_mode,
+            )
+            mapping = normalize_mapping_indices(pair_config["mapping_indices"], route_state_mode)
+            bucket_code = int(bucket_codes[signal_index])
+            active_index = int(mapping[bucket_code])
+            route_state_name = route_state_names(route_state_mode)[bucket_code]
+            params = library[active_index]
+            current_weight = float(current_weights.get(pair, 0.0))
+            cooldown_bars_left = max(int(cooldown_state.get(pair, 0)), 0)
+            if cooldown_bars_left > 0:
+                cooldown_bars_left -= 1
+            day_index = pd.DatetimeIndex(df.index).normalize()
+            regime_score = float(
+                overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
+            )
+            breadth_score = float(
+                overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
+            )
+            bar_vol_ann = float(overlay_inputs["vol_ann_bar"].fillna(np.nan).iloc[signal_index])
+            equity_corr_value = float(
+                overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").iloc[signal_index]
+            )
+            equity_corr_bucket = str(
+                overlay_inputs["equity_corr_bucket_daily"].reindex(day_index, method="ffill").fillna("equity_unknown").iloc[signal_index]
+            )
+            equity_corr_quantile_state = str(
+                overlay_inputs["equity_corr_quantile_state_daily"].reindex(day_index, method="ffill").fillna("missing").iloc[signal_index]
+            )
+            equity_corr_gross_scale = float(
+                overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
+            )
+            equity_corr_regime_mult = float(
+                overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
+            )
+            if not PAIRWISE_EQUITY_CORR_RISK_ENABLED:
+                equity_corr_gross_scale = 1.0
+                equity_corr_regime_mult = 1.0
+            requested_weight = compute_requested_weight(
+                raw_signal=raw_signal,
+                params=params,
+                regime_score=regime_score,
+                breadth_score=breadth_score,
+                bar_vol_ann=bar_vol_ann,
+                equity_corr_gross_scale=equity_corr_gross_scale,
+                equity_corr_regime_mult=equity_corr_regime_mult,
+            )
+            drawdown = current_equity / max(peak_equity, 1e-8) - 1.0
+            if drawdown <= -float(params.kill_switch_pct) and cooldown_bars_left == 0:
+                cooldown_bars_left = int(params.cooldown_days) * gp.periods_per_day(gp.TIMEFRAME)
+            rebalance_due = signal_index % max(int(params.rebalance_bars), 1) == 0
+            if cooldown_bars_left > 0:
+                target_weight = 0.0
+            elif rebalance_due or abs(current_weight) <= TARGET_WEIGHT_EPS:
+                target_weight = requested_weight
+            else:
+                target_weight = current_weight
+            if abs(target_weight - current_weight) < gp.NO_TRADE_BAND / 100.0:
+                target_weight = current_weight
+            close_price = float(df[f"{pair}_close"].iloc[signal_index])
+            return {
+                "price": close_price,
+                "current_weight": current_weight,
+                "requested_weight": requested_weight,
+                "target_weight": target_weight,
+                "rebalance_due": rebalance_due,
+                "cooldown_bars_left_after": cooldown_bars_left,
+                "route_bucket": bucket_code,
+                "route_state_mode": route_state_mode,
+                "route_state_name": route_state_name,
+                "route_mapping_index": active_index,
+                "params": asdict(params),
+                "regime_score": regime_score,
+                "breadth_score": breadth_score,
+                "bar_vol_ann": bar_vol_ann,
+                "equity_corr_value": equity_corr_value if np.isfinite(equity_corr_value) else None,
+                "equity_corr_bucket": equity_corr_bucket,
+                "equity_corr_quantile_state": equity_corr_quantile_state,
+                "equity_corr_context": overlay_inputs.get("equity_corr_context"),
+                "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
+                "equity_corr_gross_scale": equity_corr_gross_scale,
+                "equity_corr_regime_threshold_mult": equity_corr_regime_mult,
+                "signal_value": float(np.nan_to_num(raw_signal[-1], nan=0.0)),
+            }
+
+        baseline_plan = build_single_pair_plan(config[pair])
+        final_plan = baseline_plan
+        blend = get_btc_convex_blend(summary["selected_candidate"], pair)
+        if blend is not None:
+            specialist_plan = build_single_pair_plan(blend["specialist_pair_config"])
+            final_plan = dict(baseline_plan)
+            final_plan["requested_weight"] = blend_runtime_weight(
+                baseline_weight=float(baseline_plan["requested_weight"]),
+                specialist_weight=float(specialist_plan["requested_weight"]),
+                route_state_name=str(baseline_plan["route_state_name"]),
+                alpha=float(blend["alpha"]),
+                mode=str(blend["mode"]),
+            )
+            final_plan["target_weight"] = blend_runtime_weight(
+                baseline_weight=float(baseline_plan["target_weight"]),
+                specialist_weight=float(specialist_plan["target_weight"]),
+                route_state_name=str(baseline_plan["route_state_name"]),
+                alpha=float(blend["alpha"]),
+                mode=str(blend["mode"]),
+            )
+            final_plan["blend"] = {
+                "alpha": float(blend["alpha"]),
+                "mode": str(blend["mode"]),
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+                "specialist_route_state_name": str(specialist_plan["route_state_name"]),
+            }
+
+        close_price = float(final_plan["price"])
         latest_prices[pair] = close_price
-        target_weights[pair] = target_weight
+        target_weights[pair] = float(final_plan["target_weight"])
         pair_plans[pair] = {
-            "price": close_price,
-            "current_weight": current_weight,
-            "requested_weight": requested_weight,
-            "target_weight": target_weight,
-            "rebalance_due": rebalance_due,
-            "cooldown_bars_left_after": cooldown_bars_left,
-            "route_bucket": bucket_code,
-            "route_state_mode": route_state_mode,
-            "route_state_name": route_state_name,
-            "route_mapping_index": active_index,
-            "params": asdict(params),
-            "regime_score": regime_score,
-            "breadth_score": breadth_score,
-            "bar_vol_ann": bar_vol_ann,
-            "equity_corr_value": equity_corr_value if np.isfinite(equity_corr_value) else None,
-            "equity_corr_bucket": equity_corr_bucket,
-            "equity_corr_quantile_state": equity_corr_quantile_state,
-            "equity_corr_context": overlay_inputs.get("equity_corr_context"),
-            "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
-            "equity_corr_gross_scale": equity_corr_gross_scale,
-            "equity_corr_regime_threshold_mult": equity_corr_regime_mult,
-            "signal_value": float(np.nan_to_num(raw_signal[-1], nan=0.0)),
+            **final_plan,
         }
 
     gross = float(sum(abs(weight) for weight in target_weights.values()))

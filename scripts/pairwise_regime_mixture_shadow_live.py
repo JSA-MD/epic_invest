@@ -21,6 +21,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
+from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
 from fractal_genome_core import LeafGene, collect_specs, deserialize_tree, evaluate_tree_leaf_codes
 from replay_regime_mixture_realistic import load_model
 from rotation_target_050_live import (
@@ -772,70 +773,72 @@ def build_pairwise_plan(
 
     for pair in pairs:
         pair_config = candidate["pair_configs"][pair]
-        route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
         overlay_inputs = build_overlay_inputs(df_all, pairs, regime_pair=pair)
-        context = {
-            "close": df_all[[f"{asset}_close" for asset in pairs]]
-            .rename(columns={f"{asset}_close": asset for asset in pairs})
-            .sort_index(),
-            "bucket_codes": {
-                float(pair_config["route_breadth_threshold"]): build_route_bucket_codes(
-                    pd.DatetimeIndex(df_all.index),
-                    overlay_inputs,
-                    float(pair_config["route_breadth_threshold"]),
-                    route_state_mode=route_state_mode,
-                ).astype("int64")
-            },
-            "regime": overlay_inputs["btc_regime_daily"].reindex(df_all.index.normalize(), method="ffill").fillna(0.0).to_numpy(dtype="float64"),
-            "breadth": overlay_inputs["breadth_daily"].reindex(df_all.index.normalize(), method="ffill").fillna(0.0).to_numpy(dtype="float64"),
-            "vol_ann": overlay_inputs["vol_ann_bar"].reindex(pd.DatetimeIndex(df_all.index)).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
-            "smooth_signal_matrix": np.vstack(
-                [
-                    raw_signal_all[pair].ewm(span=span, adjust=False).mean().to_numpy(dtype="float64")
-                    for span in library_lookup["spans"]
-                ]
-            ),
-        }
 
-        signal_idx = len(df_all) - 1
-        route_threshold = float(pair_config["route_breadth_threshold"])
-        bucket_code = int(context["bucket_codes"][route_threshold][signal_idx])
-        mapping = normalize_mapping_indices(pair_config["mapping_indices"], route_state_mode)
-        active_idx = int(mapping[bucket_code])
-        route_state_name = route_state_names(route_state_mode)[bucket_code]
-        params = library[active_idx]
-        active_leaf = candidate.get("active_leaf") or {}
-        if active_leaf:
-            params = apply_leaf_gene_to_overlay_params(params, LeafGene(**((active_leaf.get("gene") or {}))))
-        signal_pos = int(library_lookup["signal_pos"][active_idx])
-        signal_pct = float(np.clip(context["smooth_signal_matrix"][signal_pos, signal_idx], -500.0, 500.0))
-        requested_weight = signal_pct / 100.0
-        regime_score = float(context["regime"][signal_idx])
-        breadth_score = float(context["breadth"][signal_idx])
-        long_ok = regime_score >= params.regime_threshold and breadth_score >= params.breadth_threshold
-        short_ok = regime_score <= -params.regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
-        if requested_weight > 0.0 and not long_ok:
-            requested_weight = 0.0
-        elif requested_weight < 0.0 and not short_ok:
-            requested_weight = 0.0
+        def build_single_pair_plan(local_pair_config: dict[str, Any]) -> dict[str, Any]:
+            route_state_mode = normalize_route_state_mode(local_pair_config.get("route_state_mode"))
+            context = {
+                "close": df_all[[f"{asset}_close" for asset in pairs]]
+                .rename(columns={f"{asset}_close": asset for asset in pairs})
+                .sort_index(),
+                "bucket_codes": {
+                    float(local_pair_config["route_breadth_threshold"]): build_route_bucket_codes(
+                        pd.DatetimeIndex(df_all.index),
+                        overlay_inputs,
+                        float(local_pair_config["route_breadth_threshold"]),
+                        route_state_mode=route_state_mode,
+                    ).astype("int64")
+                },
+                "regime": overlay_inputs["btc_regime_daily"].reindex(df_all.index.normalize(), method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+                "breadth": overlay_inputs["breadth_daily"].reindex(df_all.index.normalize(), method="ffill").fillna(0.0).to_numpy(dtype="float64"),
+                "vol_ann": overlay_inputs["vol_ann_bar"].reindex(pd.DatetimeIndex(df_all.index)).ffill().bfill().fillna(0.0).to_numpy(dtype="float64"),
+                "smooth_signal_matrix": np.vstack(
+                    [
+                        raw_signal_all[pair].ewm(span=span, adjust=False).mean().to_numpy(dtype="float64")
+                        for span in library_lookup["spans"]
+                    ]
+                ),
+            }
 
-        bar_vol_ann = float(context["vol_ann"][signal_idx])
-        if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
-            vol_scale = min(
-                params.target_vol_ann / bar_vol_ann,
-                params.gross_cap / max(abs(requested_weight), 1e-8),
-            )
-            requested_weight *= float(vol_scale)
-        target_weight = float(np.clip(requested_weight, -params.gross_cap, params.gross_cap))
-        current_weight = 0.0
-        if execute and exchange is not None:
-            symbol = PAIR_TO_MARKET[pair]
-            price = float(exchange.fetch_ticker(symbol).get("last") or exchange.fetch_ticker(symbol).get("mark") or exchange.fetch_ticker(symbol).get("close"))
-            if abs(equity) > EPSILON:
-                current_weight = float(current_qty_map.get(pair, 0.0) * price / equity)
+            signal_idx = len(df_all) - 1
+            route_threshold = float(local_pair_config["route_breadth_threshold"])
+            bucket_code = int(context["bucket_codes"][route_threshold][signal_idx])
+            mapping = normalize_mapping_indices(local_pair_config["mapping_indices"], route_state_mode)
+            active_idx = int(mapping[bucket_code])
+            route_state_name = route_state_names(route_state_mode)[bucket_code]
+            params = library[active_idx]
+            active_leaf = candidate.get("active_leaf") or {}
+            if active_leaf:
+                params = apply_leaf_gene_to_overlay_params(params, LeafGene(**((active_leaf.get("gene") or {}))))
+            signal_pos = int(library_lookup["signal_pos"][active_idx])
+            signal_pct = float(np.clip(context["smooth_signal_matrix"][signal_pos, signal_idx], -500.0, 500.0))
+            requested_weight = signal_pct / 100.0
+            regime_score = float(context["regime"][signal_idx])
+            breadth_score = float(context["breadth"][signal_idx])
+            long_ok = regime_score >= params.regime_threshold and breadth_score >= params.breadth_threshold
+            short_ok = regime_score <= -params.regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
+            if requested_weight > 0.0 and not long_ok:
+                requested_weight = 0.0
+            elif requested_weight < 0.0 and not short_ok:
+                requested_weight = 0.0
 
-        pair_plans.append(
-            {
+            bar_vol_ann = float(context["vol_ann"][signal_idx])
+            if np.isfinite(bar_vol_ann) and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
+                vol_scale = min(
+                    params.target_vol_ann / bar_vol_ann,
+                    params.gross_cap / max(abs(requested_weight), 1e-8),
+                )
+                requested_weight *= float(vol_scale)
+            target_weight = float(np.clip(requested_weight, -params.gross_cap, params.gross_cap))
+            current_weight = 0.0
+            if execute and exchange is not None:
+                symbol = PAIR_TO_MARKET[pair]
+                ticker = exchange.fetch_ticker(symbol)
+                price = float(ticker.get("last") or ticker.get("mark") or ticker.get("close"))
+                if abs(equity) > EPSILON:
+                    current_weight = float(current_qty_map.get(pair, 0.0) * price / equity)
+
+            return {
                 "pair": pair,
                 "symbol": PAIR_TO_MARKET[pair],
                 "bucket_code": bucket_code,
@@ -856,8 +859,37 @@ def build_pairwise_plan(
                 "short_gate": bool(short_ok),
                 "bar_vol_ann": bar_vol_ann,
             }
-        )
-        target_weights[pair] = target_weight
+
+        baseline_plan = build_single_pair_plan(pair_config)
+        final_plan = baseline_plan
+        blend = get_btc_convex_blend(candidate, pair)
+        if blend is not None:
+            specialist_plan = build_single_pair_plan(blend["specialist_pair_config"])
+            final_plan = dict(baseline_plan)
+            final_plan["requested_weight"] = blend_runtime_weight(
+                baseline_weight=float(baseline_plan["requested_weight"]),
+                specialist_weight=float(specialist_plan["requested_weight"]),
+                route_state_name=str(baseline_plan["route_state_name"]),
+                alpha=float(blend["alpha"]),
+                mode=str(blend["mode"]),
+            )
+            final_plan["target_weight"] = blend_runtime_weight(
+                baseline_weight=float(baseline_plan["target_weight"]),
+                specialist_weight=float(specialist_plan["target_weight"]),
+                route_state_name=str(baseline_plan["route_state_name"]),
+                alpha=float(blend["alpha"]),
+                mode=str(blend["mode"]),
+            )
+            final_plan["blend"] = {
+                "alpha": float(blend["alpha"]),
+                "mode": str(blend["mode"]),
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+                "specialist_route_state_name": str(specialist_plan["route_state_name"]),
+            }
+
+        pair_plans.append(final_plan)
+        target_weights[pair] = float(final_plan["target_weight"])
 
     plan = {
         "strategy_class": "pairwise_regime_mixture_shadow_live",

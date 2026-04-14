@@ -149,6 +149,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         args = make_args(execute=True, force_execute=False)
         bridge = MagicMock()
         bridge.get_exchange.return_value = object()
+        bridge.fetch_equity.return_value = 2000.0
         bridge.fetch_open_position_map.return_value = {}
 
         with (
@@ -167,6 +168,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
 
         self.assertEqual(result, 2)
         bridge.get_exchange.assert_called_once_with("demo")
+        bridge.fetch_equity.assert_called_once()
         bridge.fetch_open_position_map.assert_called_once()
 
     def test_live_execute_bypasses_failed_gate_when_forced(self) -> None:
@@ -197,7 +199,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         bridge.fetch_equity.assert_called_once()
         bridge.reconcile_target_positions.assert_called_once()
         bridge.install_shutdown_protection.assert_called_once()
-        bridge.fetch_open_position_map.assert_called_once()
+        self.assertEqual(bridge.fetch_open_position_map.call_count, 2)
 
     def test_live_execute_allows_demo_when_shadow_ready_gate_is_open(self) -> None:
         args = make_args(execute=True, force_execute=True)
@@ -234,6 +236,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertEqual(result, 0)
         bridge.get_exchange.assert_called_once_with("demo")
         bridge.reconcile_target_positions.assert_called_once()
+        self.assertEqual(bridge.fetch_open_position_map.call_count, 2)
 
     def test_load_live_frame_requests_recent_klines_with_datetimes(self) -> None:
         base_index = pd.date_range("2026-04-10 10:00", periods=25, freq="5min", tz="UTC")
@@ -318,7 +321,9 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         bridge.get_exchange.return_value = object()
         bridge.install_shutdown_protection.return_value = {"status": "placed", "cancelled_count": 3}
         bridge.fetch_equity.return_value = 1234.5
-        bridge.fetch_open_position_map.return_value = {"BNBUSDT": {"side": "SHORT"}}
+        bridge.fetch_open_position_map.return_value = {
+            "BNBUSDT": {"side": "SHORT", "qty": -2.0, "mark_price": 300.0}
+        }
         bridge.fetch_strategy_protection_orders.return_value = [{"id": "1"}]
 
         saved: dict[str, object] = {}
@@ -336,6 +341,24 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         bridge.install_shutdown_protection.assert_called_once()
         self.assertEqual(saved["state"]["latest_live_sync"]["protection_cleanup"]["cancelled_count"], 3)
+        self.assertAlmostEqual(saved["state"]["shadow_paper"]["current_weights"]["BNBUSDT"], -600.0 / 1234.5)
+
+    def test_sync_shadow_paper_from_live_positions_uses_signed_position_weights(self) -> None:
+        state: dict[str, object] = {}
+
+        pairwise_live.sync_shadow_paper_from_live_positions(
+            state,
+            {
+                "BTCUSDT": {"qty": -0.05, "mark_price": 70_000.0},
+                "BNBUSDT": {"qty": 3.0, "mark_price": 600.0},
+            },
+            equity=10_000.0,
+        )
+
+        shadow = state["shadow_paper"]
+        self.assertAlmostEqual(shadow["current_weights"]["BTCUSDT"], -0.35)
+        self.assertAlmostEqual(shadow["current_weights"]["BNBUSDT"], 0.18)
+        self.assertEqual(shadow["last_prices"]["BTCUSDT"], 70_000.0)
 
 
 if __name__ == "__main__":

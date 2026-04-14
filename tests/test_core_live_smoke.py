@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -134,6 +134,35 @@ def unmanaged_order(order_id: str, order_type: str, stop_price: float) -> dict[s
 
 
 class CoreLiveSmokeTests(unittest.TestCase):
+    def test_fetch_open_position_map_respects_position_side_and_aggregates_hedged_rows(self) -> None:
+        exchange = MagicMock()
+        exchange.fetch_positions.return_value = [
+            {
+                "symbol": "BTC/USDT:USDT",
+                "info": {
+                    "positionAmt": "0.050",
+                    "positionSide": "LONG",
+                    "entryPrice": "70000",
+                    "markPrice": "70500",
+                },
+            },
+            {
+                "symbol": "BTC/USDT:USDT",
+                "info": {
+                    "positionAmt": "0.020",
+                    "positionSide": "SHORT",
+                    "entryPrice": "71000",
+                    "markPrice": "70600",
+                },
+            },
+        ]
+
+        positions = rotation_target_050_live.fetch_open_position_map(exchange)
+
+        self.assertAlmostEqual(positions["BTCUSDT"]["qty"], 0.03)
+        self.assertEqual(positions["BTCUSDT"]["side"], "LONG")
+        self.assertAlmostEqual(positions["BTCUSDT"]["gross_qty"], 0.07)
+
     def test_core_champion_artifact_loads(self) -> None:
         artifact = core_strategy_registry.load_core_artifact(ROOT_DIR / "models" / "core_champion.json")
         self.assertIn(artifact.family, {core_strategy_registry.LONG_ONLY_FAMILY, core_strategy_registry.LONG_SHORT_FAMILY})

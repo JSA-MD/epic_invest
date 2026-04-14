@@ -680,6 +680,50 @@ def build_pairwise_plan(
     }
 
 
+def sync_shadow_paper_from_live_positions(
+    state: Dict[str, Any],
+    positions_by_pair: Mapping[str, Mapping[str, Any]],
+    equity: float,
+) -> None:
+    shadow = state.setdefault("shadow_paper", {})
+    shadow.setdefault("enabled", True)
+    shadow.setdefault("observations", 0)
+    shadow.setdefault("equity", SHADOW_DEFAULT_EQUITY)
+    shadow.setdefault("peak_equity", shadow["equity"])
+    shadow.setdefault("max_drawdown", 0.0)
+    shadow.setdefault("return_pct", 0.0)
+    shadow.setdefault("last_prices", {})
+    shadow.setdefault("current_weights", {})
+    shadow.setdefault("cooldown_bars_left", {})
+    shadow.setdefault("turnover_cost_paid", 0.0)
+
+    current_weights: Dict[str, float] = {}
+    last_prices: Dict[str, float] = {}
+    for pair in PAIRS:
+        position = positions_by_pair.get(pair) or {}
+        qty = float(position.get("qty", 0.0) or 0.0)
+        price = float(position.get("mark_price") or position.get("entry_price") or 0.0)
+        if price > 0.0:
+            last_prices[pair] = price
+        else:
+            last_prices[pair] = float(shadow.get("last_prices", {}).get(pair, 0.0) or 0.0)
+        if abs(equity) > TARGET_WEIGHT_EPS and last_prices[pair] > 0.0:
+            current_weights[pair] = float(qty * last_prices[pair] / equity)
+        else:
+            current_weights[pair] = 0.0
+
+    peak_equity = max(float(shadow.get("peak_equity", equity) or equity), float(equity))
+    drawdown = 0.0 if peak_equity <= TARGET_WEIGHT_EPS else max(0.0, 1.0 - float(equity) / peak_equity)
+
+    shadow["equity"] = float(equity)
+    shadow["peak_equity"] = peak_equity
+    shadow["max_drawdown"] = max(float(shadow.get("max_drawdown", 0.0) or 0.0), drawdown)
+    shadow["return_pct"] = (float(equity) / SHADOW_DEFAULT_EQUITY - 1.0) * 100.0
+    shadow["current_weights"] = current_weights
+    shadow["last_prices"] = last_prices
+    shadow["last_updated_at"] = iso_now()
+
+
 def apply_shadow_mark_to_market(state: Dict[str, Any], plan: Mapping[str, Any]) -> Dict[str, Any]:
     shadow = state.setdefault("shadow_paper", {})
     shadow.setdefault("enabled", True)
@@ -1044,12 +1088,21 @@ def run_evaluate_shadow(args: argparse.Namespace) -> int:
 
 def run_live_once(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
+    bridge = None
+    exchange = None
+    equity = None
+    positions: Dict[str, Any] = {}
+    if args.execute:
+        bridge = load_execution_bridge()
+        exchange = bridge.get_exchange(args.mode)
+        equity = float(bridge.fetch_equity(exchange))
+        positions = bridge.fetch_open_position_map(exchange)
+        sync_shadow_paper_from_live_positions(state, positions, equity)
+
     plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
     promotion_gate = load_promotion_gate(args.promotion_report)
     state["promotion_gate"] = promotion_gate
     if args.execute:
-        bridge = load_execution_bridge()
-        exchange = bridge.get_exchange(args.mode)
         shadow_state = load_state(args.shadow_state_path)
         shadow_evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
         force_execute = bool(getattr(args, "force_execute", False))
@@ -1057,7 +1110,6 @@ def run_live_once(args: argparse.Namespace) -> int:
         gate_ready = promotion_gate_allows_execution(promotion_gate, args.mode)
         force_blocked_by_stale_shadow = False
         if not gate_ready and not force_execute:
-            positions = bridge.fetch_open_position_map(exchange)
             record_runtime_success(
                 state,
                 plan,
@@ -1066,6 +1118,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "enabled": False,
                         "blocked": True,
                         "mode": args.mode,
+                        "equity": equity,
                         "promotion_gate": promotion_gate,
                         "shadow_runtime_gate": shadow_evaluation,
                         "force_requested": force_execute,
@@ -1105,7 +1158,6 @@ def run_live_once(args: argparse.Namespace) -> int:
             )
             return 2
 
-        equity = float(bridge.fetch_equity(exchange))
         actions = bridge.reconcile_target_positions(
             exchange,
             equity,
@@ -1115,6 +1167,7 @@ def run_live_once(args: argparse.Namespace) -> int:
         )
         protection_report = bridge.install_shutdown_protection(exchange, state, execute=True)
         positions = bridge.fetch_open_position_map(exchange)
+        sync_shadow_paper_from_live_positions(state, positions, equity)
         execution_mode = "live-executed"
         execution_override: Dict[str, Any] | None = None
         if force_execute and not gate_ready:
@@ -1244,6 +1297,7 @@ def run_sync_state(args: argparse.Namespace) -> int:
     equity = float(bridge.fetch_equity(exchange))
     positions = bridge.fetch_open_position_map(exchange)
     protections = bridge.fetch_strategy_protection_orders(exchange)
+    sync_shadow_paper_from_live_positions(state, positions, equity)
     snapshot = {
         "at": iso_now(),
         "mode": args.mode,

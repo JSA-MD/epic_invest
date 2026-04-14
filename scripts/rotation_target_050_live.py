@@ -1260,6 +1260,18 @@ def load_markets(exchange: ccxt.binanceusdm) -> dict[str, Any]:
     return exchange.load_markets()
 
 
+def _signed_position_qty(raw_qty: Any, position_side: Any) -> float:
+    qty_value = float(raw_qty)
+    if abs(qty_value) <= EPSILON:
+        return 0.0
+    side = str(position_side or "").strip().upper()
+    if side == "SHORT":
+        return -abs(qty_value)
+    if side == "LONG":
+        return abs(qty_value)
+    return qty_value
+
+
 def fetch_open_position_map(exchange: ccxt.binanceusdm) -> dict[str, dict[str, Any]]:
     positions_by_pair: dict[str, dict[str, Any]] = {}
     try:
@@ -1276,7 +1288,8 @@ def fetch_open_position_map(exchange: ccxt.binanceusdm) -> dict[str, dict[str, A
         qty = info.get("positionAmt")
         if qty is None:
             qty = pos.get("contracts", 0.0)
-        qty_value = float(qty)
+        position_side = info.get("positionSide")
+        qty_value = _signed_position_qty(qty, position_side)
         if abs(qty_value) <= EPSILON:
             continue
         entry_price = info.get("entryPrice")
@@ -1301,22 +1314,53 @@ def fetch_open_position_map(exchange: ccxt.binanceusdm) -> dict[str, dict[str, A
         if initial_margin is None:
             initial_margin = pos.get("initialMargin")
         percentage = pos.get("percentage")
-        positions_by_pair[pair] = {
-            "pair": pair,
-            "symbol": symbol,
-            "qty": qty_value,
-            "side": "LONG" if qty_value > 0.0 else "SHORT",
-            "entry_price": float(entry_price) if entry_price is not None else 0.0,
-            "mark_price": float(mark_price) if mark_price is not None else 0.0,
-            "margin_mode": str(margin_mode).lower() if margin_mode is not None else None,
-            "leverage": float(leverage) if leverage not in (None, "") else None,
-            "unrealized_pnl": float(unrealized_pnl) if unrealized_pnl not in (None, "") else None,
-            "collateral": float(collateral) if collateral not in (None, "") else None,
-            "initial_margin": float(initial_margin) if initial_margin not in (None, "") else None,
-            "percentage": float(percentage) if percentage not in (None, "") else None,
-            "position_side": info.get("positionSide"),
-        }
-    return positions_by_pair
+        abs_qty = abs(qty_value)
+        entry_price_value = float(entry_price) if entry_price not in (None, "") else 0.0
+        mark_price_value = float(mark_price) if mark_price not in (None, "") else 0.0
+        existing = positions_by_pair.get(pair)
+        if existing is None:
+            positions_by_pair[pair] = {
+                "pair": pair,
+                "symbol": symbol,
+                "qty": qty_value,
+                "side": "LONG" if qty_value > 0.0 else "SHORT",
+                "entry_price": entry_price_value,
+                "mark_price": mark_price_value,
+                "margin_mode": str(margin_mode).lower() if margin_mode is not None else None,
+                "leverage": float(leverage) if leverage not in (None, "") else None,
+                "unrealized_pnl": float(unrealized_pnl) if unrealized_pnl not in (None, "") else None,
+                "collateral": float(collateral) if collateral not in (None, "") else None,
+                "initial_margin": float(initial_margin) if initial_margin not in (None, "") else None,
+                "percentage": float(percentage) if percentage not in (None, "") else None,
+                "position_side": position_side,
+                "gross_qty": abs_qty,
+            }
+            continue
+
+        gross_qty = float(existing.get("gross_qty", abs(existing["qty"]))) + abs_qty
+        existing_qty = float(existing.get("qty", 0.0)) + qty_value
+        weighted_entry_numer = float(existing.get("entry_price", 0.0)) * float(existing.get("gross_qty", abs(existing["qty"])))
+        weighted_entry_numer += entry_price_value * abs_qty
+        weighted_mark_numer = float(existing.get("mark_price", 0.0)) * float(existing.get("gross_qty", abs(existing["qty"])))
+        weighted_mark_numer += mark_price_value * abs_qty
+        existing["qty"] = existing_qty
+        existing["gross_qty"] = gross_qty
+        existing["side"] = "LONG" if existing_qty > 0.0 else "SHORT"
+        if gross_qty > EPSILON:
+            existing["entry_price"] = weighted_entry_numer / gross_qty
+            existing["mark_price"] = weighted_mark_numer / gross_qty
+        if unrealized_pnl not in (None, ""):
+            existing["unrealized_pnl"] = float(existing.get("unrealized_pnl") or 0.0) + float(unrealized_pnl)
+        if collateral not in (None, ""):
+            existing["collateral"] = float(existing.get("collateral") or 0.0) + float(collateral)
+        if initial_margin not in (None, ""):
+            existing["initial_margin"] = float(existing.get("initial_margin") or 0.0) + float(initial_margin)
+
+    return {
+        pair: position
+        for pair, position in positions_by_pair.items()
+        if abs(float(position.get("qty", 0.0))) > EPSILON
+    }
 
 
 def fetch_position_qty_map(exchange: ccxt.binanceusdm) -> dict[str, float]:

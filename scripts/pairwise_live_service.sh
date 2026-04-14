@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/trader_service.sh"
 PID_FILE="${PAIRWISE_LIVE_PID_FILE:-/tmp/epic_pairwise_live.pid}"
 LOG_FILE="${PAIRWISE_LIVE_LOG_FILE:-$ROOT_DIR/logs/pairwise_live_service.log}"
 STATE_PATH="${PAIRWISE_LIVE_STATE_PATH:-$ROOT_DIR/models/pairwise_regime_live_state.json}"
@@ -13,6 +14,14 @@ FORCE_NOTE="${PAIRWISE_FORCE_NOTE:-manual_primary_switch}"
 PROMOTION_REPORT_PATH="${PAIRWISE_LIVE_PROMOTION_REPORT_PATH:-$ROOT_DIR/models/gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json}"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$STATE_PATH")" "$(dirname "$DECISION_LOG_PATH")"
+
+maybe_send_lifecycle_message() {
+  local text="$1"
+  case "$(printf '%s' "${PAIRWISE_SUPPRESS_LIFECYCLE_MESSAGE:-0}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+  esac
+  send_telegram_lifecycle_message "$text"
+}
 
 is_running() {
   if [[ -f "$PID_FILE" ]]; then
@@ -59,6 +68,8 @@ case "${1:-}" in
     fi
     echo $! >"$PID_FILE"
     echo "pairwise live started (pid $!)"
+    write_active_runtime_profile "pairwise" "$MODE" "$FORCE_EXECUTE"
+    maybe_send_lifecycle_message $'pairwise live service 시작\n- 트레이더: 실행 중\n- 시작 경로: scripts/pairwise_live_service.sh\n- 제어 명령: /status /plan /positions'
     ;;
   stop)
     if ! is_running; then

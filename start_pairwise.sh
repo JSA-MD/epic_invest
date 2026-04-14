@@ -6,6 +6,7 @@ source "$ROOT_DIR/scripts/trader_service.sh"
 
 stop_core_processes
 stop_pairwise_processes
+PAIRWISE_SUPPRESS_LIFECYCLE_MESSAGE=1 \
 PAIRWISE_FORCE_EXECUTE="${PAIRWISE_FORCE_EXECUTE:-0}" \
 PAIRWISE_FORCE_NOTE="${PAIRWISE_FORCE_NOTE:-validated_pairwise_gate}" \
 "$ROOT_DIR/scripts/pairwise_live_service.sh" start

@@ -100,6 +100,7 @@ DEFAULT_PROMOTION_REPORT_PATH = Path(
 )
 DEFAULT_EXCHANGE_LEVERAGE = 5
 EPSILON = 1e-12
+SHADOW_TRADING_COST_RATE = 0.0006
 
 RUNTIME_CONTEXT: dict[str, Any] = {
     "args": None,
@@ -1060,23 +1061,7 @@ def build_shadow_snapshot(state: dict[str, Any], plan: dict[str, Any], exchange_
     state["latest_plan"] = plan
     state["selected_candidate"] = plan.get("selected_candidate")
     state["promotion_gate"] = plan.get("promotion_gate")
-    shadow_paper = state.setdefault("shadow_paper", {})
-    shadow_paper["enabled"] = True
-    shadow_paper["last_signal_timestamp"] = plan.get("signal_timestamp")
-    shadow_paper["last_updated_at"] = captured_at
-    shadow_paper["current_weights"] = {
-        pair: float(plan.get("target_weights", {}).get(pair, 0.0))
-        for pair in plan.get("pairs", [])
-    }
-    shadow_paper["cooldown_bars_left"] = {
-        pair_plan.get("pair"): 0
-        for pair_plan in plan.get("pair_plans", [])
-        if pair_plan.get("pair")
-    }
-    shadow_paper["equity"] = float(shadow_paper.get("equity") or plan.get("equity") or SHADOW_DEFAULT_EQUITY)
-    shadow_paper["peak_equity"] = float(
-        max(float(shadow_paper.get("peak_equity") or 0.0), float(shadow_paper.get("equity") or 0.0))
-    )
+    snapshot["shadow_update"] = apply_shadow_mark_to_market(state, plan)
     state["latest_decision_snapshot"] = {
         "generated_at": captured_at,
         "strategy_class": "pairwise_regime_mixture_shadow_live",
@@ -1091,6 +1076,83 @@ def build_shadow_snapshot(state: dict[str, Any], plan: dict[str, Any], exchange_
         },
     }
     return snapshot
+
+
+def apply_shadow_mark_to_market(state: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    shadow_paper = state.setdefault("shadow_paper", {})
+    shadow_paper.setdefault("enabled", True)
+    shadow_paper.setdefault("observations", 0)
+    shadow_paper.setdefault("equity", SHADOW_DEFAULT_EQUITY)
+    shadow_paper.setdefault("peak_equity", SHADOW_DEFAULT_EQUITY)
+    shadow_paper.setdefault("max_drawdown", 0.0)
+    shadow_paper.setdefault("return_pct", 0.0)
+    shadow_paper.setdefault("last_prices", {})
+    shadow_paper.setdefault("current_weights", {})
+    shadow_paper.setdefault("cooldown_bars_left", {})
+    shadow_paper.setdefault("turnover_cost_paid", 0.0)
+
+    pairs = tuple(str(pair) for pair in (plan.get("pairs") or ()))
+    last_prices = {str(pair): float(price) for pair, price in (shadow_paper.get("last_prices") or {}).items()}
+    current_weights = {
+        str(pair): float(weight) for pair, weight in (shadow_paper.get("current_weights") or {}).items()
+    }
+    latest_prices: dict[str, float] = {}
+    cooldown_bars_left: dict[str, int] = {}
+    for pair_plan in plan.get("pair_plans", []) or []:
+        pair = str(pair_plan.get("pair") or "").strip()
+        if not pair:
+            continue
+        latest_prices[pair] = float(pair_plan.get("price") or last_prices.get(pair) or 0.0)
+        cooldown_bars_left[pair] = int(pair_plan.get("cooldown_bars_left_after") or 0)
+
+    for pair in pairs:
+        latest_prices.setdefault(pair, float(last_prices.get(pair) or 0.0))
+        cooldown_bars_left.setdefault(pair, 0)
+
+    current_equity = float(shadow_paper.get("equity") or SHADOW_DEFAULT_EQUITY)
+    peak_equity = float(shadow_paper.get("peak_equity") or current_equity)
+    if last_prices:
+        weighted_return = 0.0
+        for pair in pairs:
+            prev_price = float(last_prices.get(pair) or latest_prices.get(pair) or 0.0)
+            current_price = float(latest_prices.get(pair) or prev_price)
+            if prev_price > EPSILON and current_price > 0.0:
+                pair_return = current_price / prev_price - 1.0
+                weighted_return += float(current_weights.get(pair, 0.0)) * pair_return
+        current_equity *= 1.0 + weighted_return
+
+    target_weights = {
+        str(pair): float((plan.get("target_weights") or {}).get(pair, 0.0))
+        for pair in pairs
+    }
+    turnover = float(sum(abs(target_weights[pair] - float(current_weights.get(pair, 0.0))) for pair in pairs))
+    cost = current_equity * turnover * SHADOW_TRADING_COST_RATE
+    current_equity -= cost
+    peak_equity = max(peak_equity, current_equity)
+    drawdown = 0.0 if peak_equity <= EPSILON else max(0.0, 1.0 - current_equity / peak_equity)
+
+    shadow_paper["enabled"] = True
+    shadow_paper["observations"] = int(shadow_paper.get("observations", 0)) + 1
+    shadow_paper["equity"] = float(current_equity)
+    shadow_paper["peak_equity"] = float(peak_equity)
+    shadow_paper["max_drawdown"] = max(float(shadow_paper.get("max_drawdown", 0.0) or 0.0), drawdown)
+    shadow_paper["return_pct"] = (float(current_equity) / SHADOW_DEFAULT_EQUITY - 1.0) * 100.0
+    shadow_paper["turnover_cost_paid"] = float(shadow_paper.get("turnover_cost_paid", 0.0) or 0.0) + cost
+    shadow_paper["current_weights"] = target_weights
+    shadow_paper["cooldown_bars_left"] = cooldown_bars_left
+    shadow_paper["last_prices"] = latest_prices
+    shadow_paper["last_signal_timestamp"] = plan.get("signal_timestamp")
+    shadow_paper["last_updated_at"] = utc_now().isoformat()
+
+    return {
+        "equity": float(current_equity),
+        "peak_equity": float(peak_equity),
+        "max_drawdown": float(drawdown),
+        "turnover_cost": float(cost),
+        "turnover": float(turnover),
+        "return_pct": float(shadow_paper["return_pct"]),
+        "observations": int(shadow_paper["observations"]),
+    }
 
 
 def refresh_decision_journal(state: dict[str, Any], decision: dict[str, Any], decision_log_path: str | Path) -> dict[str, Any]:

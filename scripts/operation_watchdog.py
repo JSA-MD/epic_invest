@@ -12,12 +12,14 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
+
+from data_quality_monitor import build_data_quality_snapshot
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
@@ -26,12 +28,17 @@ RUNTIME_PROFILE_PATH = MODELS_DIR / "active_runtime_profile.json"
 CORE_STATE_PATH = MODELS_DIR / "rotation_target_050_live_state.json"
 PAIRWISE_STATE_PATH = Path(os.getenv("PAIRWISE_LIVE_STATE_PATH", str(MODELS_DIR / "pairwise_regime_live_state.json")))
 PAIRWISE_SHADOW_STATE_PATH = Path(os.getenv("PAIRWISE_SHADOW_STATE_PATH", str(MODELS_DIR / "pairwise_regime_shadow_state.json")))
+PAIRWISE_DECISION_LOG_PATH = Path(
+    os.getenv("PAIRWISE_LIVE_DECISION_LOG_PATH", str(ROOT_DIR / "logs" / "pairwise_regime_decisions.jsonl"))
+)
 BOT_STATE_PATH = Path(os.getenv("TELEGRAM_BOT_STATE_PATH", "/tmp/epic-invest-telegram-bot-state.json"))
 BOT_PID_PATH = Path(os.getenv("TELEGRAM_BOT_PID_FILE", "/tmp/epic-invest-telegram-bot.pid"))
 CORE_PID_PATH = Path(os.getenv("TRADER_PID_FILE", "/tmp/epic-invest-trader.pid"))
 PAIRWISE_PID_PATH = Path(os.getenv("PAIRWISE_LIVE_PID_FILE", "/tmp/epic_pairwise_live.pid"))
 WATCHDOG_REPORT_PATH = MODELS_DIR / "operation_health_report.json"
 WATCHDOG_HISTORY_PATH = MODELS_DIR / "operation_health_history.jsonl"
+DATA_QUALITY_REPORT_PATH = MODELS_DIR / "data_quality_report.json"
+DECISION_QUALITY_REPORT_PATH = MODELS_DIR / "decision_quality_report.json"
 WATCHDOG_STATE_PATH = Path(os.getenv("WATCHDOG_STATE_PATH", "/tmp/epic-invest-watchdog-state.json"))
 CORE_LOG_PATH = Path(os.getenv("TRADER_LOG_FILE", "/tmp/epic-invest-trader.log"))
 PAIRWISE_LOG_PATH = Path(os.getenv("PAIRWISE_LIVE_LOG_FILE", str(ROOT_DIR / "logs" / "pairwise_live_service.log")))
@@ -77,6 +84,11 @@ WATCHDOG_ERROR_ESCALATION_COUNT = int(os.getenv("WATCHDOG_ERROR_ESCALATION_COUNT
 WATCHDOG_ALERT_COOLDOWN_SECONDS = int(os.getenv("WATCHDOG_ALERT_COOLDOWN_SECONDS", "300"))
 WATCHDOG_TRADER_GRACE_SECONDS = int(os.getenv("WATCHDOG_TRADER_GRACE_SECONDS", "90"))
 PAIRWISE_POLL_SECONDS = int(os.getenv("PAIRWISE_LIVE_POLL_SECONDS", "300"))
+WATCHDOG_PAIRWISE_SIGNAL_STALE_SECONDS = int(os.getenv("WATCHDOG_PAIRWISE_SIGNAL_STALE_SECONDS", str(20 * 60)))
+WATCHDOG_PAIRWISE_SIGNAL_DRIFT_SECONDS = int(
+    os.getenv("WATCHDOG_PAIRWISE_SIGNAL_DRIFT_SECONDS", str(PAIRWISE_POLL_SECONDS + WATCHDOG_TRADER_GRACE_SECONDS))
+)
+WATCHDOG_WEIGHT_DRIFT_THRESHOLD = float(os.getenv("WATCHDOG_WEIGHT_DRIFT_THRESHOLD", "0.25"))
 WATCHDOG_TELEGRAM_ALERTS_ENABLED = os.getenv("WATCHDOG_TELEGRAM_ALERTS_ENABLED", "0").strip().lower() in {
     "1",
     "true",
@@ -299,6 +311,7 @@ def active_trader_profile() -> dict[str, Any]:
             "shadow_state_path": PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": PAIRWISE_PID_PATH,
             "log_path": PAIRWISE_LOG_PATH,
+            "decision_log_path": PAIRWISE_DECISION_LOG_PATH,
             "mode": str(runtime_profile.get("mode") or os.getenv("PAIRWISE_LIVE_MODE", os.getenv("BINANCE_MODE", "demo"))),
             "force_execute": force_execute,
             "runtime_force_execute_requested": runtime_force_requested,
@@ -356,6 +369,293 @@ def build_alert_fingerprint(report: dict[str, Any]) -> str:
     return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+def weight_map(payload: Any) -> dict[str, float]:
+    if not isinstance(payload, Mapping):
+        return {}
+    raw = payload.get("target_weights", payload)
+    if not isinstance(raw, Mapping):
+        return {}
+    result: dict[str, float] = {}
+    for key, value in raw.items():
+        try:
+            result[str(key)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def requested_weight_map(payload: Any) -> dict[str, float]:
+    if not isinstance(payload, Mapping):
+        return {}
+    pair_plans = normalize_pair_plans(payload.get("pair_plans"))
+    if not pair_plans:
+        return {}
+    result: dict[str, float] = {}
+    for pair, pair_plan in pair_plans.items():
+        try:
+            result[str(pair)] = float(pair_plan.get("requested_weight", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def signal_timestamp_from_snapshot(snapshot: Any) -> str | None:
+    if not isinstance(snapshot, Mapping):
+        return None
+    rationale = snapshot.get("rationale")
+    if isinstance(rationale, Mapping) and rationale.get("signal_timestamp"):
+        return str(rationale.get("signal_timestamp"))
+    if snapshot.get("signal_timestamp"):
+        return str(snapshot.get("signal_timestamp"))
+    return None
+
+
+def max_weight_drift(lhs: Mapping[str, float], rhs: Mapping[str, float]) -> float:
+    keys = set(lhs) | set(rhs)
+    if not keys:
+        return 0.0
+    return max(abs(float(lhs.get(key, 0.0)) - float(rhs.get(key, 0.0))) for key in keys)
+
+
+def active_position_count(execution_snapshot: Mapping[str, Any] | None) -> int:
+    if not isinstance(execution_snapshot, Mapping):
+        return 0
+    positions = execution_snapshot.get("positions")
+    if not isinstance(positions, list):
+        return 0
+    count = 0
+    for item in positions:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            qty = abs(float(item.get("qty", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty > 0.0:
+            count += 1
+    return count
+
+
+def protection_order_health(protection_snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
+    default = {"expected": 0, "active": 0, "status": None}
+    if not isinstance(protection_snapshot, Mapping):
+        return default
+    positions = protection_snapshot.get("positions")
+    expected = len(positions) * 2 if isinstance(positions, list) else 0
+    active = 0
+    for item in protection_snapshot.get("protections", []):
+        if not isinstance(item, Mapping):
+            continue
+        for order in item.get("orders", []):
+            if not isinstance(order, Mapping):
+                continue
+            if str(order.get("status") or "").lower() in {"placed", "retained"}:
+                active += 1
+    return {
+        "expected": expected,
+        "active": active,
+        "status": protection_snapshot.get("status"),
+    }
+
+
+def normalize_pair_plans(payload: Any) -> dict[str, Mapping[str, Any]]:
+    if isinstance(payload, Mapping):
+        return {str(key): value for key, value in payload.items() if isinstance(value, Mapping)}
+    if isinstance(payload, list):
+        result: dict[str, Mapping[str, Any]] = {}
+        for item in payload:
+            if not isinstance(item, Mapping):
+                continue
+            pair = item.get("pair")
+            if pair:
+                result[str(pair)] = item
+        return result
+    return {}
+
+
+def active_pairs_from_state(latest_runtime_snapshot: Mapping[str, Any], latest_decision_snapshot: Mapping[str, Any]) -> dict[str, float]:
+    weights = weight_map(latest_decision_snapshot)
+    if not weights:
+        weights = weight_map((latest_runtime_snapshot.get("plan") or {}).get("target_weights") if isinstance(latest_runtime_snapshot, Mapping) else {})
+    active: dict[str, float] = {pair: weight for pair, weight in weights.items() if abs(weight) > 1e-9}
+
+    execution = ((latest_runtime_snapshot.get("extra") or {}).get("execution") or {}) if isinstance(latest_runtime_snapshot, Mapping) else {}
+    protection = execution.get("shutdown_protection") if isinstance(execution, Mapping) else {}
+    positions = protection.get("positions") if isinstance(protection, Mapping) else None
+    if isinstance(positions, list):
+        for item in positions:
+            if not isinstance(item, Mapping):
+                continue
+            pair = item.get("pair")
+            if not pair:
+                continue
+            try:
+                qty = float(item.get("qty", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                qty = 0.0
+            if abs(qty) > 0.0:
+                active.setdefault(str(pair), qty)
+    return active
+
+
+def summarize_pair_feed_status(group_snapshot: Mapping[str, Any] | None, pair: str) -> dict[str, Any]:
+    feeds = ((group_snapshot or {}).get("per_pair") or {}).get(pair) if isinstance(group_snapshot, Mapping) else None
+    if not isinstance(feeds, Mapping):
+        return {"status": "missing", "feeds": []}
+    feed_statuses: list[str] = []
+    feed_names: list[str] = []
+    for name, payload in feeds.items():
+        if not isinstance(payload, Mapping):
+            continue
+        freshness = str(payload.get("freshness") or "missing")
+        feed_statuses.append(freshness)
+        if freshness != "fresh":
+            feed_names.append(str(name))
+    return {
+        "status": rollup_feed_status(feed_statuses),
+        "feeds": feed_names,
+    }
+
+
+def rollup_feed_status(values: list[str]) -> str:
+    if not values:
+        return "missing"
+    if any(value in {"critical", "stale"} for value in values):
+        return "critical"
+    if any(value in {"warning", "aging", "missing"} for value in values):
+        return "warning"
+    return "ok"
+
+
+def build_decision_quality_snapshot(trader_report: Mapping[str, Any], data_quality_snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    profile = active_trader_profile()
+    state = read_json(profile["state_path"], {})
+    latest_runtime_snapshot = state.get("latest_runtime_snapshot") or {}
+    latest_decision_snapshot = state.get("latest_decision_snapshot") or {}
+    plan = (latest_runtime_snapshot.get("plan") or {}) if isinstance(latest_runtime_snapshot, Mapping) else {}
+    pair_plans = normalize_pair_plans(plan.get("pair_plans") or latest_decision_snapshot.get("pair_plans"))
+    active_pairs = active_pairs_from_state(latest_runtime_snapshot, latest_decision_snapshot)
+
+    runtime_risks: list[dict[str, Any]] = []
+    upgrade_risks: list[dict[str, Any]] = []
+    research_risks: list[dict[str, Any]] = []
+    recommendations: list[str] = []
+
+    market_context_status = str((data_quality_snapshot.get("market_context") or {}).get("status") or "missing")
+    if active_pairs and market_context_status != "ok":
+        impacted = []
+        for pair, pair_plan in pair_plans.items():
+            if pair not in active_pairs:
+                continue
+            if str(pair_plan.get("equity_corr_source_mode") or "") == "market_context":
+                impacted.append(pair)
+        if impacted:
+            runtime_risks.append(
+                {
+                    "scope": "runtime_regime_gating",
+                    "severity": "warning" if market_context_status == "warning" else "critical",
+                    "pairs": impacted,
+                    "reason": "상관/레짐 라우팅이 market context에 의존하는데 입력 캐시가 최신이 아닙니다.",
+                }
+            )
+            recommendations.append("QQQ/SPY/GLD/DXY 문맥 캐시를 자동 갱신해 corr-state 라우팅 품질 저하를 막아야 합니다.")
+
+    for pair in sorted(active_pairs):
+        lob_status = summarize_pair_feed_status(data_quality_snapshot.get("lob"), pair)
+        if lob_status["status"] != "ok":
+            upgrade_risks.append(
+                {
+                    "scope": "entry_quality_upgrade_loop",
+                    "severity": "warning" if lob_status["status"] == "warning" else "critical",
+                    "pair": pair,
+                    "stale_feeds": lob_status["feeds"],
+                    "reason": "LOB 미시구조가 stale이라 spread/depth 기반 진입 품질 개선 루프가 멈춰 있습니다.",
+                }
+            )
+            recommendations.append(f"{pair} LOB 수집을 상시화해 spread/depth imbalance 기반 진입 필터 학습을 복구해야 합니다.")
+
+        derivative_status = summarize_pair_feed_status(data_quality_snapshot.get("derivatives"), pair)
+        if derivative_status["status"] != "ok":
+            research_risks.append(
+                {
+                    "scope": "positioning_research",
+                    "severity": "warning" if derivative_status["status"] == "warning" else "critical",
+                    "pair": pair,
+                    "stale_feeds": derivative_status["feeds"],
+                    "reason": "파생 포지셔닝 캐시가 stale이라 OI/basis/long-short 기반 보강 연구 신뢰도가 떨어집니다.",
+                }
+            )
+
+        ohlcv_snapshot = ((data_quality_snapshot.get("ohlcv") or {}).get("per_pair") or {}).get(pair, {})
+        daily_freshness = str(((ohlcv_snapshot.get("1d") or {}).get("freshness")) or "missing") if isinstance(ohlcv_snapshot, Mapping) else "missing"
+        if daily_freshness != "fresh":
+            research_risks.append(
+                {
+                    "scope": "validation_research",
+                    "severity": "warning",
+                    "pair": pair,
+                    "reason": "일봉 캐시가 누락 또는 노후화돼 장기 검증/교차자산 해석 신뢰도가 낮습니다.",
+                }
+            )
+
+    status = "ok"
+    if any(item["severity"] == "critical" for item in runtime_risks):
+        status = "critical"
+    elif runtime_risks or any(item["severity"] == "critical" for item in upgrade_risks):
+        status = "warning"
+    elif upgrade_risks or research_risks:
+        status = "warning"
+
+    insights: list[str] = []
+    if active_pairs:
+        pair_text = ", ".join(sorted(active_pairs))
+        insights.append(f"현재 활성 노출은 {pair_text}이며, stale 데이터가 있는 경우 해당 자산의 진입 품질 개선 속도가 즉시 떨어집니다.")
+    if any(item.get("pair") == "BNBUSDT" for item in upgrade_risks):
+        insights.append("BNBUSDT는 현재 실제 포지션이 있고, LOB stale이면 BNB 약세 구간 전용 진입 필터를 더 이상 개선할 수 없습니다.")
+    if runtime_risks:
+        insights.append("현재 전략은 market context 기반 corr-state 라우팅을 쓰고 있어, 문맥 캐시 노후화가 직접적인 판단 품질 저하로 이어질 수 있습니다.")
+
+    return {
+        "generated_at": utc_now().isoformat(),
+        "status": status,
+        "active_pairs": sorted(active_pairs),
+        "runtime_risks": runtime_risks,
+        "upgrade_risks": upgrade_risks,
+        "research_risks": research_risks,
+        "insights": insights,
+        "recommendations": recommendations,
+        "trader_status": trader_report.get("status"),
+    }
+
+
+def safe_build_data_quality_snapshot() -> dict[str, Any]:
+    try:
+        return build_data_quality_snapshot()
+    except Exception as exc:
+        return {
+            "generated_at": utc_now().isoformat(),
+            "status": "critical",
+            "error": f"data_quality_snapshot_failed: {exc}",
+            "recommendations": ["데이터 품질 스냅샷 생성이 실패했습니다. 모니터링 경로를 즉시 점검해야 합니다."],
+        }
+
+
+def safe_build_decision_quality_snapshot(trader_report: Mapping[str, Any], data_quality_snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        return build_decision_quality_snapshot(trader_report, data_quality_snapshot)
+    except Exception as exc:
+        return {
+            "generated_at": utc_now().isoformat(),
+            "status": "critical",
+            "error": f"decision_quality_snapshot_failed: {exc}",
+            "runtime_risks": [],
+            "upgrade_risks": [],
+            "research_risks": [],
+            "insights": ["의사결정 품질 스냅샷 생성이 실패해 stale 데이터 영향 추적이 중단됐습니다."],
+            "recommendations": ["decision_quality 보고 경로를 즉시 복구해야 합니다."],
+        }
+
+
 def maybe_send_alert(report: dict[str, Any]) -> None:
     if not WATCHDOG_TELEGRAM_ALERTS_ENABLED:
         return
@@ -401,6 +701,8 @@ def evaluate_trader() -> dict[str, Any]:
     profile = active_trader_profile()
     state = read_json(profile["state_path"], {})
     runtime = state.get("runtime_health") or {}
+    latest_runtime_snapshot = state.get("latest_runtime_snapshot") or {}
+    latest_decision_snapshot = state.get("latest_decision_snapshot") or {}
     runtime_pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
     pid = resolve_live_pid(runtime_pid, read_pid(profile["pid_path"]))
     pid_verified = is_pid_running(pid)
@@ -420,6 +722,22 @@ def evaluate_trader() -> dict[str, Any]:
     shadow_stale_seconds = None
     shadow_signal_timestamp = None
     shadow_signal_stale_seconds = None
+    shadow_signal_stale_threshold_seconds = None
+    shadow_signal_drift_seconds = None
+    decision_log_age_seconds = None
+    decision_log_path = profile.get("decision_log_path")
+    if decision_log_path is not None:
+        decision_log_age_seconds = file_age_seconds(decision_log_path)
+    live_target_weights: dict[str, float] = {}
+    shadow_target_weights: dict[str, float] = {}
+    live_requested_weights: dict[str, float] = {}
+    shadow_requested_weights: dict[str, float] = {}
+    live_shadow_weight_drift = 0.0
+    live_shadow_requested_drift = 0.0
+    execution_enabled = None
+    execution_blocked = None
+    protection_health = {"expected": 0, "active": 0, "status": None}
+    shadow_state = {}
 
     if profile["key"] == "pairwise":
         shadow_state = read_json(profile["shadow_state_path"], {})
@@ -436,6 +754,35 @@ def evaluate_trader() -> dict[str, Any]:
         shadow_stale_seconds = age_seconds(shadow_last_progress_at)
         shadow_signal_timestamp = shadow_paper.get("last_signal_timestamp")
         shadow_signal_stale_seconds = age_seconds(shadow_signal_timestamp)
+        shadow_signal_stale_threshold_seconds = max(
+            float(WATCHDOG_PAIRWISE_SIGNAL_STALE_SECONDS),
+            float(PAIRWISE_POLL_SECONDS + WATCHDOG_TRADER_GRACE_SECONDS),
+        )
+        live_signal_timestamp = signal_timestamp_from_snapshot(latest_decision_snapshot)
+        shadow_decision = shadow_state.get("latest_decision_snapshot") or {}
+        shadow_signal_timestamp = signal_timestamp_from_snapshot(shadow_decision) or shadow_signal_timestamp
+        if live_signal_timestamp and shadow_signal_timestamp:
+            live_dt = parse_iso_datetime(live_signal_timestamp)
+            shadow_dt = parse_iso_datetime(shadow_signal_timestamp)
+            if live_dt is not None and shadow_dt is not None:
+                shadow_signal_drift_seconds = abs((live_dt - shadow_dt).total_seconds())
+        live_target_weights = weight_map(latest_decision_snapshot)
+        shadow_target_weights = weight_map(shadow_state.get("latest_decision_snapshot") or shadow_paper.get("current_weights") or {})
+        live_requested_weights = requested_weight_map(latest_decision_snapshot) or requested_weight_map(
+            (latest_runtime_snapshot.get("plan") or {}) if isinstance(latest_runtime_snapshot, Mapping) else {}
+        )
+        shadow_requested_weights = requested_weight_map(shadow_state.get("latest_decision_snapshot") or {})
+        live_shadow_weight_drift = max_weight_drift(live_target_weights, shadow_target_weights)
+        live_shadow_requested_drift = max_weight_drift(live_requested_weights, shadow_requested_weights)
+        execution = (latest_runtime_snapshot.get("extra") or {}).get("execution")
+        if isinstance(execution, Mapping):
+            execution_enabled = bool(execution.get("enabled"))
+            execution_blocked = bool(execution.get("blocked"))
+            protection_health = protection_order_health(execution.get("shutdown_protection"))
+        plan_target_weights = weight_map((latest_runtime_snapshot.get("plan") or {}).get("target_weights") or {})
+        if live_target_weights and plan_target_weights:
+            if max_weight_drift(live_target_weights, plan_target_weights) > WATCHDOG_WEIGHT_DRIFT_THRESHOLD:
+                reasons.append("plan_snapshot_mismatch")
 
     if stale_seconds is None:
         reasons.append("no_recent_success_signal")
@@ -448,18 +795,59 @@ def evaluate_trader() -> dict[str, Any]:
             reasons.append("shadow_state_stale")
         if shadow_signal_stale_seconds is None:
             reasons.append("shadow_signal_missing")
-        elif shadow_signal_stale_seconds > float(profile["stale_threshold_seconds"]):
+        elif shadow_signal_stale_seconds > float(shadow_signal_stale_threshold_seconds or profile["stale_threshold_seconds"]):
             reasons.append("shadow_signal_stale")
+        if shadow_signal_drift_seconds is not None and shadow_signal_drift_seconds > float(WATCHDOG_PAIRWISE_SIGNAL_DRIFT_SECONDS):
+            reasons.append("live_shadow_signal_divergence")
+        elif (
+            live_shadow_weight_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
+            and live_shadow_requested_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
+        ):
+            reasons.append("live_shadow_target_divergence")
+        promotion_gate = state.get("promotion_gate") or {}
+        mode_name = str(profile.get("mode") or "demo").lower()
+        gate_ready = bool(promotion_gate.get("ready_for_shadow_live")) if mode_name == "demo" else bool(
+            promotion_gate.get("ready_for_live", promotion_gate.get("ready_for_merge"))
+        )
+        if execution_blocked and gate_ready:
+            reasons.append("execution_blocked_with_open_gate")
+        if execution_enabled and active_position_count(latest_runtime_snapshot) > 0:
+            if protection_health["expected"] > 0 and protection_health["active"] < protection_health["expected"]:
+                reasons.append("shutdown_protection_missing")
     if consecutive_errors >= WATCHDOG_ERROR_ESCALATION_COUNT:
         reasons.append("consecutive_errors")
     if not pid_verified:
         reasons.append("pid_unverified")
+    if profile["key"] == "pairwise":
+        if decision_log_age_seconds is None:
+            reasons.append("decision_log_missing")
+        elif decision_log_age_seconds > float(profile["protect_threshold_seconds"]):
+            reasons.append("decision_log_stale")
 
     status = "ok"
-    if "state_stale" in reasons or "consecutive_errors" in reasons or "no_recent_success_signal" in reasons:
+    critical_reasons = {
+        "state_stale",
+        "consecutive_errors",
+        "no_recent_success_signal",
+        "shadow_state_stale",
+        "shadow_state_missing",
+        "shadow_signal_stale",
+        "shadow_signal_missing",
+        "live_shadow_signal_divergence",
+        "live_shadow_target_divergence",
+        "execution_blocked_with_open_gate",
+        "shutdown_protection_missing",
+        "plan_snapshot_mismatch",
+    }
+    warning_reasons = {
+        "pid_unverified",
+        "decision_log_missing",
+        "decision_log_stale",
+    }
+    if any(reason in critical_reasons for reason in reasons):
         status = "critical"
-    if any(reason in reasons for reason in ("shadow_state_stale", "shadow_state_missing", "shadow_signal_stale", "shadow_signal_missing")):
-        status = "critical"
+    elif any(reason in warning_reasons for reason in reasons):
+        status = "warning"
 
     return {
         "status": status,
@@ -482,7 +870,16 @@ def evaluate_trader() -> dict[str, Any]:
         "shadow_stale_seconds": None if shadow_stale_seconds is None else round(shadow_stale_seconds, 1),
         "shadow_signal_timestamp": shadow_signal_timestamp,
         "shadow_signal_stale_seconds": None if shadow_signal_stale_seconds is None else round(shadow_signal_stale_seconds, 1),
-        "log_age_seconds": file_age_seconds(profile["log_path"]),
+        "shadow_signal_stale_threshold_seconds": shadow_signal_stale_threshold_seconds,
+        "shadow_signal_drift_seconds": None if shadow_signal_drift_seconds is None else round(shadow_signal_drift_seconds, 1),
+        "live_shadow_weight_drift": round(live_shadow_weight_drift, 4),
+        "live_shadow_requested_drift": round(live_shadow_requested_drift, 4),
+        "execution_enabled": execution_enabled,
+        "execution_blocked": execution_blocked,
+        "shutdown_protection_expected": protection_health["expected"],
+        "shutdown_protection_active": protection_health["active"],
+        "shutdown_protection_status": protection_health["status"],
+        "log_age_seconds": None if decision_log_age_seconds is None else round(decision_log_age_seconds, 1),
         "reasons": reasons,
     }
 
@@ -537,10 +934,16 @@ def evaluate_bot() -> dict[str, Any]:
 
 
 def build_report() -> dict[str, Any]:
+    trader = evaluate_trader()
+    bot = evaluate_bot()
+    data_quality = safe_build_data_quality_snapshot()
+    decision_quality = safe_build_decision_quality_snapshot(trader, data_quality)
     return {
         "generated_at": utc_now().isoformat(),
-        "trader": evaluate_trader(),
-        "bot": evaluate_bot(),
+        "trader": trader,
+        "bot": bot,
+        "data_quality": data_quality,
+        "decision_quality": decision_quality,
         "recovery_actions": [],
     }
 
@@ -632,6 +1035,8 @@ def maybe_recover(report: dict[str, Any]) -> dict[str, Any]:
 
 def write_report(report: dict[str, Any]) -> None:
     write_json(WATCHDOG_REPORT_PATH, report)
+    write_json(DATA_QUALITY_REPORT_PATH, report.get("data_quality", {}))
+    write_json(DECISION_QUALITY_REPORT_PATH, report.get("decision_quality", {}))
     append_jsonl(
         WATCHDOG_HISTORY_PATH,
         {
@@ -645,6 +1050,12 @@ def write_report(report: dict[str, Any]) -> None:
                 "status": report["bot"]["status"],
                 "stale_seconds": report["bot"].get("stale_seconds"),
                 "consecutive_poll_errors": report["bot"].get("consecutive_poll_errors"),
+            },
+            "data_quality": {
+                "status": report.get("data_quality", {}).get("status"),
+            },
+            "decision_quality": {
+                "status": report.get("decision_quality", {}).get("status"),
             },
             "recovery_count": len(report.get("recovery_actions", [])),
         },

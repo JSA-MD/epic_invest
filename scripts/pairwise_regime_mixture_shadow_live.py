@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
+from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
 from fractal_genome_core import LeafGene, collect_specs, deserialize_tree, evaluate_tree_leaf_codes
 from replay_regime_mixture_realistic import load_model
 from rotation_target_050_live import (
@@ -191,7 +192,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_shadow_state(path: str | Path, decision_log: str | Path) -> dict[str, Any]:
     state_file = Path(path)
-    if not state_file.exists():
+    def default_state() -> dict[str, Any]:
         return {
             "strategy_class": "pairwise_regime_mixture_shadow_live",
             "created_at": utc_now().isoformat(),
@@ -242,8 +243,29 @@ def load_shadow_state(path: str | Path, decision_log: str | Path) -> dict[str, A
             "updated_at": None,
         }
 
-    with open(state_file, "r") as f:
-        state = json.load(f)
+    def recover_state() -> dict[str, Any]:
+        candidates = (
+            state_file,
+            state_file.with_name(f"{state_file.name}.bak"),
+            state_file.with_name(f"{state_file.name}.tmp"),
+        )
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            try:
+                with open(candidate, "r") as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                continue
+        state = default_state()
+        state["runtime_health"]["last_error_message"] = "state_json_corrupted_recovered"
+        state["runtime_health"]["last_success_at"] = utc_now().isoformat()
+        return state
+
+    if not state_file.exists():
+        return default_state()
+
+    state = recover_state()
     state.setdefault("strategy_class", "pairwise_regime_mixture_shadow_live")
     state.setdefault("created_at", None)
     state.setdefault("selected_candidate", None)
@@ -748,6 +770,7 @@ def build_pairwise_plan(
     equity: float,
     execute: bool,
     leverage: int,
+    state: dict[str, Any] | None = None,
     exchange: ccxt.binanceusdm | None = None,
 ) -> dict[str, Any]:
     candidate = resolve_runtime_candidate(df_all, pairs, bundle)
@@ -770,6 +793,8 @@ def build_pairwise_plan(
     target_weights: dict[str, float] = {}
     latest_positions = fetch_open_position_map(exchange, pairs) if (execute and exchange is not None) else {}
     current_qty_map = {pair: float(latest_positions.get(pair, {}).get("qty", 0.0)) for pair in pairs}
+    state = state if state is not None else {}
+    online_blend_state = state.setdefault("btc_online_blend_state", {})
 
     for pair in pairs:
         pair_config = candidate["pair_configs"][pair]
@@ -830,6 +855,7 @@ def build_pairwise_plan(
                 )
                 requested_weight *= float(vol_scale)
             target_weight = float(np.clip(requested_weight, -params.gross_cap, params.gross_cap))
+            price = float(context["close"].iloc[signal_idx][pair])
             current_weight = 0.0
             if execute and exchange is not None:
                 symbol = PAIR_TO_MARKET[pair]
@@ -853,6 +879,7 @@ def build_pairwise_plan(
                 "signal_pct": signal_pct,
                 "requested_weight": float(requested_weight),
                 "target_weight": target_weight,
+                "price": price,
                 "current_weight": current_weight,
                 "current_qty": float(current_qty_map.get(pair, 0.0)),
                 "long_gate": bool(long_ok),
@@ -863,6 +890,7 @@ def build_pairwise_plan(
         baseline_plan = build_single_pair_plan(pair_config)
         final_plan = baseline_plan
         blend = get_btc_convex_blend(candidate, pair)
+        specialist_plan: dict[str, Any] | None = None
         if blend is not None:
             specialist_plan = build_single_pair_plan(blend["specialist_pair_config"])
             final_plan = dict(baseline_plan)
@@ -886,6 +914,59 @@ def build_pairwise_plan(
                 "specialist_target_weight": float(specialist_plan["target_weight"]),
                 "specialist_requested_weight": float(specialist_plan["requested_weight"]),
                 "specialist_route_state_name": str(specialist_plan["route_state_name"]),
+            }
+        online = get_btc_online_blend(candidate, pair)
+        if online is not None and specialist_plan is not None:
+            pair_state = dict(online_blend_state.get(pair) or {})
+            baseline_requested_weight = float(final_plan["requested_weight"])
+            baseline_target_weight = float(final_plan["target_weight"])
+            current_price = float(final_plan["price"])
+            score = update_runtime_online_score(
+                previous_score=float(pair_state.get("score", 0.0)),
+                baseline_weight=float(pair_state.get("baseline_target_weight", 0.0)),
+                specialist_weight=float(pair_state.get("specialist_target_weight", 0.0)),
+                previous_price=pair_state.get("price"),
+                current_price=current_price,
+                decay=float(online["decay"]),
+                reward_scale=float(online["reward_scale"]),
+            )
+            online_alpha = runtime_online_blend_alpha(
+                previous_score=score,
+                alpha_cap=float(online["alpha_cap"]),
+                eta=float(online["eta"]),
+                activation_mode=str(online["activation_mode"]),
+                route_state_name=str(final_plan["route_state_name"]),
+                baseline_weight=baseline_requested_weight,
+                specialist_weight=float(specialist_plan["requested_weight"]),
+            )
+            if online_alpha > 0.0:
+                final_plan["requested_weight"] = (1.0 - float(online_alpha)) * baseline_requested_weight + float(online_alpha) * float(
+                    specialist_plan["requested_weight"]
+                )
+                final_plan["target_weight"] = (1.0 - float(online_alpha)) * baseline_target_weight + float(online_alpha) * float(
+                    specialist_plan["target_weight"]
+                )
+            final_plan["online_blend"] = {
+                "alpha": float(online_alpha),
+                "score": float(score),
+                "activation_mode": str(online["activation_mode"]),
+                "alpha_cap": float(online["alpha_cap"]),
+                "eta": float(online["eta"]),
+                "decay": float(online["decay"]),
+                "baseline_target_weight": baseline_target_weight,
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+            }
+            online_blend_state[pair] = {
+                "score": float(score),
+                "alpha": float(online_alpha),
+                "price": current_price,
+                "baseline_target_weight": baseline_target_weight,
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "baseline_requested_weight": baseline_requested_weight,
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+                "route_state_name": str(final_plan["route_state_name"]),
+                "updated_at": utc_now(),
             }
 
         pair_plans.append(final_plan)
@@ -1041,6 +1122,7 @@ def run_once(args: argparse.Namespace) -> None:
             equity=equity,
             execute=execute_requested,
             leverage=int(args.leverage),
+            state=state,
             exchange=exchange if execute_requested else None,
         )
 

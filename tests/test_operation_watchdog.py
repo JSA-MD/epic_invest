@@ -29,11 +29,23 @@ class OperationWatchdogTests(unittest.TestCase):
                 "consecutive_poll_errors": 0,
                 "reasons": [],
             },
+            "data_quality": {"status": "warning"},
             "recovery_actions": [],
         }
         with patch.object(watchdog, "send_telegram_notification") as send_notification:
             watchdog.maybe_send_alert(report)
         send_notification.assert_not_called()
+
+    def test_build_report_includes_data_quality(self) -> None:
+        with (
+            patch.object(watchdog, "evaluate_trader", return_value={"status": "ok"}),
+            patch.object(watchdog, "evaluate_bot", return_value={"status": "ok"}),
+            patch.object(watchdog, "safe_build_data_quality_snapshot", return_value={"status": "warning"}),
+            patch.object(watchdog, "safe_build_decision_quality_snapshot", return_value={"status": "warning"}),
+        ):
+            report = watchdog.build_report()
+        self.assertEqual(report["data_quality"]["status"], "warning")
+        self.assertEqual(report["decision_quality"]["status"], "warning")
 
     def test_is_pid_running_treats_permission_error_as_alive(self) -> None:
         with patch.object(watchdog.os, "kill", side_effect=PermissionError("denied")):
@@ -110,6 +122,7 @@ class OperationWatchdogTests(unittest.TestCase):
             "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": watchdog.PAIRWISE_PID_PATH,
             "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
             "mode": "demo",
             "force_execute": True,
             "stale_threshold_seconds": 390,
@@ -122,6 +135,7 @@ class OperationWatchdogTests(unittest.TestCase):
             patch.object(watchdog, "resolve_live_pid", return_value=10723),
             patch.object(watchdog, "is_pid_running", return_value=True),
             patch.object(watchdog, "age_seconds", return_value=200.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
         ):
             report = watchdog.evaluate_trader()
         self.assertEqual(report["active_profile"], "pairwise")
@@ -166,6 +180,7 @@ class OperationWatchdogTests(unittest.TestCase):
             "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": watchdog.PAIRWISE_PID_PATH,
             "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
             "mode": "demo",
             "force_execute": False,
             "stale_threshold_seconds": 390,
@@ -179,6 +194,61 @@ class OperationWatchdogTests(unittest.TestCase):
 
         def fake_age_seconds(value):
             if value == "2026-04-10T13:00:00+00:00":
+                return 1500.0
+            return 5.0
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", side_effect=fake_age_seconds),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "critical")
+        self.assertIn("shadow_signal_stale", report["reasons"])
+
+    def test_evaluate_trader_allows_pairwise_signal_within_execution_stale_cap(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {
+                "pid": 10723,
+                "last_success_at": "2026-04-10T13:22:32+00:00",
+                "consecutive_errors": 0,
+            },
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {
+                "last_success_at": "2026-04-10T13:22:32+00:00",
+            },
+            "shadow_paper": {
+                "last_signal_timestamp": "2026-04-10T13:14:30+00:00",
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        def fake_age_seconds(value):
+            if value == "2026-04-10T13:14:30+00:00":
                 return 500.0
             return 5.0
 
@@ -192,8 +262,8 @@ class OperationWatchdogTests(unittest.TestCase):
         ):
             report = watchdog.evaluate_trader()
 
-        self.assertEqual(report["status"], "critical")
-        self.assertIn("shadow_signal_stale", report["reasons"])
+        self.assertEqual(report["status"], "ok")
+        self.assertNotIn("shadow_signal_stale", report["reasons"])
 
     def test_evaluate_trader_blocks_stale_shadow_state(self) -> None:
         live_state = {
@@ -219,6 +289,7 @@ class OperationWatchdogTests(unittest.TestCase):
             "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": watchdog.PAIRWISE_PID_PATH,
             "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
             "mode": "demo",
             "force_execute": False,
             "stale_threshold_seconds": 390,
@@ -247,6 +318,335 @@ class OperationWatchdogTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "critical")
         self.assertIn("shadow_state_stale", report["reasons"])
+
+    def test_evaluate_trader_warns_on_stale_decision_log(self) -> None:
+        state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {
+                "pid": 10723,
+                "last_success_at": "2026-04-10T13:22:32+00:00",
+                "consecutive_errors": 0,
+            },
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=900.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "warning")
+        self.assertIn("decision_log_stale", report["reasons"])
+
+    def test_evaluate_trader_blocks_live_shadow_signal_divergence(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:10:00+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        def fake_age_seconds(value):
+            if value == "2026-04-10T13:10:00+00:00":
+                return 200.0
+            return 5.0
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", side_effect=fake_age_seconds),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "critical")
+        self.assertIn("live_shadow_signal_divergence", report["reasons"])
+
+    def test_evaluate_trader_blocks_live_shadow_weight_divergence(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "pair_plans": {"BNBUSDT": {"requested_weight": -1.5}},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+                "pair_plans": {"BNBUSDT": {"requested_weight": 0.0}},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "critical")
+        self.assertIn("live_shadow_target_divergence", report["reasons"])
+
+    def test_evaluate_trader_ignores_target_divergence_when_requested_weights_match(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "pair_plans": {"BNBUSDT": {"requested_weight": 0.0}},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+                "pair_plans": {"BNBUSDT": {"requested_weight": 0.0}},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "ok")
+        self.assertNotIn("live_shadow_target_divergence", report["reasons"])
+
+    def test_evaluate_trader_blocks_missing_shutdown_protection(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "latest_runtime_snapshot": {
+                "plan": {"target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5}},
+                "positions": [{"pair": "BNBUSDT", "qty": -11.5}],
+                "extra": {
+                    "execution": {
+                        "enabled": True,
+                        "shutdown_protection": {
+                            "status": "placed",
+                            "positions": [{"pair": "BNBUSDT", "qty": -11.5}],
+                            "protections": [{"orders": [{"status": "placed"}]}],
+                        },
+                    }
+                },
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "critical")
+        self.assertIn("shutdown_protection_missing", report["reasons"])
+
+    def test_evaluate_trader_blocks_when_execution_is_blocked_despite_open_gate(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "latest_runtime_snapshot": {
+                "plan": {"target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5}},
+                "extra": {"execution": {"enabled": False, "blocked": True}},
+            },
+            "promotion_gate": {"ready_for_shadow_live": True},
+        }
+        shadow_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"last_success_at": "2026-04-10T13:22:32+00:00"},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "critical")
+        self.assertIn("execution_blocked_with_open_gate", report["reasons"])
 
     def test_restart_active_trader_pairwise_restarts_shadow_before_live(self) -> None:
         profile = {
@@ -334,6 +734,92 @@ class OperationWatchdogTests(unittest.TestCase):
         degrade.assert_called_once()
         restarted_profile = restart.call_args.args[0]
         self.assertFalse(restarted_profile["force_execute"])
+
+    def test_build_decision_quality_highlights_stale_bnb_lob(self) -> None:
+        state = {
+            "latest_runtime_snapshot": {
+                "plan": {
+                    "pair_plans": {
+                        "BNBUSDT": {
+                            "equity_corr_source_mode": "market_context",
+                        }
+                    }
+                },
+                "extra": {
+                    "execution": {
+                        "shutdown_protection": {
+                            "positions": [
+                                {"pair": "BNBUSDT", "qty": -11.4},
+                            ]
+                        }
+                    }
+                },
+            },
+            "latest_decision_snapshot": {
+                "target_weights": {
+                    "BNBUSDT": -1.5,
+                    "BTCUSDT": 0.0,
+                }
+            },
+        }
+        data_quality = {
+            "market_context": {"status": "warning"},
+            "lob": {
+                "per_pair": {
+                    "BNBUSDT": {
+                        "features": {"freshness": "stale"},
+                        "snapshots": {"freshness": "stale"},
+                        "agg_trades": {"freshness": "stale"},
+                    }
+                }
+            },
+            "derivatives": {
+                "per_pair": {
+                    "BNBUSDT": {
+                        "open_interest": {"freshness": "stale"},
+                        "basis_perpetual": {"freshness": "stale"},
+                    }
+                }
+            },
+            "ohlcv": {
+                "per_pair": {
+                    "BNBUSDT": {
+                        "1d": {"freshness": "missing"},
+                    }
+                }
+            },
+        }
+        profile = {"state_path": watchdog.PAIRWISE_STATE_PATH}
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", return_value=state),
+        ):
+            snapshot = watchdog.build_decision_quality_snapshot({"status": "ok"}, data_quality)
+        self.assertEqual(snapshot["status"], "warning")
+        self.assertTrue(any(item.get("pair") == "BNBUSDT" for item in snapshot["upgrade_risks"]))
+        self.assertTrue(any("BNBUSDT" in insight for insight in snapshot["insights"]))
+
+    def test_write_report_persists_data_quality_and_decision_quality(self) -> None:
+        report = {
+            "generated_at": "2026-04-13T05:00:00+00:00",
+            "trader": {"status": "ok", "stale_seconds": 1.0, "consecutive_errors": 0},
+            "bot": {"status": "ok", "stale_seconds": 1.0, "consecutive_poll_errors": 0},
+            "data_quality": {"status": "critical"},
+            "decision_quality": {"status": "warning"},
+            "recovery_actions": [],
+        }
+        with (
+            patch.object(watchdog, "write_json") as write_json,
+            patch.object(watchdog, "append_jsonl") as append_jsonl,
+        ):
+            watchdog.write_report(report)
+        written_paths = [call.args[0] for call in write_json.call_args_list]
+        self.assertIn(watchdog.WATCHDOG_REPORT_PATH, written_paths)
+        self.assertIn(watchdog.DATA_QUALITY_REPORT_PATH, written_paths)
+        self.assertIn(watchdog.DECISION_QUALITY_REPORT_PATH, written_paths)
+        history_payload = append_jsonl.call_args.args[1]
+        self.assertEqual(history_payload["data_quality"]["status"], "critical")
+        self.assertEqual(history_payload["decision_quality"]["status"], "warning")
 
 
 if __name__ == "__main__":

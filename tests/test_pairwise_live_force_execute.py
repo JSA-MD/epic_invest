@@ -41,6 +41,17 @@ def make_args(*, execute: bool, force_execute: bool) -> Namespace:
 
 
 class PairwiseLiveForceExecuteTests(unittest.TestCase):
+    def test_load_state_recovers_from_corrupted_primary_using_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "live_state.json"
+            backup_path = Path(tmpdir) / "live_state.json.bak"
+            state_path.write_text('{"broken": ')
+            backup_path.write_text(json.dumps({"notification_state": {"position_loss_alerted": {"BNBUSDT": True}}}))
+
+            state = pairwise_live.load_state(state_path)
+
+        self.assertTrue(state["notification_state"]["position_loss_alerted"]["BNBUSDT"])
+
     def test_promotion_gate_uses_shadow_ready_for_demo_mode(self) -> None:
         gate = {
             "ready_for_shadow_live": True,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from btc_convex_blend import replay_btc_convex_blend_candidate
+from btc_online_blend import replay_btc_online_blend_candidate
 from execution_gene_utils import extract_pair_execution_gene
 from pairwise_regime_mixture_shadow_live import detect_candidate_kind
 from search_pair_subset_fractal_genome import fast_fractal_replay_from_context
@@ -43,6 +44,13 @@ def replay_candidate_from_context(
 ) -> dict[str, Any]:
     candidate_kind = detect_candidate_kind(candidate)
     if candidate_kind == "pairwise_candidate":
+        if pair == "BTCUSDT" and candidate.get("btc_online_blend"):
+            return replay_btc_online_blend_candidate(
+                candidate=candidate,
+                pair=pair,
+                context=context,
+                library_lookup=library_lookup,
+            )
         if pair == "BTCUSDT" and candidate.get("btc_convex_blend"):
             return replay_btc_convex_blend_candidate(
                 candidate=candidate,

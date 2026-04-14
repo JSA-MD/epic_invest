@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
+from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
 from replay_regime_mixture_realistic import load_model as load_signal_model
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
@@ -121,39 +122,67 @@ def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _state_tmp_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.tmp")
+
+
+def _state_backup_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.bak")
+
+
+def _default_state() -> Dict[str, Any]:
+    return {
+        "strategy_class": "pairwise_regime_live",
+        "created_at": iso_now(),
+        "updated_at": iso_now(),
+        "shadow_paper": {
+            "enabled": True,
+            "observations": 0,
+            "equity": SHADOW_DEFAULT_EQUITY,
+            "peak_equity": SHADOW_DEFAULT_EQUITY,
+            "max_drawdown": 0.0,
+            "return_pct": 0.0,
+            "last_prices": {},
+            "current_weights": {},
+            "cooldown_bars_left": {},
+            "turnover_cost_paid": 0.0,
+        },
+        "runtime_health": {
+            "status": "idle",
+            "consecutive_errors": 0,
+            "last_error": None,
+            "last_success_at": None,
+        },
+        "notification_state": {
+            "position_loss_alerted": {},
+        },
+        "latest_runtime_snapshot": {},
+        "latest_decision_snapshot": {},
+        "promotion_gate": {},
+        "decision_journal": [],
+    }
+
+
+def _load_state_payload(path: Path) -> Dict[str, Any]:
+    candidates = (path, _state_backup_path(path), _state_tmp_path(path))
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text())
+        except json.JSONDecodeError:
+            continue
+    recovered = _default_state()
+    recovered["runtime_health"]["status"] = "recovered"
+    recovered["runtime_health"]["last_error"] = "state_json_corrupted_recovered"
+    recovered["runtime_health"]["last_success_at"] = iso_now()
+    return recovered
+
+
 def load_state(path: Path) -> Dict[str, Any]:
     if not path.exists():
-        return {
-            "strategy_class": "pairwise_regime_live",
-            "created_at": iso_now(),
-            "updated_at": iso_now(),
-            "shadow_paper": {
-                "enabled": True,
-                "observations": 0,
-                "equity": SHADOW_DEFAULT_EQUITY,
-                "peak_equity": SHADOW_DEFAULT_EQUITY,
-                "max_drawdown": 0.0,
-                "return_pct": 0.0,
-                "last_prices": {},
-                "current_weights": {},
-                "cooldown_bars_left": {},
-                "turnover_cost_paid": 0.0,
-            },
-            "runtime_health": {
-                "status": "idle",
-                "consecutive_errors": 0,
-                "last_error": None,
-                "last_success_at": None,
-            },
-            "notification_state": {
-                "position_loss_alerted": {},
-            },
-            "latest_runtime_snapshot": {},
-            "latest_decision_snapshot": {},
-            "promotion_gate": {},
-            "decision_journal": [],
-        }
-    state = json.loads(path.read_text())
+        return _default_state()
+    state = _load_state_payload(path)
     notification_state = state.setdefault("notification_state", {})
     notification_state.setdefault("position_loss_alerted", {})
     return state
@@ -163,7 +192,13 @@ def save_state(path: Path, state: Mapping[str, Any]) -> None:
     ensure_parent(path)
     payload = copy.deepcopy(dict(state))
     payload["updated_at"] = iso_now()
-    path.write_text(json.dumps(json_ready(payload), indent=2, sort_keys=True))
+    encoded = json.dumps(json_ready(payload), indent=2, sort_keys=True)
+    tmp_path = _state_tmp_path(path)
+    backup_path = _state_backup_path(path)
+    if path.exists():
+        backup_path.write_text(path.read_text())
+    tmp_path.write_text(encoded)
+    tmp_path.replace(path)
 
 
 def append_jsonl(path: Path, item: Mapping[str, Any]) -> None:
@@ -441,6 +476,7 @@ def build_pairwise_plan(
     pair_plans: Dict[str, Any] = {}
     target_weights: Dict[str, float] = {}
     latest_prices: Dict[str, float] = {}
+    online_blend_state = state.setdefault("btc_online_blend_state", {})
 
     for pair in PAIRS:
         raw_signal = np.asarray(compiled(*gp.get_feature_arrays(df, pair)), dtype=float)
@@ -539,6 +575,7 @@ def build_pairwise_plan(
         baseline_plan = build_single_pair_plan(config[pair])
         final_plan = baseline_plan
         blend = get_btc_convex_blend(summary["selected_candidate"], pair)
+        specialist_plan: Dict[str, Any] | None = None
         if blend is not None:
             specialist_plan = build_single_pair_plan(blend["specialist_pair_config"])
             final_plan = dict(baseline_plan)
@@ -562,6 +599,59 @@ def build_pairwise_plan(
                 "specialist_target_weight": float(specialist_plan["target_weight"]),
                 "specialist_requested_weight": float(specialist_plan["requested_weight"]),
                 "specialist_route_state_name": str(specialist_plan["route_state_name"]),
+            }
+        online = get_btc_online_blend(summary["selected_candidate"], pair)
+        if online is not None and specialist_plan is not None:
+            pair_state = dict(online_blend_state.get(pair) or {})
+            baseline_requested_weight = float(final_plan["requested_weight"])
+            baseline_target_weight = float(final_plan["target_weight"])
+            current_price = float(final_plan["price"])
+            score = update_runtime_online_score(
+                previous_score=float(pair_state.get("score", 0.0)),
+                baseline_weight=float(pair_state.get("baseline_target_weight", 0.0)),
+                specialist_weight=float(pair_state.get("specialist_target_weight", 0.0)),
+                previous_price=pair_state.get("price"),
+                current_price=current_price,
+                decay=float(online["decay"]),
+                reward_scale=float(online["reward_scale"]),
+            )
+            online_alpha = runtime_online_blend_alpha(
+                previous_score=score,
+                alpha_cap=float(online["alpha_cap"]),
+                eta=float(online["eta"]),
+                activation_mode=str(online["activation_mode"]),
+                route_state_name=str(final_plan["route_state_name"]),
+                baseline_weight=baseline_requested_weight,
+                specialist_weight=float(specialist_plan["requested_weight"]),
+            )
+            if online_alpha > 0.0:
+                final_plan["requested_weight"] = (1.0 - float(online_alpha)) * baseline_requested_weight + float(online_alpha) * float(
+                    specialist_plan["requested_weight"]
+                )
+                final_plan["target_weight"] = (1.0 - float(online_alpha)) * baseline_target_weight + float(online_alpha) * float(
+                    specialist_plan["target_weight"]
+                )
+            final_plan["online_blend"] = {
+                "alpha": float(online_alpha),
+                "score": float(score),
+                "activation_mode": str(online["activation_mode"]),
+                "alpha_cap": float(online["alpha_cap"]),
+                "eta": float(online["eta"]),
+                "decay": float(online["decay"]),
+                "baseline_target_weight": baseline_target_weight,
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+            }
+            online_blend_state[pair] = {
+                "score": float(score),
+                "alpha": float(online_alpha),
+                "price": current_price,
+                "baseline_target_weight": baseline_target_weight,
+                "specialist_target_weight": float(specialist_plan["target_weight"]),
+                "baseline_requested_weight": baseline_requested_weight,
+                "specialist_requested_weight": float(specialist_plan["requested_weight"]),
+                "route_state_name": str(final_plan["route_state_name"]),
+                "updated_at": iso_now(),
             }
 
         close_price = float(final_plan["price"])
@@ -835,6 +925,9 @@ def record_runtime_success(state: Dict[str, Any], plan: Mapping[str, Any], extra
             "status": "ok",
             "consecutive_errors": 0,
             "last_error": None,
+            "pid": os.getpid(),
+            "last_loop_started_at": state.get("runtime_health", {}).get("last_loop_started_at") or iso_now(),
+            "last_loop_completed_at": iso_now(),
             "last_success_at": iso_now(),
         }
     )
@@ -873,6 +966,7 @@ def record_runtime_error(state: Dict[str, Any], exc: Exception) -> None:
     runtime_health["status"] = "error"
     runtime_health["consecutive_errors"] = int(runtime_health.get("consecutive_errors", 0)) + 1
     runtime_health["last_error"] = f"{type(exc).__name__}: {exc}"
+    runtime_health["pid"] = os.getpid()
     runtime_health["last_error_at"] = iso_now()
 
 
@@ -1126,6 +1220,11 @@ def run_live_once(args: argparse.Namespace) -> int:
 def run_live_loop(args: argparse.Namespace) -> int:
     while True:
         try:
+            state = load_state(args.state_path)
+            state.setdefault("runtime_health", {})
+            state["runtime_health"]["pid"] = os.getpid()
+            state["runtime_health"]["last_loop_started_at"] = iso_now()
+            save_state(args.state_path, state)
             run_live_once(args)
         except Exception as exc:
             state = load_state(args.state_path)

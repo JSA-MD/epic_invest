@@ -667,6 +667,25 @@ def is_managed_protection_order(order: dict[str, Any]) -> bool:
     return client_order_id.startswith(PROTECTION_CLIENT_PREFIX)
 
 
+def order_bool(order: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    info = order.get("info", {}) if isinstance(order.get("info"), dict) else {}
+    for key in keys:
+        for source in (order, info):
+            value = source.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(value)
+            text = str(value).strip().lower()
+            if text in {"true", "1", "yes", "on"}:
+                return True
+            if text in {"false", "0", "no", "off"}:
+                return False
+    return False
+
+
 def protection_tag_from_order(order: dict[str, Any]) -> str | None:
     client_order_id = extract_client_order_id(order)
     if client_order_id.startswith(f"{PROTECTION_CLIENT_PREFIX}SL"):
@@ -680,6 +699,7 @@ def protection_tag_from_order(order: dict[str, Any]) -> str | None:
         for value in (
             order.get("type"),
             info.get("type"),
+            info.get("orderType"),
             info.get("origType"),
             info.get("strategyType"),
         )
@@ -690,6 +710,14 @@ def protection_tag_from_order(order: dict[str, Any]) -> str | None:
     if "STOP" in text:
         return "SL"
     return None
+
+
+def is_protection_candidate_order(order: dict[str, Any]) -> bool:
+    if is_managed_protection_order(order):
+        return True
+    if protection_tag_from_order(order) is None:
+        return False
+    return order_bool(order, ("reduceOnly", "closePosition"))
 
 
 def protection_order_float(order: dict[str, Any], keys: tuple[str, ...]) -> float | None:
@@ -854,6 +882,8 @@ def json_ready(value: Any) -> Any:
         return [json_ready(v) for v in value]
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if isinstance(value, np.ndarray):
@@ -874,8 +904,13 @@ def save_state(path: str | Path, state: dict[str, Any]) -> None:
     state_file = Path(path)
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state["updated_at"] = utc_now().isoformat()
-    with open(state_file, "w") as f:
-        json.dump(state, f, indent=2)
+    encoded = json.dumps(json_ready(state), ensure_ascii=False, indent=2)
+    tmp_path = state_file.with_name(f"{state_file.name}.tmp")
+    backup_path = state_file.with_name(f"{state_file.name}.bak")
+    if state_file.exists():
+        backup_path.write_text(state_file.read_text())
+    tmp_path.write_text(encoded)
+    tmp_path.replace(state_file)
 
 
 def clear_strategy_state(state: dict[str, Any]) -> None:
@@ -1320,7 +1355,7 @@ def fetch_strategy_protection_orders(exchange: ccxt.binanceusdm, pairs: list[str
         except Exception:
             continue
         for order in orders:
-            if is_managed_protection_order(order):
+            if is_protection_candidate_order(order):
                 open_orders.append(order)
     return open_orders
 

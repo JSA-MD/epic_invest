@@ -34,7 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pairs", nargs="+", default=list(DEFAULT_PAIRS))
     parser.add_argument("--context", nargs="+", default=list(DEFAULT_CONTEXT))
     parser.add_argument("--lookback-days", type=int, default=30)
-    parser.add_argument("--refresh-ohlcv", action="store_true")
+    parser.add_argument(
+        "--skip-ohlcv",
+        action="store_false",
+        dest="refresh_ohlcv",
+        help="Skip refreshing 5m/1d OHLCV caches.",
+    )
+    parser.set_defaults(refresh_ohlcv=True)
     parser.add_argument("--ohlcv-start", default=gp.TRAIN_START)
     parser.add_argument("--refresh-funding", action="store_true")
     parser.add_argument("--funding-start", default=gp.TRAIN_START)

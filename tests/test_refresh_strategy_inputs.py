@@ -15,6 +15,16 @@ import refresh_strategy_inputs as refresh_inputs
 
 
 class RefreshStrategyInputsTests(unittest.TestCase):
+    def test_parse_args_refreshes_ohlcv_by_default(self) -> None:
+        with patch.object(sys, "argv", ["refresh_strategy_inputs.py"]):
+            args = refresh_inputs.parse_args()
+        self.assertTrue(args.refresh_ohlcv)
+
+    def test_parse_args_can_skip_ohlcv(self) -> None:
+        with patch.object(sys, "argv", ["refresh_strategy_inputs.py", "--skip-ohlcv"]):
+            args = refresh_inputs.parse_args()
+        self.assertFalse(args.refresh_ohlcv)
+
     def test_build_refresh_report_includes_market_context_and_derivatives(self) -> None:
         timestamp = pd.Timestamp("2026-04-13T04:30:00Z")
         derivative_frame = pd.DataFrame({"timestamp": [timestamp], "value": [1.0]})

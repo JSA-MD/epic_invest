@@ -135,7 +135,7 @@ def fetch_funding_rates(symbol: str, start_dt: datetime, end_dt: datetime) -> pd
 def load_or_fetch_funding(path: Path, fetch: bool) -> pd.DataFrame:
     if path.exists():
         df = pd.read_csv(path, parse_dates=["fundingTime"])
-        df["fundingTime"] = pd.to_datetime(df["fundingTime"], utc=True)
+        df["fundingTime"] = pd.to_datetime(df["fundingTime"], utc=True, format='mixed')
         df["fundingRate"] = pd.to_numeric(df["fundingRate"], errors="coerce")
         return df.dropna(subset=["fundingTime", "fundingRate"]).sort_values("fundingTime").reset_index(drop=True)
     if not fetch:

@@ -13,7 +13,7 @@ import time
 from dataclasses import asdict, replace
 from datetime import timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import ccxt
 import numpy as np
@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
+from btc_event_blend import apply_runtime_event_blend, build_runtime_event_context_from_frame, get_btc_event_blend
 from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
 from fractal_genome_core import LeafGene, collect_specs, deserialize_tree, evaluate_tree_leaf_codes
 from replay_regime_mixture_realistic import load_model
@@ -43,6 +44,7 @@ from search_pair_subset_fractal_genome import (
     project_feature_arrays_by_observation_mode,
 )
 from search_pair_subset_regime_mixture import (
+    _load_derivative_bundle,
     build_library_lookup,
     build_overlay_inputs,
     build_route_bucket_codes,
@@ -606,18 +608,38 @@ def reconcile_pairwise_target_positions(
 def load_promotion_gate(report_path: str | Path) -> dict[str, Any]:
     path = Path(report_path)
     if not path.exists():
-        return {"status": "missing", "selected_candidate_ready_for_merge": False, "path": str(path)}
+        return {
+            "status": "missing",
+            "selected_candidate_ready_for_merge": False,
+            "manual_override_active": False,
+            "path": str(path),
+        }
     payload = json.loads(path.read_text())
     decision = payload.get("promotion_decision")
     if not isinstance(decision, dict):
         decision = payload.get("decision", {})
+    manual_override = payload.get("manual_override")
+    if not isinstance(manual_override, dict):
+        manual_override = decision.get("manual_override", {})
+    if not isinstance(manual_override, dict):
+        manual_override = {}
+    manual_override_active = bool(manual_override.get("enabled", False))
+    effective_decision = dict(decision)
+    if manual_override_active:
+        effective_decision["status"] = str(manual_override.get("status", "manually_promoted_ready_for_live"))
+        effective_decision["ready_for_merge"] = bool(manual_override.get("ready_for_merge", True))
+        effective_decision["selected_candidate_ready_for_merge"] = bool(
+            manual_override.get("selected_candidate_ready_for_merge", effective_decision["ready_for_merge"])
+        )
+        effective_decision["manual_override"] = dict(manual_override)
     return {
-        "status": str(decision.get("status", "unknown")),
+        "status": str(effective_decision.get("status", "unknown")),
         "selected_candidate_ready_for_merge": bool(
-            decision.get("selected_candidate_ready_for_merge", decision.get("ready_for_merge", False))
+            effective_decision.get("selected_candidate_ready_for_merge", effective_decision.get("ready_for_merge", False))
         ),
+        "manual_override_active": manual_override_active,
         "path": str(path),
-        "decision": decision,
+        "decision": effective_decision,
     }
 
 
@@ -835,6 +857,8 @@ def build_pairwise_plan(
     current_qty_map = {pair: float(latest_positions.get(pair, {}).get("qty", 0.0)) for pair in pairs}
     state = state if state is not None else {}
     online_blend_state = state.setdefault("btc_online_blend_state", {})
+    event_blend_state = state.setdefault("btc_event_blend_state", {})
+    derivative_bundles: dict[str, Mapping[str, pd.DataFrame] | None] = {}
 
     for pair in pairs:
         pair_config = candidate["pair_configs"][pair]
@@ -940,6 +964,7 @@ def build_pairwise_plan(
                 route_state_name=str(baseline_plan["route_state_name"]),
                 alpha=float(blend["alpha"]),
                 mode=str(blend["mode"]),
+                state_alphas=blend.get("state_alphas"),
             )
             final_plan["target_weight"] = blend_runtime_weight(
                 baseline_weight=float(baseline_plan["target_weight"]),
@@ -947,10 +972,12 @@ def build_pairwise_plan(
                 route_state_name=str(baseline_plan["route_state_name"]),
                 alpha=float(blend["alpha"]),
                 mode=str(blend["mode"]),
+                state_alphas=blend.get("state_alphas"),
             )
             final_plan["blend"] = {
                 "alpha": float(blend["alpha"]),
                 "mode": str(blend["mode"]),
+                "state_alphas": dict(blend.get("state_alphas") or {}),
                 "specialist_target_weight": float(specialist_plan["target_weight"]),
                 "specialist_requested_weight": float(specialist_plan["requested_weight"]),
                 "specialist_route_state_name": str(specialist_plan["route_state_name"]),
@@ -1008,6 +1035,26 @@ def build_pairwise_plan(
                 "route_state_name": str(final_plan["route_state_name"]),
                 "updated_at": utc_now(),
             }
+        event = get_btc_event_blend(candidate, pair)
+        if event is not None:
+            if pair not in derivative_bundles:
+                try:
+                    derivative_bundles[pair] = _load_derivative_bundle(pair)
+                except Exception:
+                    derivative_bundles[pair] = None
+            event_context = build_runtime_event_context_from_frame(
+                df_all,
+                pair,
+                derivative_bundle=derivative_bundles.get(pair),
+            )
+            final_plan, next_event_state = apply_runtime_event_blend(
+                context=event_context,
+                baseline_plan=final_plan,
+                pair_state=event_blend_state.get(pair),
+                event=event,
+            )
+            next_event_state["updated_at"] = utc_now()
+            event_blend_state[pair] = next_event_state
 
         pair_plans.append(final_plan)
         target_weights[pair] = float(final_plan["target_weight"])

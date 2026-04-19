@@ -30,6 +30,25 @@ class BTCConvexBlendTests(unittest.TestCase):
         self.assertIsNotNone(get_btc_convex_blend(candidate, "BTCUSDT"))
         self.assertIsNone(get_btc_convex_blend(candidate, "BNBUSDT"))
 
+    def test_get_btc_convex_blend_reads_pair_specific_payload(self) -> None:
+        candidate = {
+            "pair_convex_blends": {
+                "BNBUSDT": {
+                    "alpha": 0.2,
+                    "mode": "state_alphas",
+                    "state_alphas": {"equity_mixed:bull_broad": 0.2},
+                    "specialist_pair_config": {"mapping_indices": [2] * 12, "route_breadth_threshold": 0.5},
+                }
+            }
+        }
+        blend = get_btc_convex_blend(candidate, "BNBUSDT")
+        self.assertIsNotNone(blend)
+        assert blend is not None
+        self.assertEqual(blend["pair"], "BNBUSDT")
+        self.assertEqual(blend["mode"], "state_alphas")
+        self.assertEqual(blend["state_alphas"], {"equity_mixed:bull_broad": 0.2})
+        self.assertIsNone(get_btc_convex_blend(candidate, "BTCUSDT"))
+
     def test_blend_runtime_weight_respects_mode(self) -> None:
         self.assertAlmostEqual(
             blend_runtime_weight(

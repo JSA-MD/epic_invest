@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 import gp_crypto_evolution as gp
-from btc_convex_blend import replay_btc_convex_blend_candidate
+from btc_convex_blend import get_btc_convex_blend, replay_btc_convex_blend_candidate
 from derivative_market_data import load_derivative_bundle
 from pairwise_regime_mixture_shadow_live import load_strategy_bundle
 from search_main_execution_beam import compare_to_baseline
@@ -245,7 +245,7 @@ def replay_pair(
             library_lookup=library_lookup,
             return_trace=return_trace,
         )
-    if pair == "BTCUSDT" and candidate.get("btc_convex_blend") and entry_keep_flags is None:
+    if get_btc_convex_blend(candidate, pair) is not None and entry_keep_flags is None:
         return replay_btc_convex_blend_candidate(
             candidate=candidate,
             pair=pair,

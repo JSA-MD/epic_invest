@@ -245,7 +245,57 @@
           2043,
           2892
         ],
-        "route_state_mode": "equity_corr"
+        "route_state_mode": "equity_corr",
+        "execution_gene": {
+          "maker_priority": 0.55,
+          "max_wait_bars": 1,
+          "chase_distance_bp": 2.0,
+          "cancel_replace_interval_bars": 1,
+          "partial_fill_tolerance": 0.6,
+          "emergency_market_threshold_bp": 25.0,
+          "signal_gate_pct": 0.0,
+          "regime_buffer_mult": 0.0,
+          "confirm_bars": 1,
+          "abstain_edge_pct": 0.0,
+          "specialist_isolation_mult": 0.0,
+          "liquidity_range_gate_bp": 0.0,
+          "liquidity_volume_ratio_floor": 0.0,
+          "countertrend_weight_scale": 0.01,
+          "countertrend_rebalance_bypass": true,
+          "countertrend_signal_floor_pct": 140.0,
+          "countertrend_regime_score_cap": 0.05,
+          "countertrend_breadth_slack": 0.2,
+          "countertrend_microstructure_floor": -0.35,
+          "countertrend_positioning_floor": -0.25,
+          "countertrend_dc_floor": 0.5,
+          "countertrend_range_bps_floor": 2.0,
+          "countertrend_volume_ratio_floor": 0.25,
+          "flow_alignment_threshold": 0.0,
+          "dc_alignment_threshold": 0.0,
+          "min_alignment_votes": 0,
+          "microstructure_align_gate_pct": 0.0,
+          "dc_align_gate_pct": 0.0,
+          "trend_signal_gate_mult": 1.0,
+          "range_signal_gate_mult": 1.0,
+          "panic_signal_gate_mult": 1.0,
+          "carry_signal_gate_mult": 1.0,
+          "trend_regime_buffer_mult": 1.0,
+          "range_regime_buffer_mult": 1.0,
+          "panic_regime_buffer_mult": 1.0,
+          "carry_regime_buffer_mult": 1.0,
+          "role_signal_gate_mults": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "role_regime_buffer_mults": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
       }
     },
     "windows": {
@@ -10697,6 +10747,84 @@
             1.0,
             1.0
           ]
+        }
+      }
+    },
+    "pair_convex_blends": {
+      "BNBUSDT": {
+        "pair": "BNBUSDT",
+        "alpha": 0.2,
+        "mode": "state_alphas",
+        "state_alphas": {
+          "equity_mixed:bull_broad": 0.2
+        },
+        "specialist_pair_config": {
+          "route_breadth_threshold": 0.5,
+          "mapping_indices": [
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892,
+            3560,
+            3090,
+            2043,
+            2892
+          ],
+          "route_state_mode": "equity_corr",
+          "execution_gene": {
+            "maker_priority": 0.85,
+            "max_wait_bars": 0,
+            "chase_distance_bp": 2.0,
+            "cancel_replace_interval_bars": 1,
+            "partial_fill_tolerance": 0.6,
+            "emergency_market_threshold_bp": 15.0,
+            "signal_gate_pct": 0.0,
+            "regime_buffer_mult": 0.1,
+            "confirm_bars": 3,
+            "abstain_edge_pct": 0.2,
+            "specialist_isolation_mult": 0.0,
+            "liquidity_range_gate_bp": 0.0,
+            "liquidity_volume_ratio_floor": 0.0,
+            "countertrend_weight_scale": 0.14,
+            "countertrend_rebalance_bypass": true,
+            "countertrend_signal_floor_pct": 140.0,
+            "countertrend_regime_score_cap": 0.05,
+            "countertrend_breadth_slack": 0.2,
+            "countertrend_microstructure_floor": -0.35,
+            "countertrend_positioning_floor": -0.25,
+            "countertrend_dc_floor": 0.5,
+            "countertrend_range_bps_floor": 2.0,
+            "countertrend_volume_ratio_floor": 0.25,
+            "flow_alignment_threshold": 0.0,
+            "dc_alignment_threshold": 0.0,
+            "min_alignment_votes": 0,
+            "microstructure_align_gate_pct": 0.0,
+            "dc_align_gate_pct": 0.0,
+            "trend_signal_gate_mult": 1.0,
+            "range_signal_gate_mult": 1.0,
+            "panic_signal_gate_mult": 1.0,
+            "carry_signal_gate_mult": 1.0,
+            "trend_regime_buffer_mult": 1.0,
+            "range_regime_buffer_mult": 1.0,
+            "panic_regime_buffer_mult": 1.0,
+            "carry_regime_buffer_mult": 1.0,
+            "role_signal_gate_mults": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "role_regime_buffer_mults": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
         }
       }
     },

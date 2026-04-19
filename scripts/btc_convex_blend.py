@@ -12,18 +12,13 @@ from search_pair_subset_regime_mixture import realistic_overlay_replay_from_cont
 
 BLEND_PAIR = "BTCUSDT"
 DEFAULT_BLEND_MODE = "always"
+PAIR_CONVEX_BLEND_KEY = "pair_convex_blends"
 
-
-def get_btc_convex_blend(candidate: Mapping[str, Any] | None, pair: str | None = None) -> dict[str, Any] | None:
-    if not isinstance(candidate, Mapping):
-        return None
-    raw = candidate.get("btc_convex_blend")
+def _normalize_convex_blend(raw: Mapping[str, Any] | None, *, default_pair: str) -> dict[str, Any] | None:
     if not isinstance(raw, Mapping):
         return None
     blend = copy.deepcopy(dict(raw))
-    blend_pair = str(blend.get("pair") or BLEND_PAIR)
-    if pair is not None and str(pair) != blend_pair:
-        return None
+    blend_pair = str(blend.get("pair") or default_pair or BLEND_PAIR)
     if not isinstance(blend.get("specialist_pair_config"), Mapping):
         return None
     blend["pair"] = blend_pair
@@ -39,6 +34,29 @@ def get_btc_convex_blend(candidate: Mapping[str, Any] | None, pair: str | None =
                 continue
     blend["state_alphas"] = state_alphas
     blend["specialist_pair_config"] = copy.deepcopy(dict(blend["specialist_pair_config"]))
+    return blend
+
+
+def get_btc_convex_blend(candidate: Mapping[str, Any] | None, pair: str | None = None) -> dict[str, Any] | None:
+    if not isinstance(candidate, Mapping):
+        return None
+
+    raw: Mapping[str, Any] | None = None
+    if pair is not None:
+        pair_blends = candidate.get(PAIR_CONVEX_BLEND_KEY)
+        if isinstance(pair_blends, Mapping):
+            pair_raw = pair_blends.get(str(pair))
+            if isinstance(pair_raw, Mapping):
+                raw = pair_raw
+                blend = _normalize_convex_blend(raw, default_pair=str(pair))
+                if blend is not None and str(blend["pair"]) == str(pair):
+                    return blend
+    raw = candidate.get("btc_convex_blend")
+    blend = _normalize_convex_blend(raw, default_pair=BLEND_PAIR if pair is None else str(pair))
+    if blend is None:
+        return None
+    if pair is not None and str(blend["pair"]) != str(pair):
+        return None
     return blend
 
 
@@ -61,7 +79,7 @@ def should_apply_runtime_blend(
         return bool(narrow and disagree)
     if mode == "state_alphas":
         return False
-    raise ValueError(f"Unsupported BTC convex blend mode: {mode}")
+    raise ValueError(f"Unsupported convex blend mode: {mode}")
 
 
 def resolve_blend_alpha(
@@ -270,7 +288,7 @@ def replay_btc_convex_blend_candidate(
 ) -> dict[str, Any]:
     blend = get_btc_convex_blend(candidate, pair)
     if blend is None:
-        raise ValueError(f"No BTC convex blend configured for pair {pair}.")
+        raise ValueError(f"No convex blend configured for pair {pair}.")
     pair_configs = candidate.get("pair_configs") or {}
     baseline_cfg = copy.deepcopy(dict(pair_configs[pair]))
     specialist_cfg = copy.deepcopy(dict(blend["specialist_pair_config"]))

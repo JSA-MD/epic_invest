@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 
 
@@ -381,6 +382,87 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertEqual(plan["cooldown_bars_left_after"], 1)
         self.assertEqual(plan["role_idx"], 1)
         self.assertAlmostEqual(plan["price"], 101.0)
+
+    def test_build_pairwise_plan_applies_state_alpha_for_pair_specific_convex_blend(self) -> None:
+        df = pd.DataFrame(
+            {
+                "BNBUSDT_open": [619.0, 620.0, 622.0],
+                "BNBUSDT_high": [621.0, 622.0, 624.0],
+                "BNBUSDT_low": [618.0, 619.0, 621.0],
+                "BNBUSDT_close": [620.0, 621.0, 623.0],
+                "BNBUSDT_volume": [10.0, 11.0, 12.0],
+            },
+            index=pd.date_range("2026-04-19 05:20:00+00:00", periods=3, freq="5min"),
+        )
+        summary = {
+            "selected_candidate": {
+                "pair_configs": {
+                    "BNBUSDT": {
+                        "mapping_indices": [1] * 12,
+                        "route_breadth_threshold": 0.5,
+                        "route_state_mode": "equity_corr",
+                    }
+                },
+                "pair_convex_blends": {
+                    "BNBUSDT": {
+                        "alpha": 0.2,
+                        "mode": "state_alphas",
+                        "state_alphas": {"equity_mixed:bull_broad": 0.2},
+                        "specialist_pair_config": {
+                            "mapping_indices": [2] * 12,
+                            "route_breadth_threshold": 0.5,
+                            "route_state_mode": "equity_corr",
+                        },
+                    }
+                },
+            }
+        }
+        baseline_plan = {
+            "requested_weight": 0.0,
+            "target_weight": 0.0,
+            "route_state_name": "equity_mixed:bull_broad",
+            "price": 623.0,
+        }
+        specialist_plan = {
+            "requested_weight": -0.105,
+            "target_weight": -0.105,
+            "route_state_name": "equity_mixed:bull_broad",
+            "price": 623.0,
+        }
+        plan_iter = iter([baseline_plan, specialist_plan])
+
+        with (
+            patch.object(pairwise_live, "PAIRS", ("BNBUSDT",)),
+            patch.object(pairwise_live, "resolve_runtime_summary_path", return_value=Path("summary.json")),
+            patch.object(pairwise_live, "resolve_runtime_promotion_report_path", return_value=Path("promotion.json")),
+            patch.object(pairwise_live, "load_selected_candidate", return_value=summary),
+            patch.object(pairwise_live, "extract_strategy_artifact_reference", return_value=None),
+            patch.object(pairwise_live, "resolve_strategy_artifact_path", return_value=Path("model.dill")),
+            patch.object(pairwise_live, "iter_params", return_value=()),
+            patch.object(pairwise_live, "build_library_lookup", return_value={}),
+            patch.object(pairwise_live, "load_signal_model", return_value=(object(), None)),
+            patch.object(pairwise_live.gp.toolbox, "compile", return_value=lambda *args: np.zeros(len(df), dtype=float)),
+            patch.object(pairwise_live.gp, "get_feature_arrays", return_value=(np.zeros(len(df), dtype=float),)),
+            patch.object(pairwise_live, "load_live_frame", return_value=df),
+            patch.object(pairwise_live, "_append_synthetic_planning_bar", return_value=df),
+            patch.object(pairwise_live, "build_overlay_inputs", return_value={}),
+            patch.object(pairwise_live, "_load_derivative_bundle", return_value=None),
+            patch.object(pairwise_live, "_build_trace_driven_pair_plan", side_effect=lambda **_: dict(next(plan_iter))),
+            patch.object(pairwise_live, "get_btc_online_blend", return_value=None),
+            patch.object(pairwise_live, "get_btc_event_blend", return_value=None),
+        ):
+            plan = pairwise_live.build_pairwise_plan(
+                Path("summary.json"),
+                Path("model.dill"),
+                Path("promotion.json"),
+                False,
+                {"shadow_paper": {"current_weights": {"BNBUSDT": 0.0}}},
+            )
+
+        pair_plan = plan["pair_plans"]["BNBUSDT"]
+        self.assertAlmostEqual(float(pair_plan["requested_weight"]), -0.021)
+        self.assertAlmostEqual(float(pair_plan["target_weight"]), -0.021)
+        self.assertEqual(pair_plan["blend"]["state_alphas"], {"equity_mixed:bull_broad": 0.2})
 
     def test_live_execute_blocks_when_gate_fails_without_force(self) -> None:
         args = make_args(execute=True, force_execute=False)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from btc_event_blend import replay_btc_event_blend_candidate
-from btc_convex_blend import replay_btc_convex_blend_candidate
+from btc_convex_blend import get_btc_convex_blend, replay_btc_convex_blend_candidate
 from btc_online_blend import replay_btc_online_blend_candidate
 from execution_gene_utils import extract_pair_execution_gene
 from pairwise_regime_mixture_shadow_live import detect_candidate_kind
@@ -45,6 +45,7 @@ def replay_candidate_from_context(
 ) -> dict[str, Any]:
     candidate_kind = detect_candidate_kind(candidate)
     if candidate_kind == "pairwise_candidate":
+        convex_blend = get_btc_convex_blend(candidate, pair)
         if pair == "BTCUSDT" and candidate.get("btc_event_blend"):
             return replay_btc_event_blend_candidate(
                 candidate=candidate,
@@ -59,7 +60,7 @@ def replay_candidate_from_context(
                 context=context,
                 library_lookup=library_lookup,
             )
-        if pair == "BTCUSDT" and candidate.get("btc_convex_blend"):
+        if convex_blend is not None:
             return replay_btc_convex_blend_candidate(
                 candidate=candidate,
                 pair=pair,
@@ -74,7 +75,7 @@ def replay_candidate_from_context(
             tuple(int(v) for v in pair_config["mapping_indices"]),
             float(pair_config["route_breadth_threshold"]),
             execution_gene=execution_gene,
-            engine="python" if candidate.get("btc_convex_blend") else "auto",
+            engine="python" if convex_blend is not None else "auto",
         )
     if candidate_kind == "fractal_tree":
         if leaf_runtime_array is None or leaf_codes is None:

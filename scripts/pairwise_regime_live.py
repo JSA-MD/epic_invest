@@ -770,6 +770,7 @@ def build_pairwise_plan(
                 route_state_name=str(baseline_plan["route_state_name"]),
                 alpha=float(blend["alpha"]),
                 mode=str(blend["mode"]),
+                state_alphas=blend.get("state_alphas"),
             )
             final_plan["target_weight"] = blend_runtime_weight(
                 baseline_weight=float(baseline_plan["target_weight"]),
@@ -777,10 +778,12 @@ def build_pairwise_plan(
                 route_state_name=str(baseline_plan["route_state_name"]),
                 alpha=float(blend["alpha"]),
                 mode=str(blend["mode"]),
+                state_alphas=blend.get("state_alphas"),
             )
             final_plan["blend"] = {
                 "alpha": float(blend["alpha"]),
                 "mode": str(blend["mode"]),
+                "state_alphas": dict(blend.get("state_alphas") or {}),
                 "specialist_target_weight": float(specialist_plan["target_weight"]),
                 "specialist_requested_weight": float(specialist_plan["requested_weight"]),
                 "specialist_route_state_name": str(specialist_plan["route_state_name"]),

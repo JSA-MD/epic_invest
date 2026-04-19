@@ -74,6 +74,33 @@ class DataQualityMonitorTests(unittest.TestCase):
             self.assertEqual(snapshot["lob"]["status"], "warning")
             self.assertTrue(any("LOB" in item for item in snapshot["recommendations"]))
 
+    def test_summarize_ohlcv_picks_freshest_funding_file_not_lexicographic_last(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            futures = root / "data" / "binance_futures"
+            now = datetime(2026, 4, 18, 14, 50, tzinfo=timezone.utc)
+
+            write_csv(futures / "BTCUSDT_5m.csv", "open_time,close", "2026-04-18T14:45:00Z,1")
+            write_csv(futures / "BTCUSDT_1d.csv", "date,close", "2026-04-18,1")
+            write_csv(
+                futures / "BTCUSDT_funding_2025-10-01_2026-04-18.csv",
+                "fundingTime,fundingRate",
+                "2026-04-18T08:00:00Z,0.001",
+            )
+            write_csv(
+                futures / "BTCUSDT_funding_2026-02-15_2026-04-14.csv",
+                "fundingTime,fundingRate",
+                "2026-04-14T08:00:00Z,0.001",
+            )
+
+            with patch.object(monitor, "BINANCE_FUTURES_DIR", futures):
+                payload = monitor.summarize_ohlcv(("BTCUSDT",), now=now)
+
+            funding = payload["per_pair"]["BTCUSDT"]["funding"]
+            self.assertTrue(funding["path"].endswith("BTCUSDT_funding_2025-10-01_2026-04-18.csv"))
+            self.assertEqual(funding["last_timestamp"], "2026-04-18T08:00:00+00:00")
+            self.assertEqual(funding["freshness"], "fresh")
+
     def test_market_context_treats_us_weekend_as_fresh(self) -> None:
         now = datetime(2026, 4, 13, 4, 40, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as tmp:

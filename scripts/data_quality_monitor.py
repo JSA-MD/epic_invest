@@ -139,6 +139,25 @@ def _mtime_iso(path: Path) -> str | None:
         return None
 
 
+def _select_latest_csv_path(paths: list[Path]) -> Path:
+    if not paths:
+        return Path()
+    ranked: list[tuple[tuple[bool, str, str, str], Path]] = []
+    for path in paths:
+        ranked.append(
+            (
+                (
+                    _read_last_csv_timestamp(path) is not None,
+                    _read_last_csv_timestamp(path) or "",
+                    _mtime_iso(path) or "",
+                    str(path),
+                ),
+                path,
+            )
+        )
+    return max(ranked, key=lambda item: item[0])[1]
+
+
 def _age_seconds(iso_value: str | None, *, now: datetime) -> float | None:
     if iso_value is None:
         return None
@@ -193,7 +212,7 @@ def summarize_ohlcv(pairs: tuple[str, ...], *, now: datetime) -> dict[str, Any]:
         feed_5m = summarize_feed(BINANCE_FUTURES_DIR / f"{pair}_5m.csv", THRESHOLDS["ohlcv_5m"], now=now)
         feed_1d = summarize_feed(BINANCE_FUTURES_DIR / f"{pair}_1d.csv", THRESHOLDS["ohlcv_1d"], now=now)
         funding_files = sorted(BINANCE_FUTURES_DIR.glob(f"{pair}_funding_*.csv"))
-        funding_path = funding_files[-1] if funding_files else Path()
+        funding_path = _select_latest_csv_path(funding_files)
         feed_funding = summarize_feed(funding_path, THRESHOLDS["funding"], now=now) if funding_files else {
             "path": str(funding_path),
             "exists": False,

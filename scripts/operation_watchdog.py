@@ -45,9 +45,11 @@ PAIRWISE_LOG_PATH = Path(os.getenv("PAIRWISE_LIVE_LOG_FILE", str(ROOT_DIR / "log
 WATCHDOG_LOG_PATH = Path(os.getenv("WATCHDOG_LOG_FILE", "/tmp/epic-invest-watchdog.log"))
 
 TRADER_LABEL = "com.epicinvest.trader"
+PAIRWISE_LABEL = "com.epicinvest.pairwise-trader"
 BOT_LABEL = "com.epicinvest.telegram-bot"
 WATCHDOG_LABEL = "com.epicinvest.watchdog"
 TRADER_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.trader.plist"
+PAIRWISE_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.pairwise-trader.plist"
 BOT_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.telegram-bot.plist"
 WATCHDOG_PLIST = ROOT_DIR / "scripts" / "com.epicinvest.watchdog.plist"
 PYTHON_BIN = ROOT_DIR / ".venv" / "bin" / "python"
@@ -250,6 +252,22 @@ def launchctl_print(label: str) -> dict[str, Any]:
     return run_command(["launchctl", "print", f"{DOMAIN}/{label}"], timeout=30)
 
 
+def launchd_service_pid(label: str | None) -> int | None:
+    if not label:
+        return None
+    result = launchctl_print(str(label))
+    if result["returncode"] != 0:
+        return None
+    for line in str(result.get("stdout") or "").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("pid = "):
+            continue
+        raw_pid = stripped.split("=", 1)[1].strip()
+        if raw_pid.isdigit():
+            return int(raw_pid)
+    return None
+
+
 def kickstart_launchd(label: str, plist_path: Path) -> dict[str, Any]:
     print_result = launchctl_print(label)
     actions: list[dict[str, Any]] = []
@@ -292,7 +310,11 @@ def resolve_active_trader_key() -> str:
         return key
     pairwise_pid = read_pid(PAIRWISE_PID_PATH)
     core_pid = read_pid(CORE_PID_PATH)
-    if is_pid_running(pairwise_pid) and not is_pid_running(core_pid):
+    pairwise_launchd_pid = launchd_service_pid(PAIRWISE_LABEL)
+    core_launchd_pid = launchd_service_pid(TRADER_LABEL)
+    if is_pid_running(resolve_live_pid(pairwise_pid, pairwise_launchd_pid)) and not is_pid_running(
+        resolve_live_pid(core_pid, core_launchd_pid)
+    ):
         return "pairwise"
     return "core"
 
@@ -308,8 +330,9 @@ def active_trader_profile() -> dict[str, Any]:
         return {
             "key": "pairwise",
             "state_path": PAIRWISE_STATE_PATH,
-            "shadow_state_path": PAIRWISE_SHADOW_STATE_PATH,
             "pid_path": PAIRWISE_PID_PATH,
+            "launchd_label": PAIRWISE_LABEL,
+            "launchd_plist": PAIRWISE_PLIST,
             "log_path": PAIRWISE_LOG_PATH,
             "decision_log_path": PAIRWISE_DECISION_LOG_PATH,
             "mode": str(runtime_profile.get("mode") or os.getenv("PAIRWISE_LIVE_MODE", os.getenv("BINANCE_MODE", "demo"))),
@@ -704,7 +727,11 @@ def evaluate_trader() -> dict[str, Any]:
     latest_runtime_snapshot = state.get("latest_runtime_snapshot") or {}
     latest_decision_snapshot = state.get("latest_decision_snapshot") or {}
     runtime_pid = int(runtime.get("pid")) if str(runtime.get("pid") or "").isdigit() else None
-    pid = resolve_live_pid(runtime_pid, read_pid(profile["pid_path"]))
+    pid = resolve_live_pid(
+        runtime_pid,
+        read_pid(profile["pid_path"]),
+        launchd_service_pid(profile.get("launchd_label")),
+    )
     pid_verified = is_pid_running(pid)
     last_progress_at = latest_signal(
         [
@@ -739,8 +766,9 @@ def evaluate_trader() -> dict[str, Any]:
     protection_health = {"expected": 0, "active": 0, "status": None}
     shadow_state = {}
 
-    if profile["key"] == "pairwise":
-        shadow_state = read_json(profile["shadow_state_path"], {})
+    shadow_state_path = profile.get("shadow_state_path")
+    if profile["key"] == "pairwise" and shadow_state_path is not None:
+        shadow_state = read_json(shadow_state_path, {})
         shadow_runtime = shadow_state.get("runtime_health") or {}
         shadow_paper = shadow_state.get("shadow_paper") or {}
         shadow_last_progress_at = latest_signal(
@@ -774,10 +802,14 @@ def evaluate_trader() -> dict[str, Any]:
         shadow_requested_weights = requested_weight_map(shadow_state.get("latest_decision_snapshot") or {})
         live_shadow_weight_drift = max_weight_drift(live_target_weights, shadow_target_weights)
         live_shadow_requested_drift = max_weight_drift(live_requested_weights, shadow_requested_weights)
+
+    if profile["key"] == "pairwise":
         execution = (latest_runtime_snapshot.get("extra") or {}).get("execution")
+        execution_mode = "demo"
         if isinstance(execution, Mapping):
             execution_enabled = bool(execution.get("enabled"))
             execution_blocked = bool(execution.get("blocked"))
+            execution_mode = str(execution.get("mode") or execution_mode).lower()
             protection_health = protection_order_health(execution.get("shutdown_protection"))
         plan_target_weights = weight_map((latest_runtime_snapshot.get("plan") or {}).get("target_weights") or {})
         if live_target_weights and plan_target_weights:
@@ -789,31 +821,51 @@ def evaluate_trader() -> dict[str, Any]:
     elif stale_seconds > float(profile["stale_threshold_seconds"]):
         reasons.append("state_stale")
     if profile["key"] == "pairwise":
-        if shadow_stale_seconds is None:
-            reasons.append("shadow_state_missing")
-        elif shadow_stale_seconds > float(profile["stale_threshold_seconds"]):
-            reasons.append("shadow_state_stale")
-        if shadow_signal_stale_seconds is None:
-            reasons.append("shadow_signal_missing")
-        elif shadow_signal_stale_seconds > float(shadow_signal_stale_threshold_seconds or profile["stale_threshold_seconds"]):
-            reasons.append("shadow_signal_stale")
-        if shadow_signal_drift_seconds is not None and shadow_signal_drift_seconds > float(WATCHDOG_PAIRWISE_SIGNAL_DRIFT_SECONDS):
-            reasons.append("live_shadow_signal_divergence")
-        elif (
-            live_shadow_weight_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
-            and live_shadow_requested_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
-        ):
-            reasons.append("live_shadow_target_divergence")
         promotion_gate = state.get("promotion_gate") or {}
-        mode_name = str(profile.get("mode") or "demo").lower()
-        gate_ready = bool(promotion_gate.get("ready_for_shadow_live")) if mode_name == "demo" else bool(
-            promotion_gate.get("ready_for_live", promotion_gate.get("ready_for_merge"))
+        demo_gate_ready = bool(
+            promotion_gate.get(
+                "ready_for_demo",
+                promotion_gate.get(
+                    "ready_for_shadow_live",
+                    promotion_gate.get("ready_for_live", promotion_gate.get("ready_for_merge")),
+                ),
+            )
         )
+        live_gate_ready = bool(promotion_gate.get("ready_for_live", promotion_gate.get("ready_for_merge")))
+        gate_ready = demo_gate_ready if execution_mode == "demo" else live_gate_ready
         if execution_blocked and gate_ready:
             reasons.append("execution_blocked_with_open_gate")
         if execution_enabled and active_position_count(latest_runtime_snapshot) > 0:
             if protection_health["expected"] > 0 and protection_health["active"] < protection_health["expected"]:
                 reasons.append("shutdown_protection_missing")
+    if profile["key"] == "pairwise" and shadow_state_path is not None:
+        promotion_gate = state.get("promotion_gate") or {}
+        shadow_required = bool(promotion_gate.get("shadow_required", True))
+        if shadow_stale_seconds is None:
+            if shadow_required:
+                reasons.append("shadow_state_missing")
+        elif shadow_stale_seconds > float(profile["stale_threshold_seconds"]):
+            if shadow_required:
+                reasons.append("shadow_state_stale")
+        if shadow_signal_stale_seconds is None:
+            if shadow_required:
+                reasons.append("shadow_signal_missing")
+        elif shadow_signal_stale_seconds > float(shadow_signal_stale_threshold_seconds or profile["stale_threshold_seconds"]):
+            if shadow_required:
+                reasons.append("shadow_signal_stale")
+        if (
+            shadow_required
+            and shadow_signal_drift_seconds is not None
+            and shadow_signal_drift_seconds > float(WATCHDOG_PAIRWISE_SIGNAL_DRIFT_SECONDS)
+        ):
+            reasons.append("live_shadow_signal_divergence")
+        elif (
+            shadow_required
+            and
+            live_shadow_weight_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
+            and live_shadow_requested_drift > WATCHDOG_WEIGHT_DRIFT_THRESHOLD
+        ):
+            reasons.append("live_shadow_target_divergence")
     if consecutive_errors >= WATCHDOG_ERROR_ESCALATION_COUNT:
         reasons.append("consecutive_errors")
     if not pid_verified:
@@ -970,8 +1022,6 @@ def restart_active_trader(profile: dict[str, Any]) -> dict[str, Any]:
     if profile["key"] == "pairwise":
         actions = [
             run_command([str(PAIRWISE_SERVICE_SCRIPT), "stop"], timeout=60),
-            run_command([str(PAIRWISE_SHADOW_UNLOAD_SCRIPT)], timeout=60),
-            run_command([str(PAIRWISE_SHADOW_LOAD_SCRIPT)], timeout=60),
             run_command(
                 [str(PAIRWISE_SERVICE_SCRIPT), "start"],
                 timeout=60,

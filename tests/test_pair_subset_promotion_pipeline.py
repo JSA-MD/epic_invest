@@ -99,6 +99,11 @@ class PairSubsetPromotionPipelineTests(unittest.TestCase):
             with (
                 patch.object(pipeline, "parse_args", return_value=args),
                 patch.object(pipeline, "run_step") as run_step,
+                patch.object(
+                    pipeline,
+                    "build_recent_activity_audit",
+                    return_value={"available": True, "passed": True, "failed_checks": []},
+                ),
             ):
                 pipeline.main()
 
@@ -110,6 +115,7 @@ class PairSubsetPromotionPipelineTests(unittest.TestCase):
             self.assertTrue(report["market_os_gate"]["passed"])
             self.assertTrue(report["final_oos_audit"]["passed"])
             self.assertTrue(report["stress_gate"]["passed"])
+            self.assertTrue(report["ready_for_demo"])
             self.assertTrue(report["ready_for_live"])
             self.assertTrue(report["ready_for_merge"])
             self.assertEqual(report["status"], "ready_for_live")
@@ -179,6 +185,11 @@ class PairSubsetPromotionPipelineTests(unittest.TestCase):
             with (
                 patch.object(pipeline, "parse_args", return_value=args),
                 patch.object(pipeline, "run_step") as run_step,
+                patch.object(
+                    pipeline,
+                    "build_recent_activity_audit",
+                    return_value={"available": True, "passed": True, "failed_checks": []},
+                ),
             ):
                 pipeline.main()
 
@@ -188,6 +199,7 @@ class PairSubsetPromotionPipelineTests(unittest.TestCase):
             self.assertTrue(report["validation_gate"]["passed"])
             self.assertTrue(report["final_oos_audit"]["passed"])
             self.assertTrue(report["stress_gate"]["passed"])
+            self.assertTrue(report["ready_for_demo"])
             self.assertTrue(report["ready_for_live"])
             self.assertTrue(report["ready_for_merge"])
             self.assertEqual(report["status"], "ready_for_live")
@@ -260,17 +272,110 @@ class PairSubsetPromotionPipelineTests(unittest.TestCase):
             with (
                 patch.object(pipeline, "parse_args", return_value=args),
                 patch.object(pipeline, "run_step") as run_step,
+                patch.object(
+                    pipeline,
+                    "build_recent_activity_audit",
+                    return_value={"available": True, "passed": True, "failed_checks": []},
+                ),
             ):
                 pipeline.main()
 
             report = json.loads(pipeline_report_out.read_text())
 
+            self.assertTrue(report["ready_for_demo"])
             self.assertTrue(report["ready_for_shadow_live"])
             self.assertFalse(report["ready_for_live"])
             self.assertFalse(report["ready_for_merge"])
             self.assertEqual(report["status"], "shadow_ready_only")
             self.assertTrue(report["stress_gate"]["ready_for_shadow_live"])
             self.assertFalse(report["stress_gate"]["ready_for_merge"])
+            self.assertEqual(run_step.call_count, 1)
+
+    def test_pairwise_mode_blocks_ready_for_live_when_recent_activity_collapses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            search_summary_out = tmp / "pairwise_validated_summary.json"
+            validation_report_out = tmp / "pairwise_validation_report.json"
+            stress_report_out = tmp / "pairwise_stress_report.json"
+            pipeline_report_out = tmp / "pairwise_pipeline_report.json"
+
+            write_json(
+                search_summary_out,
+                {
+                    "pairs": ["BTCUSDT", "BNBUSDT"],
+                    "selection": {"reason": "progressive_plus_validation"},
+                    "selected_candidate": {
+                        "pair_configs": {
+                            "BTCUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [1, 2, 3, 4]},
+                            "BNBUSDT": {"route_breadth_threshold": 0.5, "mapping_indices": [1, 2, 3, 4]},
+                        },
+                        "candidate_id": "pairwise-dead",
+                        "validation": {"profiles": {"final_oos": {"passed": True}}},
+                        "validation_engine": {
+                            "gate": {"passed": True, "failed_checks": []},
+                            "market_operating_system": {
+                                "gate": {"passed": True, "failed_checks": []},
+                                "audit": {"passed": True, "failed_checks": []},
+                            },
+                        },
+                    },
+                },
+            )
+            write_json(
+                stress_report_out,
+                {
+                    "promotion_decision": {
+                        "ready_for_live": True,
+                        "ready_for_merge": True,
+                        "selected_candidate_ready_for_merge": True,
+                        "status": "ready_for_live",
+                    }
+                },
+            )
+
+            args = Namespace(
+                pipeline_mode=pipeline.PIPELINE_MODE_PAIRWISE_MARKET_OS,
+                pairs="BTCUSDT,BNBUSDT",
+                candidate_summaries=None,
+                baseline_summary=None,
+                search_summary_out=search_summary_out,
+                validation_report_out=validation_report_out,
+                stress_report_out=stress_report_out,
+                pipeline_report_out=pipeline_report_out,
+                skip_search=True,
+                skip_validation=False,
+                skip_stress=False,
+            )
+
+            with (
+                patch.object(pipeline, "parse_args", return_value=args),
+                patch.object(pipeline, "run_step") as run_step,
+                patch.object(
+                    pipeline,
+                    "build_recent_activity_audit",
+                    return_value={
+                        "available": True,
+                        "passed": False,
+                        "failed_checks": ["recent_activity_collapse"],
+                        "lookback_bars": 576,
+                        "total_recent_nonzero_bars": 0,
+                        "pair_stats": {
+                            "BTCUSDT": {"recent_nonzero_bars": 0},
+                            "BNBUSDT": {"recent_nonzero_bars": 0},
+                        },
+                    },
+                ),
+            ):
+                pipeline.main()
+
+            report = json.loads(pipeline_report_out.read_text())
+
+            self.assertFalse(report["ready_for_demo"])
+            self.assertFalse(report["ready_for_shadow_live"])
+            self.assertFalse(report["ready_for_live"])
+            self.assertFalse(report["ready_for_merge"])
+            self.assertEqual(report["status"], "recent_activity_gate_blocked")
+            self.assertFalse(report["recent_activity_gate"]["passed"])
             self.assertEqual(run_step.call_count, 1)
 
 

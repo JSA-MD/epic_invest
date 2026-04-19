@@ -51,6 +51,17 @@ class BTCConvexBlendTests(unittest.TestCase):
             ),
             0.4,
         )
+        self.assertAlmostEqual(
+            blend_runtime_weight(
+                baseline_weight=0.4,
+                specialist_weight=-1.0,
+                route_state_name="equity_aligned:bull_broad",
+                alpha=0.4,
+                mode="state_alphas",
+                state_alphas={"equity_aligned:bull_broad": 1.0},
+            ),
+            -1.0,
+        )
 
     def test_build_blended_target_trace_narrow_only(self) -> None:
         context = {
@@ -70,6 +81,30 @@ class BTCConvexBlendTests(unittest.TestCase):
             mode="narrow_only",
         )
         expected = np.asarray([0.0, 0.7, 0.5, -0.7], dtype="float64")
+        np.testing.assert_allclose(blended, expected)
+
+    def test_build_blended_target_trace_state_alphas_override(self) -> None:
+        context = {
+            "route_state_mode": "equity_corr",
+            "bucket_codes": {
+                0.5: np.asarray([11, 9, 8, 4], dtype="int64"),
+            },
+        }
+        baseline_trace = {"target_weight": np.asarray([0.0, -0.5, -0.5, -0.5], dtype="float64")}
+        specialist_trace = {"target_weight": np.asarray([1.0, 1.0, -1.0, 1.0], dtype="float64")}
+        blended = build_blended_target_trace(
+            context=context,
+            route_breadth_threshold=0.5,
+            baseline_trace=baseline_trace,
+            specialist_trace=specialist_trace,
+            alpha=0.4,
+            mode="state_alphas",
+            state_alphas={
+                "equity_aligned:bull_broad": 1.0,
+                "equity_aligned:bear_broad": 0.6,
+            },
+        )
+        expected = np.asarray([1.0, 0.4, -0.5, -0.5], dtype="float64")
         np.testing.assert_allclose(blended, expected)
 
 

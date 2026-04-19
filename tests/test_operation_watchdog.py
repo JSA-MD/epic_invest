@@ -55,6 +55,14 @@ class OperationWatchdogTests(unittest.TestCase):
         with patch.object(watchdog, "is_pid_running", side_effect=lambda pid: pid == 222):
             self.assertEqual(watchdog.resolve_live_pid(111, 222), 222)
 
+    def test_launchd_service_pid_parses_launchctl_output(self) -> None:
+        with patch.object(
+            watchdog,
+            "launchctl_print",
+            return_value={"returncode": 0, "stdout": "com.epicinvest.pairwise-trader\n    pid = 4242\n", "stderr": ""},
+        ):
+            self.assertEqual(watchdog.launchd_service_pid(watchdog.PAIRWISE_LABEL), 4242)
+
     def test_evaluate_trader_uses_live_fallback_pid(self) -> None:
         state = {
             "updated_at": "2026-04-10T11:58:03+00:00",
@@ -70,6 +78,7 @@ class OperationWatchdogTests(unittest.TestCase):
             patch.object(watchdog, "read_json", return_value=state),
             patch.object(watchdog, "read_pid", return_value=222),
             patch.object(watchdog, "resolve_live_pid", return_value=222),
+            patch.object(watchdog, "launchd_service_pid", return_value=None),
             patch.object(watchdog, "is_pid_running", return_value=True),
             patch.object(watchdog, "age_seconds", return_value=5.0),
         ):
@@ -78,6 +87,54 @@ class OperationWatchdogTests(unittest.TestCase):
         self.assertTrue(report["pid_verified"])
         self.assertEqual(report["reasons"], [])
         self.assertEqual(report["active_profile"], "core")
+
+    def test_evaluate_trader_uses_pairwise_launchd_fallback_pid(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T11:58:03+00:00",
+            "runtime_health": {
+                "pid": 111,
+                "last_success_at": "2026-04-10T11:58:03+00:00",
+                "last_loop_started_at": "2026-04-10T11:57:03+00:00",
+                "last_loop_completed_at": "2026-04-10T11:58:03+00:00",
+                "consecutive_errors": 0,
+            },
+            "promotion_gate": {"shadow_required": False},
+        }
+        shadow_state = {}
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "launchd_label": watchdog.PAIRWISE_LABEL,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "demo",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return shadow_state
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=None),
+            patch.object(watchdog, "launchd_service_pid", return_value=4242),
+            patch.object(watchdog, "resolve_live_pid", return_value=4242),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["pid"], 4242)
+        self.assertTrue(report["pid_verified"])
+        self.assertEqual(report["reasons"], [])
 
     def test_evaluate_bot_uses_live_fallback_pid(self) -> None:
         state = {
@@ -331,7 +388,7 @@ class OperationWatchdogTests(unittest.TestCase):
                 "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
                 "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
             },
-            "promotion_gate": {"ready_for_shadow_live": True},
+            "promotion_gate": {"ready_for_live": True, "ready_for_merge": True},
         }
         shadow_state = {
             "updated_at": "2026-04-10T13:22:32+00:00",
@@ -373,6 +430,54 @@ class OperationWatchdogTests(unittest.TestCase):
         self.assertEqual(report["status"], "warning")
         self.assertIn("decision_log_stale", report["reasons"])
 
+    def test_evaluate_trader_skips_shadow_requirements_when_shadow_is_disabled(self) -> None:
+        live_state = {
+            "updated_at": "2026-04-10T13:22:32+00:00",
+            "runtime_health": {"pid": 10723, "last_success_at": "2026-04-10T13:22:32+00:00", "consecutive_errors": 0},
+            "latest_decision_snapshot": {
+                "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+                "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
+            },
+            "promotion_gate": {
+                "ready_for_shadow_live": True,
+                "ready_for_live": True,
+                "ready_for_merge": True,
+                "shadow_required": False,
+            },
+        }
+        profile = {
+            "key": "pairwise",
+            "state_path": watchdog.PAIRWISE_STATE_PATH,
+            "shadow_state_path": watchdog.PAIRWISE_SHADOW_STATE_PATH,
+            "pid_path": watchdog.PAIRWISE_PID_PATH,
+            "log_path": watchdog.PAIRWISE_LOG_PATH,
+            "decision_log_path": watchdog.PAIRWISE_DECISION_LOG_PATH,
+            "mode": "live",
+            "force_execute": False,
+            "stale_threshold_seconds": 390,
+            "protect_threshold_seconds": 480,
+        }
+
+        def fake_read_json(path: Path, default):
+            if path == watchdog.PAIRWISE_SHADOW_STATE_PATH:
+                return {}
+            return live_state
+
+        with (
+            patch.object(watchdog, "active_trader_profile", return_value=profile),
+            patch.object(watchdog, "read_json", side_effect=fake_read_json),
+            patch.object(watchdog, "read_pid", return_value=10723),
+            patch.object(watchdog, "resolve_live_pid", return_value=10723),
+            patch.object(watchdog, "is_pid_running", return_value=True),
+            patch.object(watchdog, "age_seconds", return_value=5.0),
+            patch.object(watchdog, "file_age_seconds", return_value=5.0),
+        ):
+            report = watchdog.evaluate_trader()
+
+        self.assertEqual(report["status"], "ok")
+        self.assertNotIn("shadow_state_missing", report["reasons"])
+        self.assertNotIn("shadow_signal_missing", report["reasons"])
+
     def test_evaluate_trader_blocks_live_shadow_signal_divergence(self) -> None:
         live_state = {
             "updated_at": "2026-04-10T13:22:32+00:00",
@@ -381,7 +486,7 @@ class OperationWatchdogTests(unittest.TestCase):
                 "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5},
                 "rationale": {"signal_timestamp": "2026-04-10T13:22:32+00:00"},
             },
-            "promotion_gate": {"ready_for_shadow_live": True},
+            "promotion_gate": {"ready_for_live": True, "ready_for_merge": True},
         }
         shadow_state = {
             "updated_at": "2026-04-10T13:22:32+00:00",
@@ -607,7 +712,7 @@ class OperationWatchdogTests(unittest.TestCase):
                 "plan": {"target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -1.5}},
                 "extra": {"execution": {"enabled": False, "blocked": True}},
             },
-            "promotion_gate": {"ready_for_shadow_live": True},
+            "promotion_gate": {"ready_for_live": True, "ready_for_merge": True},
         }
         shadow_state = {
             "updated_at": "2026-04-10T13:22:32+00:00",
@@ -648,7 +753,7 @@ class OperationWatchdogTests(unittest.TestCase):
         self.assertEqual(report["status"], "critical")
         self.assertIn("execution_blocked_with_open_gate", report["reasons"])
 
-    def test_restart_active_trader_pairwise_restarts_shadow_before_live(self) -> None:
+    def test_restart_active_trader_pairwise_restarts_live_only(self) -> None:
         profile = {
             "key": "pairwise",
             "mode": "demo",
@@ -659,10 +764,8 @@ class OperationWatchdogTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         calls = run_command.call_args_list
         self.assertEqual(calls[0].args[0], [str(watchdog.PAIRWISE_SERVICE_SCRIPT), "stop"])
-        self.assertEqual(calls[1].args[0], [str(watchdog.PAIRWISE_SHADOW_UNLOAD_SCRIPT)])
-        self.assertEqual(calls[2].args[0], [str(watchdog.PAIRWISE_SHADOW_LOAD_SCRIPT)])
-        self.assertEqual(calls[3].args[0], [str(watchdog.PAIRWISE_SERVICE_SCRIPT), "start"])
-        self.assertEqual(calls[3].kwargs["env_updates"]["PAIRWISE_FORCE_EXECUTE"], "0")
+        self.assertEqual(calls[1].args[0], [str(watchdog.PAIRWISE_SERVICE_SCRIPT), "start"])
+        self.assertEqual(calls[1].kwargs["env_updates"]["PAIRWISE_FORCE_EXECUTE"], "0")
 
     def test_resolve_telegram_chat_ids_dedupes_duplicates(self) -> None:
         with (

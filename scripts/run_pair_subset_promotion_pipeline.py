@@ -15,6 +15,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
 MODELS_DIR = ROOT / "models"
+DEFAULT_RECENT_ACTIVITY_LOOKBACK_BARS = 576
+DEFAULT_RECENT_ACTIVITY_WINDOW_DAYS = 45
+DEFAULT_RECENT_ACTIVITY_MIN_NONZERO_BARS = 1
 
 PIPELINE_MODE_LEGACY_SHARED = "legacy_shared"
 PIPELINE_MODE_PAIRWISE_MARKET_OS = "pairwise_market_os"
@@ -130,6 +133,145 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(json_safe(payload), ensure_ascii=False, indent=2) + "\n")
+
+
+def build_recent_activity_audit(
+    *,
+    mode: str,
+    summary_path: Path,
+    baseline_summary_path: Path,
+    lookback_bars: int = DEFAULT_RECENT_ACTIVITY_LOOKBACK_BARS,
+    window_days: int = DEFAULT_RECENT_ACTIVITY_WINDOW_DAYS,
+    min_nonzero_bars: int = DEFAULT_RECENT_ACTIVITY_MIN_NONZERO_BARS,
+) -> dict[str, Any]:
+    if mode not in {PIPELINE_MODE_PAIRWISE_MARKET_OS, PIPELINE_MODE_PAIRWISE_MARKET_OS_FRACTAL}:
+        return {
+            "available": False,
+            "passed": True,
+            "reason": "unsupported_pipeline_mode",
+            "failed_checks": [],
+        }
+    try:
+        import numpy as np
+        import pandas as pd
+
+        import gp_crypto_evolution as gp
+        from backtest_main_trade_meta_label import replay_pair
+        from derivative_market_data import load_derivative_bundle
+        from pairwise_regime_mixture_shadow_live import load_strategy_bundle, resolve_runtime_candidate
+        from search_pair_subset_fractal_genome import load_funding_from_cache_or_empty
+        from search_pair_subset_regime_mixture import build_fast_context, build_library_lookup, build_overlay_inputs
+
+        search_summary = load_json(summary_path)
+        selected = search_summary.get("selected_candidate") or {}
+        pairs = tuple(search_summary.get("pairs") or ("BTCUSDT", "BNBUSDT"))
+        if not selected or not pairs:
+            return {
+                "available": False,
+                "passed": True,
+                "reason": "selected_candidate_missing",
+                "failed_checks": [],
+            }
+
+        end_ts = pd.Timestamp.now(tz="UTC").normalize()
+        start_ts = end_ts - pd.Timedelta(days=max(int(window_days), 7))
+        start = start_ts.strftime("%Y-%m-%d")
+        end = end_ts.strftime("%Y-%m-%d")
+        bundle = load_strategy_bundle(summary_path, baseline_summary_path, MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill")
+        df_live = gp.load_all_pairs(pairs=list(pairs), start=start, end=end, refresh_cache=False)
+        if df_live.empty:
+            return {
+                "available": False,
+                "passed": True,
+                "reason": "live_window_empty",
+                "failed_checks": [],
+            }
+        candidate = resolve_runtime_candidate(df_live, pairs, bundle)
+        if str(candidate.get("candidate_kind") or "").strip().lower() == "fractal_tree":
+            candidate = dict(candidate)
+            candidate["candidate_kind"] = "pairwise_candidate"
+        library_lookup = build_library_lookup(bundle["library"])
+        compiled = bundle["compiled_model"]
+        route_thresholds = tuple(float(v) for v in (search_summary.get("search", {}).get("route_thresholds") or (0.35, 0.50, 0.65, 0.80)))
+        pair_stats: dict[str, Any] = {}
+        total_recent_nonzero = 0
+
+        for pair in pairs:
+            overlay_inputs = build_overlay_inputs(df_live, pairs, regime_pair=pair)
+            raw_signal = pd.Series(
+                compiled(*gp.get_feature_arrays(df_live, pair)),
+                index=df_live.index,
+                dtype="float64",
+            ).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+            funding_df = load_funding_from_cache_or_empty(pair, start, end)
+            derivative_bundle = load_derivative_bundle(
+                pair,
+                start_dt=start_ts.to_pydatetime(),
+                end_dt=end_ts.to_pydatetime(),
+                fetch=False,
+                lookback_days=3650,
+            )
+            context = build_fast_context(
+                df=df_live,
+                pair=pair,
+                raw_signal=raw_signal,
+                overlay_inputs=overlay_inputs,
+                route_thresholds=route_thresholds,
+                library_lookup=library_lookup,
+                funding_df=funding_df,
+                derivative_bundle=derivative_bundle,
+                route_state_mode=str((candidate.get("pair_configs") or {}).get(pair, {}).get("route_state_mode") or "equity_corr"),
+            )
+            replay = replay_pair(
+                candidate=candidate,
+                pair=pair,
+                context=context,
+                library_lookup=library_lookup,
+                return_trace=True,
+            )
+            trace = replay.get("trace") or {}
+            target_values = trace.get("target_weight")
+            if target_values is None:
+                target = np.asarray([], dtype="float64")
+            else:
+                target = np.asarray(target_values, dtype="float64")
+            recent = target[-lookback_bars:] if target.size > lookback_bars else target
+            recent_nonzero = int(np.sum(np.abs(recent) > 1e-9))
+            total_recent_nonzero += recent_nonzero
+            if recent_nonzero > 0:
+                last_nonzero_age_bars = int(np.flatnonzero(np.abs(recent) > 1e-9)[-1])
+                last_nonzero_age_bars = int(len(recent) - 1 - last_nonzero_age_bars)
+            else:
+                last_nonzero_age_bars = None
+            pair_stats[pair] = {
+                "recent_nonzero_bars": recent_nonzero,
+                "recent_active_share": 0.0 if len(recent) == 0 else float(recent_nonzero / len(recent)),
+                "recent_long_bars": int(np.sum(recent > 1e-9)),
+                "recent_short_bars": int(np.sum(recent < -1e-9)),
+                "last_nonzero_age_bars": last_nonzero_age_bars,
+                "recent_max_abs_target_weight": 0.0 if len(recent) == 0 else float(np.max(np.abs(recent))),
+            }
+
+        passed = bool(total_recent_nonzero >= int(min_nonzero_bars))
+        failed_checks = [] if passed else ["recent_activity_collapse"]
+        return {
+            "available": True,
+            "passed": passed,
+            "lookback_bars": int(lookback_bars),
+            "window_days": int(window_days),
+            "min_nonzero_bars": int(min_nonzero_bars),
+            "total_recent_nonzero_bars": int(total_recent_nonzero),
+            "pair_stats": pair_stats,
+            "failed_checks": failed_checks,
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "passed": True,
+            "reason": "audit_unavailable",
+            "error": str(exc),
+            "failed_checks": [],
+        }
 
 
 def build_pairwise_validation_report(search_summary: dict[str, Any]) -> dict[str, Any]:
@@ -258,6 +400,7 @@ def build_final_report(
     stress_report: dict[str, Any],
     executed_steps: list[dict[str, Any]],
     paths: dict[str, Path],
+    recent_activity_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected = search_summary.get("selected_candidate") or {}
     validation_engine = selected.get("validation_engine") or {}
@@ -290,10 +433,23 @@ def build_final_report(
     market_os_gate_passed = True if market_os_gate is None else bool(market_os_gate.get("passed", False))
     final_oos_passed = bool(final_oos_audit.get("passed", False))
     stress_gate_passed = bool(stress_gate["passed"])
+    recent_activity_gate = dict(recent_activity_audit or {"available": False, "passed": True, "failed_checks": []})
+    recent_activity_gate_passed = bool(recent_activity_gate.get("passed", True))
     ready_for_shadow_live = bool(
-        validation_gate_passed and market_os_gate_passed and final_oos_passed and stress_ready_for_shadow_live
+        validation_gate_passed
+        and market_os_gate_passed
+        and final_oos_passed
+        and stress_ready_for_shadow_live
+        and recent_activity_gate_passed
     )
-    ready_for_live = bool(validation_gate_passed and market_os_gate_passed and final_oos_passed and stress_gate_passed)
+    ready_for_demo = ready_for_shadow_live
+    ready_for_live = bool(
+        validation_gate_passed
+        and market_os_gate_passed
+        and final_oos_passed
+        and stress_gate_passed
+        and recent_activity_gate_passed
+    )
     ready_for_merge = ready_for_live
     if ready_for_live:
         status = "ready_for_live"
@@ -305,6 +461,8 @@ def build_final_report(
         status = "market_os_gate_blocked"
     elif not final_oos_passed:
         status = "final_oos_audit_blocked"
+    elif not recent_activity_gate_passed:
+        status = "recent_activity_gate_blocked"
     elif not stress_gate_passed:
         status = "stress_gate_blocked"
     else:
@@ -336,6 +494,8 @@ def build_final_report(
         "market_os_gate": market_os_gate,
         "final_oos_audit": final_oos_audit,
         "stress_gate": stress_gate,
+        "recent_activity_gate": recent_activity_gate,
+        "ready_for_demo": ready_for_demo,
         "ready_for_shadow_live": ready_for_shadow_live,
         "ready_for_live": ready_for_live,
         "ready_for_merge": ready_for_merge,
@@ -346,6 +506,7 @@ def build_final_report(
     }
     report["decision"] = {
         "status": status,
+        "ready_for_demo": ready_for_demo,
         "ready_for_shadow_live": ready_for_shadow_live,
         "ready_for_live": ready_for_live,
         "ready_for_merge": ready_for_merge,
@@ -353,6 +514,7 @@ def build_final_report(
         "market_os_gate_passed": market_os_gate_passed,
         "final_oos_audit_passed": final_oos_passed,
         "stress_gate_passed": stress_gate_passed,
+        "recent_activity_gate_passed": recent_activity_gate_passed,
     }
     return report
 
@@ -511,6 +673,11 @@ def main() -> None:
         stress_report = load_json(paths["stress_report_out"])
     if mode == PIPELINE_MODE_LEGACY_SHARED:
         validation_report = build_legacy_validation_report(validation_report)
+    recent_activity_audit = build_recent_activity_audit(
+        mode=mode,
+        summary_path=paths["search_summary_out"],
+        baseline_summary_path=Path(paths["baseline_summary"]),
+    )
 
     report = build_final_report(
         mode=mode,
@@ -519,6 +686,7 @@ def main() -> None:
         stress_report=stress_report,
         executed_steps=executed_steps,
         paths=paths,
+        recent_activity_audit=recent_activity_audit,
     )
 
     write_json(paths["pipeline_report_out"], report)

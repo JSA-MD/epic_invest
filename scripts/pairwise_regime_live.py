@@ -24,14 +24,20 @@ from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
+from btc_event_blend import apply_runtime_event_blend, build_runtime_event_context_from_frame, get_btc_event_blend
 from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
+from execution_gene_utils import normalize_execution_gene
 from replay_regime_mixture_realistic import load_model as load_signal_model
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
+    _load_derivative_bundle,
+    build_fast_context,
     build_overlay_inputs,
+    build_library_lookup,
     build_route_bucket_codes,
     normalize_mapping_indices,
     normalize_route_state_mode,
+    realistic_overlay_replay_from_context,
     route_state_names,
 )
 
@@ -44,6 +50,8 @@ PAIR_TO_MARKET = {
 }
 
 DEFAULT_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
+DEFAULT_MARKET_OS_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_market_os_candidate_summary.json"
+DEFAULT_VALIDATED_STRESS_REPORT_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_validated_stress_report.json"
 DEFAULT_MODEL_PATH = ROOT / "models" / "recent_6m_gp_vectorized_big_capped_rerun.dill"
 DEFAULT_PROMOTION_REPORT_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json"
 DEFAULT_STATE_PATH = ROOT / "models" / "pairwise_regime_live_state.json"
@@ -138,6 +146,8 @@ def _default_state() -> Dict[str, Any]:
         "shadow_paper": {
             "enabled": True,
             "observations": 0,
+            "source_mode": "shadow",
+            "baseline_equity": SHADOW_DEFAULT_EQUITY,
             "equity": SHADOW_DEFAULT_EQUITY,
             "peak_equity": SHADOW_DEFAULT_EQUITY,
             "max_drawdown": 0.0,
@@ -163,6 +173,22 @@ def _default_state() -> Dict[str, Any]:
     }
 
 
+def ensure_shadow_paper_defaults(shadow: Dict[str, Any]) -> Dict[str, Any]:
+    shadow.setdefault("enabled", True)
+    shadow.setdefault("observations", 0)
+    shadow.setdefault("source_mode", "shadow")
+    shadow.setdefault("baseline_equity", SHADOW_DEFAULT_EQUITY)
+    shadow.setdefault("equity", SHADOW_DEFAULT_EQUITY)
+    shadow.setdefault("peak_equity", shadow["equity"])
+    shadow.setdefault("max_drawdown", 0.0)
+    shadow.setdefault("return_pct", 0.0)
+    shadow.setdefault("last_prices", {})
+    shadow.setdefault("current_weights", {})
+    shadow.setdefault("cooldown_bars_left", {})
+    shadow.setdefault("turnover_cost_paid", 0.0)
+    return shadow
+
+
 def _load_state_payload(path: Path) -> Dict[str, Any]:
     candidates = (path, _state_backup_path(path), _state_tmp_path(path))
     for candidate in candidates:
@@ -185,6 +211,7 @@ def load_state(path: Path) -> Dict[str, Any]:
     state = _load_state_payload(path)
     notification_state = state.setdefault("notification_state", {})
     notification_state.setdefault("position_loss_alerted", {})
+    ensure_shadow_paper_defaults(state.setdefault("shadow_paper", {}))
     return state
 
 
@@ -214,6 +241,42 @@ def load_selected_candidate(summary_path: Path) -> Dict[str, Any]:
     if not selected:
         raise ValueError(f"No selected_candidate found in {summary_path}")
     return payload
+
+
+def _promotion_report_runtime_ready(report: Mapping[str, Any]) -> bool:
+    decision = report.get("decision") if isinstance(report.get("decision"), Mapping) else {}
+    readiness_flags = (
+        report.get("ready_for_demo"),
+        report.get("ready_for_shadow_live"),
+        report.get("ready_for_live"),
+        report.get("ready_for_merge"),
+        decision.get("ready_for_demo"),
+        decision.get("ready_for_shadow_live"),
+        decision.get("ready_for_live"),
+        decision.get("ready_for_merge"),
+        decision.get("selected_candidate_ready_for_live"),
+        decision.get("selected_candidate_ready_for_merge"),
+    )
+    return any(bool(flag) for flag in readiness_flags)
+
+
+def resolve_runtime_summary_path(summary_path: Path, promotion_report_path: Path) -> Path:
+    requested = Path(summary_path)
+    if requested != DEFAULT_SUMMARY_PATH:
+        return requested
+    if not promotion_report_path.exists() or not DEFAULT_MARKET_OS_SUMMARY_PATH.exists():
+        return requested
+    try:
+        report = json.loads(promotion_report_path.read_text())
+    except json.JSONDecodeError:
+        return requested
+    if not isinstance(report, Mapping):
+        return requested
+    if not report.get("selected_candidate"):
+        return requested
+    if not _promotion_report_runtime_ready(report):
+        return requested
+    return DEFAULT_MARKET_OS_SUMMARY_PATH
 
 
 def extract_strategy_artifact_reference(summary_payload: Mapping[str, Any], *field_names: str) -> str | None:
@@ -255,6 +318,70 @@ def resolve_strategy_artifact_path(path: str | Path, anchor_file: Path) -> Path:
     return candidates[0] if candidates else anchor_file.parent / candidate
 
 
+def _same_resolved_path(left: str | Path, right: str | Path) -> bool:
+    return Path(left).resolve(strict=False) == Path(right).resolve(strict=False)
+
+
+def extract_report_summary_references(report_payload: Mapping[str, Any]) -> List[str]:
+    references: List[str] = []
+    containers = [
+        report_payload,
+        report_payload.get("artifacts") or {},
+        report_payload.get("selected_candidate") or {},
+        report_payload.get("selection") or {},
+        report_payload.get("decision") or {},
+        report_payload.get("promotion_decision") or {},
+    ]
+    for container in containers:
+        if not isinstance(container, Mapping):
+            continue
+        for field_name in (
+            "summary_path",
+            "search_summary",
+            "selected_summary_path",
+            "candidate_summary_path",
+        ):
+            value = container.get(field_name)
+            if value:
+                references.append(str(value))
+    return references
+
+
+def promotion_report_matches_summary(report_path: Path, summary_path: Path) -> bool:
+    if not report_path.exists():
+        return False
+    try:
+        payload = json.loads(report_path.read_text())
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    for raw_reference in extract_report_summary_references(payload):
+        resolved_reference = resolve_strategy_artifact_path(raw_reference, report_path)
+        if _same_resolved_path(resolved_reference, summary_path):
+            return True
+    return False
+
+
+def resolve_runtime_promotion_report_path(summary_path: Path, promotion_report_path: Path) -> Path:
+    requested = Path(promotion_report_path)
+    candidate_reports: List[Path] = []
+    for candidate in (
+        requested,
+        DEFAULT_PROMOTION_REPORT_PATH if _same_resolved_path(summary_path, DEFAULT_MARKET_OS_SUMMARY_PATH) else None,
+        DEFAULT_VALIDATED_STRESS_REPORT_PATH if _same_resolved_path(summary_path, DEFAULT_SUMMARY_PATH) else None,
+    ):
+        if candidate is None:
+            continue
+        if any(_same_resolved_path(candidate, existing) for existing in candidate_reports):
+            continue
+        candidate_reports.append(candidate)
+    for candidate in candidate_reports:
+        if promotion_report_matches_summary(candidate, summary_path):
+            return candidate
+    return requested
+
+
 def pandas_timeframe(interval: str) -> str:
     if interval.endswith("m"):
         return f"{interval[:-1]}min"
@@ -264,7 +391,7 @@ def pandas_timeframe(interval: str) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Pairwise BTC/BNB live and shadow runner")
+    parser = argparse.ArgumentParser(description="Pairwise BTC/BNB demo/live runner")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_common(cmd: argparse.ArgumentParser) -> None:
@@ -286,11 +413,6 @@ def parse_args() -> argparse.Namespace:
     run_once.add_argument("--force-execute", action="store_true")
     run_once.add_argument("--force-note", default="manual_primary_switch")
     run_once.add_argument("--mode", choices=("demo", "live"), default="demo")
-    run_once.add_argument("--shadow-state-path", type=Path, default=DEFAULT_SHADOW_STATE_PATH)
-
-    shadow_once = sub.add_parser("shadow-once")
-    add_common(shadow_once)
-    shadow_once.set_defaults(state_path=DEFAULT_SHADOW_STATE_PATH, decision_log_path=DEFAULT_SHADOW_DECISION_LOG_PATH)
 
     loop = sub.add_parser("loop")
     add_common(loop)
@@ -298,21 +420,7 @@ def parse_args() -> argparse.Namespace:
     loop.add_argument("--force-execute", action="store_true")
     loop.add_argument("--force-note", default="manual_primary_switch")
     loop.add_argument("--mode", choices=("demo", "live"), default="demo")
-    loop.add_argument("--shadow-state-path", type=Path, default=DEFAULT_SHADOW_STATE_PATH)
     loop.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
-
-    shadow_loop = sub.add_parser("shadow-loop")
-    add_common(shadow_loop)
-    shadow_loop.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
-    shadow_loop.set_defaults(state_path=DEFAULT_SHADOW_STATE_PATH, decision_log_path=DEFAULT_SHADOW_DECISION_LOG_PATH)
-
-    eval_shadow = sub.add_parser("evaluate-shadow")
-    add_common(eval_shadow)
-    eval_shadow.add_argument("--min-observations", type=int, default=SHADOW_PROMOTION_MIN_OBSERVATIONS)
-    eval_shadow.add_argument("--max-drawdown", type=float, default=SHADOW_PROMOTION_MAX_DRAWDOWN)
-    eval_shadow.add_argument("--min-return", type=float, default=SHADOW_PROMOTION_MIN_RETURN)
-    eval_shadow.add_argument("--max-stale-minutes", type=float, default=SHADOW_PROMOTION_MAX_STALE_MINUTES)
-    eval_shadow.set_defaults(state_path=DEFAULT_SHADOW_STATE_PATH, decision_log_path=DEFAULT_SHADOW_DECISION_LOG_PATH)
 
     sync_state = sub.add_parser("sync-state")
     add_common(sync_state)
@@ -452,132 +560,209 @@ def compute_requested_weight(
     return float(np.clip(requested_weight, -float(effective_gross_cap), float(effective_gross_cap)))
 
 
+def _append_synthetic_planning_bar(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    interval_delta = pd.Timedelta(pandas_timeframe(gp.TIMEFRAME))
+    tail = df.iloc[[-1]].copy()
+    next_index = pd.Timestamp(df.index[-1]) + interval_delta
+    while next_index in df.index:
+        next_index += interval_delta
+    tail.index = pd.DatetimeIndex([next_index])
+    return pd.concat([df, tail]).sort_index()
+
+
+def _resolve_pair_state_specialists(pair_config: Mapping[str, Any]) -> tuple[int, ...] | None:
+    raw = pair_config.get("state_specialists")
+    if not isinstance(raw, (list, tuple)):
+        return None
+    values = tuple(int(value) for value in raw)
+    return values or None
+
+
+def _trace_scalar(trace: Mapping[str, Any], key: str, index: int, default: float = 0.0) -> float:
+    values = trace.get(key)
+    if values is None:
+        return float(default)
+    arr = np.asarray(values)
+    if index < 0 or index >= len(arr):
+        return float(default)
+    value = arr[index]
+    return float(value) if np.isfinite(value) else float(default)
+
+
+def _trace_int(trace: Mapping[str, Any], key: str, index: int, default: int = 0) -> int:
+    values = trace.get(key)
+    if values is None:
+        return int(default)
+    arr = np.asarray(values)
+    if index < 0 or index >= len(arr):
+        return int(default)
+    return int(arr[index])
+
+
+def _latest_trace_signal_index(trace: Mapping[str, Any], planning_frame_length: int) -> int:
+    values = trace.get("target_weight")
+    if values is not None:
+        arr = np.asarray(values)
+        if arr.size > 0:
+            return max(0, int(arr.size - 1))
+    # The planning frame includes one synthetic bar so the latest actionable
+    # signal sits one bar before the last completed bar.
+    return max(int(planning_frame_length) - 3, 0)
+
+
+def _build_trace_driven_pair_plan(
+    *,
+    df: pd.DataFrame,
+    pair: str,
+    pair_config: Mapping[str, Any],
+    raw_signal: np.ndarray,
+    overlay_inputs: Mapping[str, Any],
+    library: list[Any],
+    library_lookup: Mapping[str, Any],
+    current_weight: float,
+    derivative_bundle: Mapping[str, pd.DataFrame] | None,
+) -> Dict[str, Any]:
+    route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
+    route_threshold = float(pair_config["route_breadth_threshold"])
+    mapping = normalize_mapping_indices(pair_config["mapping_indices"], route_state_mode)
+    raw_signal_series = pd.Series(np.asarray(raw_signal, dtype="float64"), index=pd.DatetimeIndex(df.index))
+    fast_context = build_fast_context(
+        df=df,
+        pair=pair,
+        raw_signal=raw_signal_series,
+        overlay_inputs=dict(overlay_inputs),
+        route_thresholds=(route_threshold,),
+        library_lookup=dict(library_lookup),
+        derivative_bundle=None if derivative_bundle is None else dict(derivative_bundle),
+        route_state_mode=route_state_mode,
+    )
+    execution_gene = None
+    if isinstance(pair_config.get("execution_gene"), Mapping):
+        execution_gene = normalize_execution_gene(pair_config.get("execution_gene"))
+    result = realistic_overlay_replay_from_context(
+        fast_context,
+        dict(library_lookup),
+        mapping,
+        route_threshold,
+        use_equity_corr_risk=PAIRWISE_EQUITY_CORR_RISK_ENABLED,
+        execution_gene=execution_gene,
+        state_specialists=_resolve_pair_state_specialists(pair_config),
+        engine="python",
+        return_trace=True,
+    )
+    trace = result.get("trace") or {}
+    signal_index = _latest_trace_signal_index(trace, len(df))
+    bucket_codes = np.asarray(fast_context["bucket_codes"][route_threshold], dtype="int64")
+    bucket_code = int(bucket_codes[signal_index])
+    active_index = int(mapping[bucket_code])
+    params = library[active_index]
+    day_index = pd.DatetimeIndex(df.index).normalize()
+    theoretical_current_weight = _trace_scalar(trace, "target_weight", signal_index - 1, default=0.0)
+    equity_corr_value = float(fast_context["equity_corr"][signal_index])
+    return {
+        "price": float(df[f"{pair}_close"].iloc[signal_index]),
+        "current_weight": float(current_weight),
+        "policy_current_weight": float(theoretical_current_weight),
+        "state_drift": float(current_weight - theoretical_current_weight),
+        "requested_weight": _trace_scalar(trace, "requested_weight", signal_index, default=0.0),
+        "target_weight": _trace_scalar(trace, "target_weight", signal_index, default=0.0),
+        "rebalance_due": bool(signal_index % max(int(params.rebalance_bars), 1) == 0),
+        "cooldown_bars_left_after": _trace_int(trace, "cooldown_bars_left", signal_index, default=0),
+        "route_bucket": bucket_code,
+        "route_state_mode": route_state_mode,
+        "route_state_name": route_state_names(route_state_mode)[bucket_code],
+        "route_mapping_index": active_index,
+        "params": asdict(params),
+        "regime_score": float(fast_context["regime"][signal_index]),
+        "breadth_score": float(fast_context["breadth"][signal_index]),
+        "bar_vol_ann": float(fast_context["vol_ann"][signal_index]),
+        "equity_corr_value": equity_corr_value if np.isfinite(equity_corr_value) else None,
+        "equity_corr_bucket": str(
+            overlay_inputs["equity_corr_bucket_daily"].reindex(day_index, method="ffill").fillna("equity_unknown").iloc[signal_index]
+        ),
+        "equity_corr_quantile_state": str(
+            overlay_inputs["equity_corr_quantile_state_daily"].reindex(day_index, method="ffill").fillna("missing").iloc[signal_index]
+        ),
+        "equity_corr_context": overlay_inputs.get("equity_corr_context"),
+        "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
+        "equity_corr_gross_scale": float(fast_context["equity_corr_gross_scale"][signal_index]),
+        "equity_corr_regime_threshold_mult": float(fast_context["equity_corr_regime_mult"][signal_index]),
+        "signal_value": float(np.nan_to_num(raw_signal[signal_index], nan=0.0)),
+        "signal_pct": _trace_scalar(trace, "signal_pct", signal_index, default=0.0),
+        "role_idx": _trace_int(trace, "role_idx", signal_index, default=0),
+    }
+
+
 def build_pairwise_plan(
     summary_path: Path,
     model_path: Path,
+    promotion_report_path: Path,
     refresh_live_data: bool,
     state: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    summary = load_selected_candidate(summary_path)
+    resolved_summary_path = resolve_runtime_summary_path(summary_path, promotion_report_path)
+    resolved_promotion_report_path = resolve_runtime_promotion_report_path(
+        resolved_summary_path,
+        promotion_report_path,
+    )
+    summary = load_selected_candidate(resolved_summary_path)
     embedded_model_ref = extract_strategy_artifact_reference(summary, "model_path")
-    resolved_model_path = resolve_strategy_artifact_path(embedded_model_ref or model_path, summary_path)
+    resolved_model_path = resolve_strategy_artifact_path(embedded_model_ref or model_path, resolved_summary_path)
     config = summary["selected_candidate"]["pair_configs"]
     library = list(iter_params())
+    library_lookup = build_library_lookup(library)
     model_tree, _ = load_signal_model(resolved_model_path)
     compiled = gp.toolbox.compile(expr=model_tree)
     df = load_live_frame(PAIRS, refresh_live_data=refresh_live_data)
+    df_planning = _append_synthetic_planning_bar(df)
     signal_index = len(df) - 1
     shadow = state.get("shadow_paper", {})
     current_weights = shadow.get("current_weights", {})
-    cooldown_state = shadow.get("cooldown_bars_left", {})
-    current_equity = float(shadow.get("equity", SHADOW_DEFAULT_EQUITY))
-    peak_equity = float(shadow.get("peak_equity", current_equity))
 
     pair_plans: Dict[str, Any] = {}
     target_weights: Dict[str, float] = {}
     latest_prices: Dict[str, float] = {}
     online_blend_state = state.setdefault("btc_online_blend_state", {})
+    event_blend_state = state.setdefault("btc_event_blend_state", {})
+    derivative_bundles: Dict[str, Mapping[str, pd.DataFrame] | None] = {}
 
     for pair in PAIRS:
-        raw_signal = np.asarray(compiled(*gp.get_feature_arrays(df, pair)), dtype=float)
-        overlay_inputs = build_overlay_inputs(df, PAIRS, regime_pair=pair)
+        raw_signal = np.asarray(compiled(*gp.get_feature_arrays(df_planning, pair)), dtype=float)
+        overlay_inputs = build_overlay_inputs(df_planning, PAIRS, regime_pair=pair)
+        if pair not in derivative_bundles:
+            try:
+                derivative_bundles[pair] = _load_derivative_bundle(pair)
+            except Exception:
+                derivative_bundles[pair] = None
 
-        def build_single_pair_plan(pair_config: Mapping[str, Any]) -> Dict[str, Any]:
-            route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
-            bucket_codes = build_route_bucket_codes(
-                df.index,
-                overlay_inputs,
-                pair_config["route_breadth_threshold"],
-                route_state_mode=route_state_mode,
-            )
-            mapping = normalize_mapping_indices(pair_config["mapping_indices"], route_state_mode)
-            bucket_code = int(bucket_codes[signal_index])
-            active_index = int(mapping[bucket_code])
-            route_state_name = route_state_names(route_state_mode)[bucket_code]
-            params = library[active_index]
-            current_weight = float(current_weights.get(pair, 0.0))
-            cooldown_bars_left = max(int(cooldown_state.get(pair, 0)), 0)
-            if cooldown_bars_left > 0:
-                cooldown_bars_left -= 1
-            day_index = pd.DatetimeIndex(df.index).normalize()
-            regime_score = float(
-                overlay_inputs["btc_regime_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
-            )
-            breadth_score = float(
-                overlay_inputs["breadth_daily"].reindex(day_index, method="ffill").fillna(0.0).iloc[signal_index]
-            )
-            bar_vol_ann = float(overlay_inputs["vol_ann_bar"].fillna(np.nan).iloc[signal_index])
-            equity_corr_value = float(
-                overlay_inputs["equity_corr_daily"].reindex(day_index, method="ffill").iloc[signal_index]
-            )
-            equity_corr_bucket = str(
-                overlay_inputs["equity_corr_bucket_daily"].reindex(day_index, method="ffill").fillna("equity_unknown").iloc[signal_index]
-            )
-            equity_corr_quantile_state = str(
-                overlay_inputs["equity_corr_quantile_state_daily"].reindex(day_index, method="ffill").fillna("missing").iloc[signal_index]
-            )
-            equity_corr_gross_scale = float(
-                overlay_inputs["equity_corr_gross_scale_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
-            )
-            equity_corr_regime_mult = float(
-                overlay_inputs["equity_corr_regime_threshold_mult_daily"].reindex(day_index, method="ffill").fillna(1.0).iloc[signal_index]
-            )
-            if not PAIRWISE_EQUITY_CORR_RISK_ENABLED:
-                equity_corr_gross_scale = 1.0
-                equity_corr_regime_mult = 1.0
-            requested_weight = compute_requested_weight(
-                raw_signal=raw_signal,
-                params=params,
-                regime_score=regime_score,
-                breadth_score=breadth_score,
-                bar_vol_ann=bar_vol_ann,
-                equity_corr_gross_scale=equity_corr_gross_scale,
-                equity_corr_regime_mult=equity_corr_regime_mult,
-            )
-            drawdown = current_equity / max(peak_equity, 1e-8) - 1.0
-            if drawdown <= -float(params.kill_switch_pct) and cooldown_bars_left == 0:
-                cooldown_bars_left = int(params.cooldown_days) * gp.periods_per_day(gp.TIMEFRAME)
-            rebalance_due = signal_index % max(int(params.rebalance_bars), 1) == 0
-            if cooldown_bars_left > 0:
-                target_weight = 0.0
-            elif rebalance_due or abs(current_weight) <= TARGET_WEIGHT_EPS:
-                target_weight = requested_weight
-            else:
-                target_weight = current_weight
-            if abs(target_weight - current_weight) < gp.NO_TRADE_BAND / 100.0:
-                target_weight = current_weight
-            close_price = float(df[f"{pair}_close"].iloc[signal_index])
-            return {
-                "price": close_price,
-                "current_weight": current_weight,
-                "requested_weight": requested_weight,
-                "target_weight": target_weight,
-                "rebalance_due": rebalance_due,
-                "cooldown_bars_left_after": cooldown_bars_left,
-                "route_bucket": bucket_code,
-                "route_state_mode": route_state_mode,
-                "route_state_name": route_state_name,
-                "route_mapping_index": active_index,
-                "params": asdict(params),
-                "regime_score": regime_score,
-                "breadth_score": breadth_score,
-                "bar_vol_ann": bar_vol_ann,
-                "equity_corr_value": equity_corr_value if np.isfinite(equity_corr_value) else None,
-                "equity_corr_bucket": equity_corr_bucket,
-                "equity_corr_quantile_state": equity_corr_quantile_state,
-                "equity_corr_context": overlay_inputs.get("equity_corr_context"),
-                "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
-                "equity_corr_gross_scale": equity_corr_gross_scale,
-                "equity_corr_regime_threshold_mult": equity_corr_regime_mult,
-                "signal_value": float(np.nan_to_num(raw_signal[-1], nan=0.0)),
-            }
-
-        baseline_plan = build_single_pair_plan(config[pair])
+        baseline_plan = _build_trace_driven_pair_plan(
+            df=df_planning,
+            pair=pair,
+            pair_config=config[pair],
+            raw_signal=raw_signal,
+            overlay_inputs=overlay_inputs,
+            library=library,
+            library_lookup=library_lookup,
+            current_weight=float(current_weights.get(pair, 0.0)),
+            derivative_bundle=derivative_bundles[pair],
+        )
         final_plan = baseline_plan
         blend = get_btc_convex_blend(summary["selected_candidate"], pair)
         specialist_plan: Dict[str, Any] | None = None
         if blend is not None:
-            specialist_plan = build_single_pair_plan(blend["specialist_pair_config"])
+            specialist_plan = _build_trace_driven_pair_plan(
+                df=df_planning,
+                pair=pair,
+                pair_config=blend["specialist_pair_config"],
+                raw_signal=raw_signal,
+                overlay_inputs=overlay_inputs,
+                library=library,
+                library_lookup=library_lookup,
+                current_weight=float(current_weights.get(pair, 0.0)),
+                derivative_bundle=derivative_bundles[pair],
+            )
             final_plan = dict(baseline_plan)
             final_plan["requested_weight"] = blend_runtime_weight(
                 baseline_weight=float(baseline_plan["requested_weight"]),
@@ -653,8 +838,24 @@ def build_pairwise_plan(
                 "route_state_name": str(final_plan["route_state_name"]),
                 "updated_at": iso_now(),
             }
+        event = get_btc_event_blend(summary["selected_candidate"], pair)
+        if event is not None:
+            event_context = build_runtime_event_context_from_frame(
+                df,
+                pair,
+                derivative_bundle=derivative_bundles.get(pair),
+            )
+            final_plan, next_event_state = apply_runtime_event_blend(
+                context=event_context,
+                baseline_plan=final_plan,
+                pair_state=event_blend_state.get(pair),
+                event=event,
+            )
+            next_event_state["updated_at"] = iso_now()
+            event_blend_state[pair] = next_event_state
 
-        close_price = float(final_plan["price"])
+        close_price = float(df[f"{pair}_close"].iloc[signal_index])
+        final_plan["price"] = close_price
         latest_prices[pair] = close_price
         target_weights[pair] = float(final_plan["target_weight"])
         pair_plans[pair] = {
@@ -675,7 +876,8 @@ def build_pairwise_plan(
         "net_exposure": net,
         "latest_prices": latest_prices,
         "equity_corr_risk_enabled": PAIRWISE_EQUITY_CORR_RISK_ENABLED,
-        "summary_path": str(summary_path),
+        "summary_path": str(resolved_summary_path),
+        "promotion_report_path": str(resolved_promotion_report_path),
         "model_path": str(resolved_model_path),
     }
 
@@ -685,17 +887,7 @@ def sync_shadow_paper_from_live_positions(
     positions_by_pair: Mapping[str, Mapping[str, Any]],
     equity: float,
 ) -> None:
-    shadow = state.setdefault("shadow_paper", {})
-    shadow.setdefault("enabled", True)
-    shadow.setdefault("observations", 0)
-    shadow.setdefault("equity", SHADOW_DEFAULT_EQUITY)
-    shadow.setdefault("peak_equity", shadow["equity"])
-    shadow.setdefault("max_drawdown", 0.0)
-    shadow.setdefault("return_pct", 0.0)
-    shadow.setdefault("last_prices", {})
-    shadow.setdefault("current_weights", {})
-    shadow.setdefault("cooldown_bars_left", {})
-    shadow.setdefault("turnover_cost_paid", 0.0)
+    shadow = ensure_shadow_paper_defaults(state.setdefault("shadow_paper", {}))
 
     current_weights: Dict[str, float] = {}
     last_prices: Dict[str, float] = {}
@@ -712,30 +904,66 @@ def sync_shadow_paper_from_live_positions(
         else:
             current_weights[pair] = 0.0
 
-    peak_equity = max(float(shadow.get("peak_equity", equity) or equity), float(equity))
-    drawdown = 0.0 if peak_equity <= TARGET_WEIGHT_EPS else max(0.0, 1.0 - float(equity) / peak_equity)
+    source_mode = str(shadow.get("source_mode") or "shadow").strip().lower()
+    if source_mode != "live":
+        baseline_equity = float(equity)
+        peak_equity = float(equity)
+        max_drawdown = 0.0
+        shadow["turnover_cost_paid"] = 0.0
+    else:
+        baseline_equity = float(shadow.get("baseline_equity") or 0.0)
+        if abs(baseline_equity) <= TARGET_WEIGHT_EPS:
+            baseline_equity = float(equity)
+        peak_equity = max(float(shadow.get("peak_equity", equity) or equity), float(equity))
+        drawdown = 0.0 if peak_equity <= TARGET_WEIGHT_EPS else max(0.0, 1.0 - float(equity) / peak_equity)
+        max_drawdown = max(float(shadow.get("max_drawdown", 0.0) or 0.0), drawdown)
 
+    shadow["source_mode"] = "live"
+    shadow["baseline_equity"] = baseline_equity
     shadow["equity"] = float(equity)
     shadow["peak_equity"] = peak_equity
-    shadow["max_drawdown"] = max(float(shadow.get("max_drawdown", 0.0) or 0.0), drawdown)
-    shadow["return_pct"] = (float(equity) / SHADOW_DEFAULT_EQUITY - 1.0) * 100.0
+    shadow["max_drawdown"] = max_drawdown
+    shadow["return_pct"] = (
+        0.0
+        if abs(baseline_equity) <= TARGET_WEIGHT_EPS
+        else (float(equity) / baseline_equity - 1.0) * 100.0
+    )
     shadow["current_weights"] = current_weights
     shadow["last_prices"] = last_prices
     shadow["last_updated_at"] = iso_now()
 
 
+def persist_runtime_plan_state(state: Dict[str, Any], plan: Mapping[str, Any]) -> None:
+    shadow = ensure_shadow_paper_defaults(state.setdefault("shadow_paper", {}))
+    pair_plans = plan.get("pair_plans") or {}
+    cooldown_state = dict(shadow.get("cooldown_bars_left") or {})
+    for pair in PAIRS:
+        pair_plan = pair_plans.get(pair)
+        if not isinstance(pair_plan, Mapping):
+            continue
+        cooldown_state[pair] = int(pair_plan.get("cooldown_bars_left_after", cooldown_state.get(pair, 0)) or 0)
+    shadow["cooldown_bars_left"] = cooldown_state
+
+    latest_prices = plan.get("latest_prices") or {}
+    if isinstance(latest_prices, Mapping):
+        merged_prices = dict(shadow.get("last_prices") or {})
+        for pair in PAIRS:
+            price = latest_prices.get(pair)
+            if price in (None, ""):
+                continue
+            merged_prices[pair] = float(price)
+        shadow["last_prices"] = merged_prices
+
+    signal_timestamp = plan.get("signal_timestamp")
+    if signal_timestamp:
+        shadow["last_signal_timestamp"] = str(signal_timestamp)
+    shadow["last_updated_at"] = iso_now()
+
+
 def apply_shadow_mark_to_market(state: Dict[str, Any], plan: Mapping[str, Any]) -> Dict[str, Any]:
-    shadow = state.setdefault("shadow_paper", {})
-    shadow.setdefault("enabled", True)
-    shadow.setdefault("observations", 0)
-    shadow.setdefault("equity", SHADOW_DEFAULT_EQUITY)
-    shadow.setdefault("peak_equity", shadow["equity"])
-    shadow.setdefault("max_drawdown", 0.0)
-    shadow.setdefault("return_pct", 0.0)
-    shadow.setdefault("last_prices", {})
-    shadow.setdefault("current_weights", {})
-    shadow.setdefault("cooldown_bars_left", {})
-    shadow.setdefault("turnover_cost_paid", 0.0)
+    shadow = ensure_shadow_paper_defaults(state.setdefault("shadow_paper", {}))
+    shadow["source_mode"] = "shadow"
+    shadow["baseline_equity"] = float(shadow.get("baseline_equity") or SHADOW_DEFAULT_EQUITY)
 
     last_prices = shadow["last_prices"]
     current_weights = shadow["current_weights"]
@@ -764,7 +992,7 @@ def apply_shadow_mark_to_market(state: Dict[str, Any], plan: Mapping[str, Any]) 
     shadow["equity"] = current_equity
     shadow["peak_equity"] = peak_equity
     shadow["max_drawdown"] = max(float(shadow["max_drawdown"]), drawdown)
-    shadow["return_pct"] = (current_equity / SHADOW_DEFAULT_EQUITY - 1.0) * 100.0
+    shadow["return_pct"] = (current_equity / float(shadow["baseline_equity"]) - 1.0) * 100.0
     shadow["turnover_cost_paid"] = float(shadow["turnover_cost_paid"]) + cost
     shadow["current_weights"] = {pair: float(target_weights.get(pair, 0.0)) for pair in PAIRS}
     shadow["cooldown_bars_left"] = {
@@ -912,9 +1140,13 @@ def load_promotion_gate(report_path: Path) -> Dict[str, Any]:
     if not report_path.exists():
         return {
             "status": "missing",
+            "ready_for_demo": False,
             "ready_for_shadow_live": False,
             "ready_for_live": False,
             "ready_for_merge": False,
+            "shadow_required": True,
+            "manual_override_active": False,
+            "manual_live_override_blocked": False,
             "failed_checks": ["promotion_report_missing"],
             "path": str(report_path),
             "decision": {},
@@ -925,30 +1157,94 @@ def load_promotion_gate(report_path: Path) -> Dict[str, Any]:
         decision = payload.get("promotion_decision")
     if not isinstance(decision, Mapping):
         decision = {}
-    ready_for_merge = bool(
+    manual_override = payload.get("manual_override")
+    if not isinstance(manual_override, Mapping):
+        manual_override = decision.get("manual_override")
+    if not isinstance(manual_override, Mapping):
+        manual_override = {}
+    manual_override_active = bool(manual_override.get("enabled", False))
+    effective_decision: Dict[str, Any] = dict(decision)
+    base_ready_for_merge = bool(
         decision.get("ready_for_merge", decision.get("selected_candidate_ready_for_merge", False))
     )
+    base_ready_for_live = bool(
+        decision.get("ready_for_live", decision.get("selected_candidate_ready_for_live", base_ready_for_merge))
+    )
+    base_ready_for_demo = bool(
+        decision.get("ready_for_demo", decision.get("ready_for_shadow_live", base_ready_for_live))
+    )
+    manual_live_override_blocked = False
+    if manual_override_active:
+        manual_ready_for_demo = bool(
+            manual_override.get(
+                "ready_for_demo",
+                manual_override.get("ready_for_shadow_live", base_ready_for_demo),
+            )
+        )
+        requested_live_ready = bool(manual_override.get("ready_for_live", base_ready_for_live))
+        requested_merge_ready = bool(manual_override.get("ready_for_merge", base_ready_for_merge))
+        effective_decision["ready_for_demo"] = manual_ready_for_demo
+        effective_decision["ready_for_shadow_live"] = manual_ready_for_demo
+        effective_decision["ready_for_live"] = bool(requested_live_ready and base_ready_for_live)
+        effective_decision["ready_for_merge"] = bool(requested_merge_ready and base_ready_for_merge)
+        manual_live_override_blocked = bool(
+            (requested_live_ready and not base_ready_for_live)
+            or (requested_merge_ready and not base_ready_for_merge)
+        )
+        if effective_decision["ready_for_live"]:
+            effective_decision["status"] = str(manual_override.get("status", "manually_promoted_ready_for_live"))
+        elif effective_decision["ready_for_shadow_live"]:
+            effective_decision["status"] = "demo_ready_only"
+        else:
+            effective_decision["status"] = str(effective_decision.get("status", "blocked"))
+        effective_decision["manual_override"] = dict(manual_override)
+        effective_decision["manual_live_override_blocked"] = manual_live_override_blocked
+    ready_for_demo = bool(
+        effective_decision.get(
+            "ready_for_demo",
+            effective_decision.get("ready_for_shadow_live", base_ready_for_demo),
+        )
+    )
+    ready_for_merge = bool(
+        effective_decision.get("ready_for_merge", effective_decision.get("selected_candidate_ready_for_merge", False))
+    )
     ready_for_live = bool(
-        decision.get("ready_for_live", decision.get("selected_candidate_ready_for_live", ready_for_merge))
+        effective_decision.get("ready_for_live", effective_decision.get("selected_candidate_ready_for_live", ready_for_merge))
     )
     ready_for_shadow_live = bool(
-        decision.get("ready_for_shadow_live", decision.get("selected_candidate_ready_for_live", ready_for_live))
+        effective_decision.get(
+            "ready_for_shadow_live",
+            effective_decision.get("selected_candidate_ready_for_live", ready_for_live),
+        )
     )
+    shadow_required = False
     return {
-        "status": str(decision.get("status", "unknown")),
+        "status": str(effective_decision.get("status", "unknown")),
+        "ready_for_demo": ready_for_demo,
         "ready_for_shadow_live": ready_for_shadow_live,
         "ready_for_live": ready_for_live,
         "ready_for_merge": ready_for_merge,
-        "failed_checks": list(decision.get("failed_checks") or []),
+        "shadow_required": shadow_required,
+        "manual_override_active": manual_override_active,
+        "manual_live_override_blocked": manual_live_override_blocked,
+        "failed_checks": list(effective_decision.get("failed_checks") or []),
         "path": str(report_path),
-        "decision": dict(decision),
+        "decision": effective_decision,
     }
 
 
 def promotion_gate_allows_execution(gate: Mapping[str, Any], mode: str) -> bool:
     mode_name = str(mode or "demo").lower()
     if mode_name == "demo":
-        return bool(gate.get("ready_for_shadow_live", False))
+        return bool(
+            gate.get(
+                "ready_for_demo",
+                gate.get(
+                    "ready_for_shadow_live",
+                    gate.get("ready_for_live", gate.get("ready_for_merge", False)),
+                ),
+            )
+        )
     return bool(gate.get("ready_for_live", gate.get("ready_for_merge", False)))
 
 
@@ -963,6 +1259,7 @@ def sync_position_loss_notifications(state: Dict[str, Any], positions_by_pair: M
 
 
 def record_runtime_success(state: Dict[str, Any], plan: Mapping[str, Any], extra: Optional[Mapping[str, Any]] = None) -> None:
+    generated_at = iso_now()
     state.setdefault("runtime_health", {})
     state["runtime_health"].update(
         {
@@ -970,18 +1267,32 @@ def record_runtime_success(state: Dict[str, Any], plan: Mapping[str, Any], extra
             "consecutive_errors": 0,
             "last_error": None,
             "pid": os.getpid(),
-            "last_loop_started_at": state.get("runtime_health", {}).get("last_loop_started_at") or iso_now(),
-            "last_loop_completed_at": iso_now(),
-            "last_success_at": iso_now(),
+            "last_loop_started_at": state.get("runtime_health", {}).get("last_loop_started_at") or generated_at,
+            "last_loop_completed_at": generated_at,
+            "last_success_at": generated_at,
+        }
+    )
+    state.update(
+        {
+            "generated_at": generated_at,
+            "summary_path": plan.get("summary_path"),
+            "model_path": plan.get("model_path"),
+            "pid": os.getpid(),
+            "last_signal_timestamp": plan.get("signal_timestamp"),
+            "last_loop_started_at": state.get("runtime_health", {}).get("last_loop_started_at"),
+            "last_loop_completed_at": generated_at,
+            "last_success_at": generated_at,
         }
     )
     state["latest_runtime_snapshot"] = {
-        "generated_at": iso_now(),
+        "generated_at": generated_at,
+        "summary_path": plan.get("summary_path"),
+        "model_path": plan.get("model_path"),
         "plan": plan,
         "extra": extra or {},
     }
     state["latest_decision_snapshot"] = {
-        "generated_at": iso_now(),
+        "generated_at": generated_at,
         "strategy_class": "pairwise_regime_live",
         "session_type": plan.get("session_type"),
         "target_weights": plan.get("target_weights", {}),
@@ -996,7 +1307,7 @@ def record_runtime_success(state: Dict[str, Any], plan: Mapping[str, Any], extra
     journal = state.setdefault("decision_journal", [])
     journal.append(
         {
-            "at": iso_now(),
+            "at": generated_at,
             "session_type": plan.get("session_type"),
             "target_weights": plan.get("target_weights"),
         }
@@ -1030,7 +1341,7 @@ def render_status(state: Mapping[str, Any], plan: Optional[Mapping[str, Any]] = 
 
 def run_status(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
-    plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
+    plan = build_pairwise_plan(args.summary_path, args.model_path, args.promotion_report, args.refresh_live_data, state)
     print(json.dumps(json_ready(render_status(state, plan)), indent=2, sort_keys=True))
     return 0
 
@@ -1038,7 +1349,7 @@ def run_status(args: argparse.Namespace) -> int:
 def run_shadow_once(args: argparse.Namespace) -> int:
     state = load_state(args.state_path)
     try:
-        plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
+        plan = build_pairwise_plan(args.summary_path, args.model_path, args.promotion_report, args.refresh_live_data, state)
         shadow_update = apply_shadow_mark_to_market(state, plan)
         promotion_gate = build_shadow_evaluation(state, default_promotion_eval_args(args.state_path))
         state["promotion_gate"] = promotion_gate
@@ -1099,16 +1410,15 @@ def run_live_once(args: argparse.Namespace) -> int:
         positions = bridge.fetch_open_position_map(exchange)
         sync_shadow_paper_from_live_positions(state, positions, equity)
 
-    plan = build_pairwise_plan(args.summary_path, args.model_path, args.refresh_live_data, state)
-    promotion_gate = load_promotion_gate(args.promotion_report)
+    plan = build_pairwise_plan(args.summary_path, args.model_path, args.promotion_report, args.refresh_live_data, state)
+    persist_runtime_plan_state(state, plan)
+    promotion_report_path = Path(plan.get("promotion_report_path") or args.promotion_report)
+    promotion_gate = load_promotion_gate(promotion_report_path)
     state["promotion_gate"] = promotion_gate
     if args.execute:
-        shadow_state = load_state(args.shadow_state_path)
-        shadow_evaluation = build_shadow_evaluation(shadow_state, default_promotion_eval_args(args.shadow_state_path))
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
         gate_ready = promotion_gate_allows_execution(promotion_gate, args.mode)
-        force_blocked_by_stale_shadow = False
         if not gate_ready and not force_execute:
             record_runtime_success(
                 state,
@@ -1120,9 +1430,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "mode": args.mode,
                         "equity": equity,
                         "promotion_gate": promotion_gate,
-                        "shadow_runtime_gate": shadow_evaluation,
                         "force_requested": force_execute,
-                        "force_blocked_by_stale_shadow": False,
                     }
                 },
             )
@@ -1135,9 +1443,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                     "execute": True,
                     "plan": plan,
                     "promotion_gate": promotion_gate,
-                    "shadow_runtime_gate": shadow_evaluation,
                     "force_requested": force_execute,
-                    "force_blocked_by_stale_shadow": False,
                 },
             )
             save_state(args.state_path, state)
@@ -1147,9 +1453,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                         {
                             "plan": plan,
                             "promotion_gate": promotion_gate,
-                            "shadow_runtime_gate": shadow_evaluation,
                             "force_requested": force_execute,
-                            "force_blocked_by_stale_shadow": False,
                         }
                     ),
                     indent=2,
@@ -1188,7 +1492,6 @@ def run_live_once(args: argparse.Namespace) -> int:
                     "actions": actions,
                     "shutdown_protection": protection_report,
                     "promotion_gate": promotion_gate,
-                    "shadow_runtime_gate": shadow_evaluation,
                     "override": execution_override,
                 }
             },
@@ -1205,7 +1508,6 @@ def run_live_once(args: argparse.Namespace) -> int:
                 "actions": actions,
                 "shutdown_protection": protection_report,
                 "promotion_gate": promotion_gate,
-                "shadow_runtime_gate": shadow_evaluation,
                 "override": execution_override,
             },
         )
@@ -1219,7 +1521,6 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "actions": actions,
                         "shutdown_protection": protection_report,
                         "promotion_gate": promotion_gate,
-                        "shadow_runtime_gate": shadow_evaluation,
                         "override": execution_override,
                     }
                 ),
@@ -1350,12 +1651,6 @@ def main() -> int:
     args = parse_args()
     if args.command == "status":
         return run_status(args)
-    if args.command == "shadow-once":
-        return run_shadow_once(args)
-    if args.command == "shadow-loop":
-        return run_shadow_loop(args)
-    if args.command == "evaluate-shadow":
-        return run_evaluate_shadow(args)
     if args.command == "run-once":
         return run_live_once(args)
     if args.command == "loop":

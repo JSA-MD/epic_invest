@@ -29,6 +29,15 @@ def get_btc_convex_blend(candidate: Mapping[str, Any] | None, pair: str | None =
     blend["pair"] = blend_pair
     blend["alpha"] = float(blend.get("alpha", 0.0))
     blend["mode"] = str(blend.get("mode") or DEFAULT_BLEND_MODE)
+    raw_state_alphas = blend.get("state_alphas")
+    state_alphas: dict[str, float] = {}
+    if isinstance(raw_state_alphas, Mapping):
+        for state_name, value in raw_state_alphas.items():
+            try:
+                state_alphas[str(state_name)] = float(value)
+            except (TypeError, ValueError):
+                continue
+    blend["state_alphas"] = state_alphas
     blend["specialist_pair_config"] = copy.deepcopy(dict(blend["specialist_pair_config"]))
     return blend
 
@@ -50,7 +59,32 @@ def should_apply_runtime_blend(
         return bool(disagree)
     if mode == "disagree_narrow_only":
         return bool(narrow and disagree)
+    if mode == "state_alphas":
+        return False
     raise ValueError(f"Unsupported BTC convex blend mode: {mode}")
+
+
+def resolve_blend_alpha(
+    *,
+    baseline_weight: float,
+    specialist_weight: float,
+    route_state_name: str,
+    alpha: float,
+    mode: str,
+    state_alphas: Mapping[str, float] | None = None,
+) -> float:
+    if state_alphas is not None and route_state_name in state_alphas:
+        return float(state_alphas[route_state_name])
+    if mode == "state_alphas":
+        return 0.0
+    if should_apply_runtime_blend(
+        baseline_weight=baseline_weight,
+        specialist_weight=specialist_weight,
+        route_state_name=route_state_name,
+        mode=mode,
+    ):
+        return float(alpha)
+    return 0.0
 
 
 def blend_runtime_weight(
@@ -60,15 +94,19 @@ def blend_runtime_weight(
     route_state_name: str,
     alpha: float,
     mode: str,
+    state_alphas: Mapping[str, float] | None = None,
 ) -> float:
-    if not should_apply_runtime_blend(
+    blend_alpha = resolve_blend_alpha(
         baseline_weight=baseline_weight,
         specialist_weight=specialist_weight,
         route_state_name=route_state_name,
+        alpha=alpha,
         mode=mode,
-    ):
+        state_alphas=state_alphas,
+    )
+    if blend_alpha <= 0.0:
         return float(baseline_weight)
-    return float((1.0 - float(alpha)) * float(baseline_weight) + float(alpha) * float(specialist_weight))
+    return float((1.0 - float(blend_alpha)) * float(baseline_weight) + float(blend_alpha) * float(specialist_weight))
 
 
 def build_blended_target_trace(
@@ -79,29 +117,30 @@ def build_blended_target_trace(
     specialist_trace: Mapping[str, Any],
     alpha: float,
     mode: str,
+    state_alphas: Mapping[str, float] | None = None,
 ) -> np.ndarray:
     base_target = np.asarray(baseline_trace["target_weight"], dtype="float64")
     specialist_target = np.asarray(specialist_trace["target_weight"], dtype="float64")
     blended = base_target.copy()
-    if mode == "always":
+    if mode == "always" and not state_alphas:
         return (1.0 - float(alpha)) * base_target + float(alpha) * specialist_target
 
     route_state_mode = str(context.get("route_state_mode") or "equity_corr")
     names = route_state_names(route_state_mode)
     bucket_codes = np.asarray(context["bucket_codes"][float(route_breadth_threshold)], dtype="int64")[: len(base_target)]
-    narrow_mask = np.asarray([str(names[int(idx)]).endswith("narrow") for idx in bucket_codes], dtype=bool)
-    disagree_mask = np.sign(base_target) != np.sign(specialist_target)
-
-    if mode == "narrow_only":
-        active = narrow_mask
-    elif mode == "disagree_only":
-        active = disagree_mask
-    elif mode == "disagree_narrow_only":
-        active = narrow_mask & disagree_mask
-    else:
-        raise ValueError(f"Unsupported BTC convex blend mode: {mode}")
-
-    blended[active] = (1.0 - float(alpha)) * base_target[active] + float(alpha) * specialist_target[active]
+    for i in range(len(base_target)):
+        route_state_name = str(names[int(bucket_codes[i])])
+        blend_alpha = resolve_blend_alpha(
+            baseline_weight=float(base_target[i]),
+            specialist_weight=float(specialist_target[i]),
+            route_state_name=route_state_name,
+            alpha=alpha,
+            mode=mode,
+            state_alphas=state_alphas,
+        )
+        if blend_alpha <= 0.0:
+            continue
+        blended[i] = (1.0 - float(blend_alpha)) * base_target[i] + float(blend_alpha) * specialist_target[i]
     return blended
 
 
@@ -120,6 +159,8 @@ def replay_target_trace(
     context: Mapping[str, Any],
     target_trace: np.ndarray,
     execution_gene: Mapping[str, Any] | None,
+    trace_template: Mapping[str, Any] | None = None,
+    return_trace: bool = False,
 ) -> dict[str, Any]:
     profile = legacy_execution_profile() if execution_gene is None else derive_execution_profile(dict(execution_gene))
     fee_rate = float(profile["fee_rate"])
@@ -139,6 +180,7 @@ def replay_target_trace(
     funding_events = 0
     net_ret: list[float] = []
     equity_curve: list[float] = [float(gp.INITIAL_CASH)]
+    realized_target_trace: list[float] = []
 
     for exec_idx in range(1, open_p.shape[0] - 1):
         signal_idx = exec_idx - 1
@@ -179,6 +221,7 @@ def replay_target_trace(
         bar_net = equity_after / equity_before - 1.0
         net_ret.append(float(bar_net))
         equity_curve.append(float(equity_after))
+        realized_target_trace.append(float(target_weight))
 
     daily_metrics = gp.compute_daily_metrics(np.asarray(net_ret, dtype="float64"))
     equity_arr = np.asarray(equity_curve, dtype="float64")
@@ -186,7 +229,7 @@ def replay_target_trace(
     sharpe = 0.0
     if len(net_ret) > 1 and np.std(net_ret) > 1e-12:
         sharpe = float(np.mean(net_ret) / np.std(net_ret) * np.sqrt(365.25 * 24.0 * 60.0 / 5.0))
-    return {
+    result = {
         "avg_daily_return": float(daily_metrics["avg_daily_return"]),
         "total_return": float(equity_arr[-1] / gp.INITIAL_CASH - 1.0),
         "max_drawdown": max_drawdown,
@@ -202,6 +245,19 @@ def replay_target_trace(
         "funding_events": int(funding_events),
         "final_equity": float(equity_arr[-1]),
     }
+    if return_trace:
+        trace_payload = {
+            "bar_net": np.asarray(net_ret, dtype="float64"),
+            "target_weight": np.asarray(realized_target_trace, dtype="float64"),
+            "requested_weight": np.asarray(realized_target_trace, dtype="float64"),
+        }
+        if trace_template is not None:
+            for key in ("signal_pct", "role_idx"):
+                if key in trace_template:
+                    arr = np.asarray(trace_template[key])
+                    trace_payload[key] = arr[: len(realized_target_trace)]
+        result["trace"] = trace_payload
+    return result
 
 
 def replay_btc_convex_blend_candidate(
@@ -210,6 +266,7 @@ def replay_btc_convex_blend_candidate(
     pair: str,
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
+    return_trace: bool = False,
 ) -> dict[str, Any]:
     blend = get_btc_convex_blend(candidate, pair)
     if blend is None:
@@ -243,15 +300,19 @@ def replay_btc_convex_blend_candidate(
         specialist_trace=specialist["trace"],
         alpha=float(blend["alpha"]),
         mode=str(blend["mode"]),
+        state_alphas=blend.get("state_alphas"),
     )
     result = replay_target_trace(
         context=context,
         target_trace=target_trace,
         execution_gene=baseline_cfg.get("execution_gene"),
+        trace_template=baseline.get("trace"),
+        return_trace=return_trace,
     )
     result["blend"] = {
         "pair": pair,
         "alpha": float(blend["alpha"]),
         "mode": str(blend["mode"]),
+        "state_alphas": dict(blend.get("state_alphas") or {}),
     }
     return result

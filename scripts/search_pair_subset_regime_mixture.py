@@ -25,12 +25,20 @@ import gp_crypto_evolution as gp
 from equity_corr_regime import build_btc_equity_corr_overlay
 from execution_gene_utils import (
     SPECIALIST_ROLE_NAMES,
+    blended_entry_quality_score,
+    blended_microstructure_score,
+    candle_microstructure_proxy_score,
     dc_alignment_score,
     derive_execution_profile,
+    derivative_positioning_score,
     legacy_execution_profile,
     microstructure_alignment_score,
     should_abstain_for_alignment,
+    should_allow_countertrend_entry,
+    should_abstain_for_liquidity,
+    should_abstain_for_weak_tape,
 )
+from derivative_market_data import load_derivative_metric_cache
 from replay_regime_mixture_realistic import (
     fetch_funding_rates,
     load_model,
@@ -215,6 +223,56 @@ def build_library_lookup(library: list[OverlayParams]) -> dict[str, Any]:
     }
 
 
+def _load_derivative_bundle(symbol: str) -> dict[str, pd.DataFrame]:
+    metrics = (
+        "open_interest",
+        "basis_perpetual",
+        "top_trader_position_ratio",
+        "taker_buy_sell_ratio",
+    )
+    return {metric: load_derivative_metric_cache(symbol, metric) for metric in metrics}
+
+
+def _derivative_metric_history_series(frame: pd.DataFrame | None, value_column: str) -> pd.Series:
+    if frame is None or frame.empty or "timestamp" not in frame.columns or value_column not in frame.columns:
+        return pd.Series(dtype="float64")
+    return (
+        frame[["timestamp", value_column]]
+        .copy()
+        .assign(
+            timestamp=lambda df_: pd.to_datetime(df_["timestamp"], utc=True, errors="coerce", format="mixed"),
+            value=lambda df_: pd.to_numeric(df_[value_column], errors="coerce"),
+        )
+        .dropna(subset=["timestamp", "value"])
+        .drop_duplicates(subset=["timestamp"], keep="last")
+        .set_index("timestamp")["value"]
+        .sort_index()
+    )
+
+
+def _derivative_metric_series(frame: pd.DataFrame | None, value_column: str, index: pd.DatetimeIndex) -> pd.Series:
+    series = _derivative_metric_history_series(frame, value_column)
+    if series.empty:
+        return pd.Series(np.nan, index=index, dtype="float64")
+    return series.reindex(index).ffill().replace([np.inf, -np.inf], np.nan).astype("float64")
+
+
+def _log_ratio_feature(series: pd.Series) -> pd.Series:
+    positive = pd.to_numeric(series, errors="coerce").where(lambda values: values > 0.0)
+    return np.log(positive).replace([np.inf, -np.inf], np.nan).clip(-3.0, 3.0).astype("float64")
+
+
+def _open_interest_relative_metric(frame: pd.DataFrame | None, index: pd.DatetimeIndex) -> pd.Series:
+    history_series = _derivative_metric_history_series(frame, "open_interest")
+    if history_series.empty:
+        return pd.Series(np.nan, index=index, dtype="float64")
+    combined_index = history_series.index.union(pd.DatetimeIndex(index)).sort_values()
+    aligned = history_series.reindex(combined_index).ffill().replace([np.inf, -np.inf], np.nan).astype("float64")
+    baseline = aligned.rolling(12 * 24 * 7, min_periods=12 * 24).median()
+    relative = aligned / baseline.replace(0.0, np.nan)
+    return relative.reindex(index).ffill().replace([np.inf, -np.inf], np.nan).clip(0.0, 5.0).astype("float64")
+
+
 def build_fast_context(
     df: pd.DataFrame,
     pair: str,
@@ -223,6 +281,7 @@ def build_fast_context(
     route_thresholds: tuple[float, ...],
     library_lookup: dict[str, Any],
     funding_df: pd.DataFrame | None = None,
+    derivative_bundle: dict[str, pd.DataFrame] | None = None,
     route_state_mode: str = ROUTE_STATE_MODE_BASE,
     strict_external_asof: bool = False,
 ) -> dict[str, Any]:
@@ -304,6 +363,14 @@ def build_fast_context(
         "btc_gold_corr_20d_daily",
         pd.Series(np.nan, index=validation_daily_index, dtype="float64"),
     )
+    oi_rel = _open_interest_relative_metric((derivative_bundle or {}).get("open_interest"), idx)
+    basis_rate = _derivative_metric_series((derivative_bundle or {}).get("basis_perpetual"), "basis_rate", idx).clip(-0.01, 0.01)
+    top_pos_log_ratio = _log_ratio_feature(
+        _derivative_metric_series((derivative_bundle or {}).get("top_trader_position_ratio"), "long_short_ratio", idx)
+    )
+    taker_buy_sell_log_ratio = _log_ratio_feature(
+        _derivative_metric_series((derivative_bundle or {}).get("taker_buy_sell_ratio"), "buy_sell_ratio", idx)
+    )
     return {
         "open": df[f"{pair}_open"].to_numpy(dtype="float64"),
         "close": df[f"{pair}_close"].to_numpy(dtype="float64"),
@@ -326,6 +393,34 @@ def build_fast_context(
         "btc_gold_corr_20d": btc_gold_corr_20d_daily.reindex(effective_day_index, method="ffill").to_numpy(dtype="float64"),
         "buy_volume_share": pair_feature_series("buy_volume_share", fill_value=0.5).to_numpy(dtype="float64"),
         "order_imbalance": pair_feature_series("order_imbalance", fill_value=0.0).to_numpy(dtype="float64"),
+        "close_location_value": pair_feature_series("close_location_value", fill_value=0.0).to_numpy(dtype="float64"),
+        "body_to_range": pair_feature_series("body_to_range", fill_value=0.0).to_numpy(dtype="float64"),
+        "wick_skew": pair_feature_series("wick_skew", fill_value=0.0).to_numpy(dtype="float64"),
+        "candle_micro_score": pair_feature_series("candle_micro_score", fill_value=0.0).to_numpy(dtype="float64"),
+        "oi_rel": oi_rel.fillna(1.0).to_numpy(dtype="float64"),
+        "basis_rate": basis_rate.fillna(0.0).to_numpy(dtype="float64"),
+        "top_pos_log_ratio": top_pos_log_ratio.fillna(0.0).to_numpy(dtype="float64"),
+        "taker_buy_sell_log_ratio": taker_buy_sell_log_ratio.fillna(0.0).to_numpy(dtype="float64"),
+        "range_bps": (
+            (
+                (
+                    pair_feature_series("high", fill_value=0.0)
+                    - pair_feature_series("low", fill_value=0.0)
+                )
+                / pair_feature_series("close", fill_value=np.nan).replace(0.0, np.nan)
+            )
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0.0)
+            * 10_000.0
+        ).to_numpy(dtype="float64"),
+        "volume_ratio": (
+            (
+                pair_feature_series("volume", fill_value=0.0)
+                / pair_feature_series("vol_sma", fill_value=np.nan).replace(0.0, np.nan)
+            )
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(1.0)
+        ).to_numpy(dtype="float64"),
         "dc_trend_05": pair_feature_series("dc_trend_05", fill_value=0.0).to_numpy(dtype="float64"),
         "dc_event_05": pair_feature_series("dc_event_05", fill_value=0.0).to_numpy(dtype="float64"),
         "dc_overshoot_05": pair_feature_series("dc_overshoot_05", fill_value=0.0).to_numpy(dtype="float64"),
@@ -360,6 +455,16 @@ def _fast_overlay_replay_kernel_impl(
     library_cooldown_days: np.ndarray,
     order_imbalance: np.ndarray,
     buy_volume_share: np.ndarray,
+    close_location_value: np.ndarray,
+    body_to_range: np.ndarray,
+    wick_skew: np.ndarray,
+    candle_micro_score: np.ndarray,
+    oi_rel: np.ndarray,
+    basis_rate: np.ndarray,
+    top_pos_log_ratio: np.ndarray,
+    taker_buy_sell_log_ratio: np.ndarray,
+    range_bps: np.ndarray,
+    volume_ratio: np.ndarray,
     dc_trend_05: np.ndarray,
     dc_run_05: np.ndarray,
     mapping: np.ndarray,
@@ -374,6 +479,9 @@ def _fast_overlay_replay_kernel_impl(
     role_regime_buffer_mults: np.ndarray,
     abstain_edge_pct: float,
     specialist_isolation_mult: float,
+    liquidity_range_gate_bp: float,
+    liquidity_volume_ratio_floor: float,
+    short_horizon_abstain_mult: float,
     microstructure_align_gate_pct: float,
     dc_align_gate_pct: float,
     min_alignment_votes: int,
@@ -444,17 +552,76 @@ def _fast_overlay_replay_kernel_impl(
             elif requested_weight < -1e-12:
                 requested_side = -1
             if requested_side != 0:
-                alignment_votes = 0
-                if requested_side * (
+                candle_score = candle_micro_score[i]
+                if candle_score != candle_score:
+                    directional_body = (1.0 if close_location_value[i] >= 0.0 else -1.0) * body_to_range[i]
+                    candle_score = 0.50 * close_location_value[i] + 0.30 * directional_body + 0.20 * wick_skew[i]
+                flow_score = 0.65 * (
                     0.70 * order_imbalance[i] + 0.30 * (2.0 * buy_volume_share[i] - 1.0)
-                ) >= microstructure_align_gate_pct:
-                    alignment_votes += 1
-                if requested_side * (
-                    0.75 * dc_trend_05[i] + 0.25 * dc_run_05[i]
-                ) >= dc_align_gate_pct:
-                    alignment_votes += 1
-                if alignment_votes < min_alignment_votes:
-                    requested_weight = 0.0
+                ) + 0.35 * candle_score
+                oi_component = (oi_rel[i] - 1.0) / 0.10
+                if oi_component > 1.0:
+                    oi_component = 1.0
+                elif oi_component < -1.0:
+                    oi_component = -1.0
+                basis_component = basis_rate[i] / 0.0015
+                if basis_component > 1.0:
+                    basis_component = 1.0
+                elif basis_component < -1.0:
+                    basis_component = -1.0
+                positioning_score = (
+                    0.35 * top_pos_log_ratio[i]
+                    + 0.35 * taker_buy_sell_log_ratio[i]
+                    + 0.20 * oi_component
+                    + 0.10 * basis_component
+                )
+                if positioning_score > 1.0:
+                    positioning_score = 1.0
+                elif positioning_score < -1.0:
+                    positioning_score = -1.0
+                micro_score = flow_score
+                if micro_score > 1.0:
+                    micro_score = 1.0
+                elif micro_score < -1.0:
+                    micro_score = -1.0
+                if current_weight * requested_side <= 0.0:
+                    if requested_side * positioning_score < -0.35 and requested_side * micro_score < 0.10:
+                        requested_weight = 0.0
+                    alignment_votes = 0
+                    if requested_weight != 0.0 and requested_side * micro_score >= microstructure_align_gate_pct:
+                        alignment_votes += 1
+                    if requested_weight != 0.0 and requested_side * (
+                        0.75 * dc_trend_05[i] + 0.25 * dc_run_05[i]
+                    ) >= dc_align_gate_pct:
+                        alignment_votes += 1
+                    if requested_weight != 0.0 and alignment_votes < min_alignment_votes:
+                        requested_weight = 0.0
+                if requested_weight != 0.0:
+                    if current_weight * requested_side <= 0.0 and short_horizon_abstain_mult > 0.0:
+                        weak_votes = 0
+                        micro_side_score = requested_side * micro_score
+                        dc_score = requested_side * (
+                            0.75 * dc_trend_05[i] + 0.25 * dc_run_05[i]
+                        )
+                        if micro_side_score < 0.15 * short_horizon_abstain_mult:
+                            weak_votes += 1
+                        if dc_score < 0.10 * short_horizon_abstain_mult:
+                            weak_votes += 1
+                        if range_bps[i] <= 45.0 and volume_ratio[i] <= 1.0:
+                            weak_votes += 1
+                        if equity_corr_gross_scale[i] < max(0.75, 1.0 - 0.10 * short_horizon_abstain_mult):
+                            weak_votes += 1
+                        if weak_votes >= 2:
+                            requested_weight = 0.0
+                    range_gate_enabled = liquidity_range_gate_bp > 0.0
+                    volume_gate_enabled = liquidity_volume_ratio_floor > 0.0
+                    if current_weight * requested_side <= 0.0 and (range_gate_enabled or volume_gate_enabled):
+                        range_bad = range_gate_enabled and range_bps[i] >= liquidity_range_gate_bp
+                        volume_bad = volume_gate_enabled and volume_ratio[i] <= liquidity_volume_ratio_floor
+                        if (range_gate_enabled and volume_gate_enabled and range_bad and volume_bad) or (
+                            (not range_gate_enabled or not volume_gate_enabled) and (range_bad or volume_bad)
+                        ):
+                            requested_weight = 0.0
 
         bar_vol_ann = vol_ann[i]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
@@ -587,6 +754,20 @@ else:  # pragma: no cover - fallback for environments without numba
     _quantize_amount_nb = _quantize_amount_kernel
 
 
+def _context_feature_array(
+    context: dict[str, Any],
+    key: str,
+    *,
+    fill_value: float = 0.0,
+    reference_key: str = "regime",
+) -> np.ndarray:
+    values = context.get(key)
+    if values is None:
+        reference = np.asarray(context[reference_key], dtype="float64")
+        return np.full(reference.shape, fill_value, dtype="float64")
+    return np.asarray(values, dtype="float64")
+
+
 def _realistic_overlay_replay_kernel_impl(
     open_p: np.ndarray,
     close_p: np.ndarray,
@@ -608,6 +789,16 @@ def _realistic_overlay_replay_kernel_impl(
     library_cooldown_days: np.ndarray,
     order_imbalance: np.ndarray,
     buy_volume_share: np.ndarray,
+    close_location_value: np.ndarray,
+    body_to_range: np.ndarray,
+    wick_skew: np.ndarray,
+    candle_micro_score: np.ndarray,
+    oi_rel: np.ndarray,
+    basis_rate: np.ndarray,
+    top_pos_log_ratio: np.ndarray,
+    taker_buy_sell_log_ratio: np.ndarray,
+    range_bps: np.ndarray,
+    volume_ratio: np.ndarray,
     dc_trend_05: np.ndarray,
     dc_run_05: np.ndarray,
     mapping: np.ndarray,
@@ -625,13 +816,28 @@ def _realistic_overlay_replay_kernel_impl(
     role_regime_buffer_mults: np.ndarray,
     abstain_edge_pct: float,
     specialist_isolation_mult: float,
+    liquidity_range_gate_bp: float,
+    liquidity_volume_ratio_floor: float,
+    short_horizon_abstain_mult: float,
+    countertrend_weight_scale: float,
+    countertrend_rebalance_bypass: bool,
+    countertrend_signal_floor_pct: float,
+    countertrend_regime_score_cap: float,
+    countertrend_breadth_slack: float,
+    countertrend_microstructure_floor: float,
+    countertrend_positioning_floor: float,
+    countertrend_dc_floor: float,
+    countertrend_range_bps_floor: float,
+    countertrend_volume_ratio_floor: float,
     microstructure_align_gate_pct: float,
     dc_align_gate_pct: float,
     min_alignment_votes: int,
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
-) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int]:
+    entry_keep_flags: np.ndarray | None = None,
+    return_trace: bool = False,
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int] | dict[str, Any]:
     cash = initial_cash
     qty = 0.0
     n_trades = 0
@@ -658,6 +864,14 @@ def _realistic_overlay_replay_kernel_impl(
     confirm_side = 0
     confirm_count = 0
     last_role_idx = -1
+    net_ret: list[float] = []
+    target_weight_trace: list[float] = []
+    requested_weight_trace: list[float] = []
+    signal_pct_trace: list[float] = []
+    role_idx_trace: list[int] = []
+    cooldown_trace: list[int] = []
+    confirm_side_trace: list[int] = []
+    confirm_count_trace: list[int] = []
 
     for exec_idx in range(1, open_p.shape[0] - 1):
         signal_idx = exec_idx - 1
@@ -677,6 +891,9 @@ def _realistic_overlay_replay_kernel_impl(
             equity_before = 1e-9
         if equity_before > peak_equity:
             peak_equity = equity_before
+        current_weight = 0.0
+        if abs(equity_before) > 1e-9:
+            current_weight = qty * px_open / equity_before
 
         active_idx = mapping[bucket_codes[signal_idx]]
         role_idx = state_specialists[bucket_codes[signal_idx]]
@@ -696,6 +913,7 @@ def _realistic_overlay_replay_kernel_impl(
             signal_pct = -500.0
 
         requested_weight = signal_pct / 100.0
+        base_requested_weight = requested_weight
         regime_score = regime[signal_idx]
         breadth_score = breadth[signal_idx]
         role_signal_gate_pct = signal_gate_pct * role_signal_gate_mults[role_idx]
@@ -704,30 +922,144 @@ def _realistic_overlay_replay_kernel_impl(
         effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[signal_idx]
         long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
         short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        requested_side = 0
+        if requested_weight > 1e-12:
+            requested_side = 1
+        elif requested_weight < -1e-12:
+            requested_side = -1
+        candle_score = candle_micro_score[signal_idx]
+        if candle_score != candle_score:
+            directional_body = (1.0 if close_location_value[signal_idx] >= 0.0 else -1.0) * body_to_range[signal_idx]
+            candle_score = (
+                0.50 * close_location_value[signal_idx]
+                + 0.30 * directional_body
+                + 0.20 * wick_skew[signal_idx]
+            )
+        flow_score = 0.65 * (
+            0.70 * order_imbalance[signal_idx] + 0.30 * (2.0 * buy_volume_share[signal_idx] - 1.0)
+        ) + 0.35 * candle_score
+        oi_component = (oi_rel[signal_idx] - 1.0) / 0.10
+        if oi_component > 1.0:
+            oi_component = 1.0
+        elif oi_component < -1.0:
+            oi_component = -1.0
+        basis_component = basis_rate[signal_idx] / 0.0015
+        if basis_component > 1.0:
+            basis_component = 1.0
+        elif basis_component < -1.0:
+            basis_component = -1.0
+        positioning_score = (
+            0.35 * top_pos_log_ratio[signal_idx]
+            + 0.35 * taker_buy_sell_log_ratio[signal_idx]
+            + 0.20 * oi_component
+            + 0.10 * basis_component
+        )
+        if positioning_score > 1.0:
+            positioning_score = 1.0
+        elif positioning_score < -1.0:
+            positioning_score = -1.0
+        micro_score = flow_score
+        if micro_score > 1.0:
+            micro_score = 1.0
+        elif micro_score < -1.0:
+            micro_score = -1.0
+        dc_alignment = 0.75 * dc_trend_05[signal_idx] + 0.25 * dc_run_05[signal_idx]
+        countertrend_override = False
         if abs(signal_pct) < (role_signal_gate_pct + abstain_edge_pct):
             requested_weight = 0.0
         elif requested_weight > 0.0 and not long_ok:
-            requested_weight = 0.0
+            countertrend_override = should_allow_countertrend_entry(
+                requested_side,
+                signal_pct,
+                regime_score,
+                breadth_score,
+                library_breadth_threshold[active_idx],
+                micro_score,
+                positioning_score,
+                dc_alignment,
+                range_bps[signal_idx],
+                volume_ratio[signal_idx],
+                countertrend_signal_floor_pct,
+                countertrend_regime_score_cap,
+                countertrend_breadth_slack,
+                countertrend_microstructure_floor,
+                countertrend_positioning_floor,
+                countertrend_dc_floor,
+                countertrend_range_bps_floor,
+                countertrend_volume_ratio_floor,
+            )
+            if not countertrend_override:
+                requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:
-            requested_weight = 0.0
+            countertrend_override = should_allow_countertrend_entry(
+                requested_side,
+                signal_pct,
+                regime_score,
+                breadth_score,
+                library_breadth_threshold[active_idx],
+                micro_score,
+                positioning_score,
+                dc_alignment,
+                range_bps[signal_idx],
+                volume_ratio[signal_idx],
+                countertrend_signal_floor_pct,
+                countertrend_regime_score_cap,
+                countertrend_breadth_slack,
+                countertrend_microstructure_floor,
+                countertrend_positioning_floor,
+                countertrend_dc_floor,
+                countertrend_range_bps_floor,
+                countertrend_volume_ratio_floor,
+            )
+            if not countertrend_override:
+                requested_weight = 0.0
         else:
-            requested_side = 0
-            if requested_weight > 1e-12:
-                requested_side = 1
-            elif requested_weight < -1e-12:
-                requested_side = -1
             if requested_side != 0:
-                alignment_votes = 0
-                if requested_side * (
-                    0.70 * order_imbalance[signal_idx] + 0.30 * (2.0 * buy_volume_share[signal_idx] - 1.0)
-                ) >= microstructure_align_gate_pct:
-                    alignment_votes += 1
-                if requested_side * (
-                    0.75 * dc_trend_05[signal_idx] + 0.25 * dc_run_05[signal_idx]
-                ) >= dc_align_gate_pct:
-                    alignment_votes += 1
-                if alignment_votes < min_alignment_votes:
+                if current_weight * requested_side <= 0.0:
+                    if requested_side * positioning_score < -0.35 and requested_side * micro_score < 0.10:
+                        requested_weight = 0.0
+                    alignment_votes = 0
+                    if requested_weight != 0.0 and requested_side * micro_score >= microstructure_align_gate_pct:
+                        alignment_votes += 1
+                    if requested_weight != 0.0 and requested_side * (
+                        0.75 * dc_trend_05[signal_idx] + 0.25 * dc_run_05[signal_idx]
+                    ) >= dc_align_gate_pct:
+                        alignment_votes += 1
+                    if requested_weight != 0.0 and alignment_votes < min_alignment_votes:
+                        requested_weight = 0.0
+                if (
+                    requested_weight != 0.0
+                    and entry_keep_flags is not None
+                    and current_weight * requested_side <= 0.0
+                    and not bool(entry_keep_flags[signal_idx])
+                ):
                     requested_weight = 0.0
+                if requested_weight != 0.0:
+                    if current_weight * requested_side <= 0.0 and short_horizon_abstain_mult > 0.0:
+                        weak_votes = 0
+                        micro_side_score = requested_side * micro_score
+                        dc_score = requested_side * (
+                            0.75 * dc_trend_05[signal_idx] + 0.25 * dc_run_05[signal_idx]
+                        )
+                        if micro_side_score < 0.15 * short_horizon_abstain_mult:
+                            weak_votes += 1
+                        if dc_score < 0.10 * short_horizon_abstain_mult:
+                            weak_votes += 1
+                        if range_bps[signal_idx] <= 45.0 and volume_ratio[signal_idx] <= 1.0:
+                            weak_votes += 1
+                        if equity_corr_gross_scale[signal_idx] < max(0.75, 1.0 - 0.10 * short_horizon_abstain_mult):
+                            weak_votes += 1
+                        if weak_votes >= 2:
+                            requested_weight = 0.0
+                    range_gate_enabled = liquidity_range_gate_bp > 0.0
+                    volume_gate_enabled = liquidity_volume_ratio_floor > 0.0
+                    if current_weight * requested_side <= 0.0 and (range_gate_enabled or volume_gate_enabled):
+                        range_bad = range_gate_enabled and range_bps[signal_idx] >= liquidity_range_gate_bp
+                        volume_bad = volume_gate_enabled and volume_ratio[signal_idx] <= liquidity_volume_ratio_floor
+                        if (range_gate_enabled and volume_gate_enabled and range_bad and volume_bad) or (
+                            (not range_gate_enabled or not volume_gate_enabled) and (range_bad or volume_bad)
+                        ):
+                            requested_weight = 0.0
 
         bar_vol_ann = vol_ann[signal_idx]
         if bar_vol_ann == bar_vol_ann and bar_vol_ann > 1e-8 and abs(requested_weight) > 1e-12:
@@ -742,18 +1074,22 @@ def _realistic_overlay_replay_kernel_impl(
             requested_weight = gross_cap
         elif requested_weight < -gross_cap:
             requested_weight = -gross_cap
+        if countertrend_override and abs(requested_weight) > 1e-12:
+            requested_weight = np.sign(base_requested_weight) * min(abs(requested_weight), gross_cap) * countertrend_weight_scale
 
         drawdown = equity_before / max(peak_equity, 1e-8) - 1.0
         if drawdown <= -library_kill_switch_pct[active_idx] and cooldown_bars_left == 0:
             cooldown_bars_left = library_cooldown_days[active_idx] * bars_per_day
 
-        current_weight = 0.0
-        if abs(equity_before) > 1e-9:
-            current_weight = qty * px_open / equity_before
         target_weight = current_weight
+        countertrend_bypass_active = bool(
+            countertrend_override
+            and bool(countertrend_rebalance_bypass)
+            and abs(requested_weight) > 1e-12
+        )
         if cooldown_bars_left > 0:
             target_weight = 0.0
-        elif signal_idx % library_rebalance_bars[active_idx] == 0:
+        elif countertrend_bypass_active or signal_idx % library_rebalance_bars[active_idx] == 0:
             role_confirm_bars = confirm_bars
             if role_changed:
                 role_confirm_bars = confirm_bars + int(np.rint(specialist_isolation_mult * 2.0))
@@ -803,6 +1139,15 @@ def _realistic_overlay_replay_kernel_impl(
             max_drawdown = dd
 
         bar_net = equity_after / equity_before - 1.0
+        net_ret.append(float(bar_net))
+        if return_trace:
+            target_weight_trace.append(float(target_weight))
+            requested_weight_trace.append(float(requested_weight))
+            signal_pct_trace.append(float(signal_pct))
+            role_idx_trace.append(int(role_idx))
+            cooldown_trace.append(int(cooldown_bars_left))
+            confirm_side_trace.append(int(confirm_side))
+            confirm_count_trace.append(int(confirm_count))
         bar_count += 1
         delta = bar_net - mean_bar
         mean_bar += delta / bar_count
@@ -838,6 +1183,35 @@ def _realistic_overlay_replay_kernel_impl(
     daily_win_rate = 0.0 if day_count == 0 else day_wins / day_count
     final_equity = cash + qty * open_p[-1]
 
+    if return_trace:
+        return {
+            "total_return": float(total_return),
+            "n_trades": int(n_trades),
+            "sharpe": float(sharpe),
+            "max_drawdown": float(max_drawdown),
+            "final_equity": float(final_equity),
+            "fee_paid": float(fee_paid),
+            "slippage_paid": float(slippage_paid),
+            "funding_paid": float(funding_paid),
+            "funding_events": int(funding_events),
+            "daily_metrics": {
+                "avg_daily_return": float(avg_daily),
+                "daily_target_hit_rate": float(daily_target_hit_rate),
+                "daily_win_rate": float(daily_win_rate),
+                "worst_day": float(worst_day),
+                "best_day": float(best_day),
+            },
+            "trace": {
+                "bar_net": np.asarray(net_ret, dtype="float64"),
+                "target_weight": np.asarray(target_weight_trace, dtype="float64"),
+                "requested_weight": np.asarray(requested_weight_trace, dtype="float64"),
+                "signal_pct": np.asarray(signal_pct_trace, dtype="float64"),
+                "role_idx": np.asarray(role_idx_trace, dtype="int64"),
+                "cooldown_bars_left": np.asarray(cooldown_trace, dtype="int64"),
+                "confirm_side": np.asarray(confirm_side_trace, dtype="int64"),
+                "confirm_count": np.asarray(confirm_count_trace, dtype="int64"),
+            },
+        }
     return (
         total_return,
         n_trades,
@@ -856,10 +1230,129 @@ def _realistic_overlay_replay_kernel_impl(
     )
 
 
-if NUMBA_AVAILABLE:
-    _realistic_overlay_replay_kernel = njit(cache=True)(_realistic_overlay_replay_kernel_impl)
-else:  # pragma: no cover - fallback for environments without numba
-    _realistic_overlay_replay_kernel = _realistic_overlay_replay_kernel_impl
+def _realistic_overlay_replay_kernel_numba_impl(
+    open_p: np.ndarray,
+    close_p: np.ndarray,
+    funding_rates: np.ndarray,
+    bucket_codes: np.ndarray,
+    regime: np.ndarray,
+    breadth: np.ndarray,
+    vol_ann: np.ndarray,
+    equity_corr_gross_scale: np.ndarray,
+    equity_corr_regime_mult: np.ndarray,
+    smooth_signal_matrix: np.ndarray,
+    library_signal_pos: np.ndarray,
+    library_rebalance_bars: np.ndarray,
+    library_regime_threshold: np.ndarray,
+    library_breadth_threshold: np.ndarray,
+    library_target_vol_ann: np.ndarray,
+    library_gross_cap: np.ndarray,
+    library_kill_switch_pct: np.ndarray,
+    library_cooldown_days: np.ndarray,
+    order_imbalance: np.ndarray,
+    buy_volume_share: np.ndarray,
+    close_location_value: np.ndarray,
+    body_to_range: np.ndarray,
+    wick_skew: np.ndarray,
+    candle_micro_score: np.ndarray,
+    oi_rel: np.ndarray,
+    basis_rate: np.ndarray,
+    top_pos_log_ratio: np.ndarray,
+    taker_buy_sell_log_ratio: np.ndarray,
+    range_bps: np.ndarray,
+    volume_ratio: np.ndarray,
+    dc_trend_05: np.ndarray,
+    dc_run_05: np.ndarray,
+    mapping: np.ndarray,
+    initial_cash: float,
+    fee_rate: float,
+    slippage: float,
+    amount_step: float,
+    min_qty: float,
+    no_trade_band_pct: float,
+    signal_gate_pct: float,
+    regime_buffer_mult: float,
+    confirm_bars: int,
+    state_specialists: np.ndarray,
+    role_signal_gate_mults: np.ndarray,
+    role_regime_buffer_mults: np.ndarray,
+    abstain_edge_pct: float,
+    specialist_isolation_mult: float,
+    liquidity_range_gate_bp: float,
+    liquidity_volume_ratio_floor: float,
+    short_horizon_abstain_mult: float,
+    microstructure_align_gate_pct: float,
+    dc_align_gate_pct: float,
+    min_alignment_votes: int,
+    bars_per_day: int,
+    daily_target: float,
+    bar_factor: float,
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int]:
+    return _realistic_overlay_replay_kernel_impl(
+        open_p,
+        close_p,
+        funding_rates,
+        bucket_codes,
+        regime,
+        breadth,
+        vol_ann,
+        equity_corr_gross_scale,
+        equity_corr_regime_mult,
+        smooth_signal_matrix,
+        library_signal_pos,
+        library_rebalance_bars,
+        library_regime_threshold,
+        library_breadth_threshold,
+        library_target_vol_ann,
+        library_gross_cap,
+        library_kill_switch_pct,
+        library_cooldown_days,
+        order_imbalance,
+        buy_volume_share,
+        close_location_value,
+        body_to_range,
+        wick_skew,
+        candle_micro_score,
+        oi_rel,
+        basis_rate,
+        top_pos_log_ratio,
+        taker_buy_sell_log_ratio,
+        range_bps,
+        volume_ratio,
+        dc_trend_05,
+        dc_run_05,
+        mapping,
+        initial_cash,
+        fee_rate,
+        slippage,
+        amount_step,
+        min_qty,
+        no_trade_band_pct,
+        signal_gate_pct,
+        regime_buffer_mult,
+        confirm_bars,
+        state_specialists,
+        role_signal_gate_mults,
+        role_regime_buffer_mults,
+        abstain_edge_pct,
+        specialist_isolation_mult,
+        liquidity_range_gate_bp,
+        liquidity_volume_ratio_floor,
+        short_horizon_abstain_mult,
+        microstructure_align_gate_pct,
+        dc_align_gate_pct,
+        min_alignment_votes,
+        bars_per_day,
+        daily_target,
+        bar_factor,
+        None,
+        False,
+    )
+
+
+# Keep the realistic replay on the Python implementation so trace-capable behavior
+# and execution-gene parity stay aligned across search, validation, and runtime.
+_realistic_overlay_replay_kernel = _realistic_overlay_replay_kernel_impl
 
 
 def build_overlay_inputs(df: pd.DataFrame, pairs: tuple[str, ...], regime_pair: str) -> dict[str, pd.Series]:
@@ -977,6 +1470,7 @@ def fast_overlay_replay_from_context(
     use_equity_corr_risk: bool = False,
     execution_gene: dict[str, Any] | None = None,
     state_specialists: tuple[int, ...] | list[int] | None = None,
+    return_trace: bool = False,
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
     expected_state_count = len(route_state_names(route_state_mode))
@@ -995,12 +1489,25 @@ def fast_overlay_replay_from_context(
     role_regime_buffer_mults = np.asarray(execution_profile["role_regime_buffer_mults"], dtype="float64")
     abstain_edge_pct = float(execution_profile["abstain_edge_pct"])
     specialist_isolation_mult = float(execution_profile["specialist_isolation_mult"])
+    liquidity_range_gate_bp = float(execution_profile["liquidity_range_gate_bp"])
+    liquidity_volume_ratio_floor = float(execution_profile["liquidity_volume_ratio_floor"])
+    short_horizon_abstain_mult = float(execution_profile["short_horizon_abstain_mult"])
     microstructure_align_gate_pct = float(execution_profile["microstructure_align_gate_pct"])
     dc_align_gate_pct = float(execution_profile["dc_align_gate_pct"])
     min_alignment_votes = int(execution_profile["min_alignment_votes"])
     corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
     corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
-    if fast_engine == "numba":
+    close_location_value = _context_feature_array(context, "close_location_value", fill_value=0.0)
+    body_to_range = _context_feature_array(context, "body_to_range", fill_value=0.0)
+    wick_skew = _context_feature_array(context, "wick_skew", fill_value=0.0)
+    candle_micro_score = _context_feature_array(context, "candle_micro_score", fill_value=0.0)
+    oi_rel = _context_feature_array(context, "oi_rel", fill_value=1.0)
+    basis_rate = _context_feature_array(context, "basis_rate", fill_value=0.0)
+    top_pos_log_ratio = _context_feature_array(context, "top_pos_log_ratio", fill_value=0.0)
+    taker_buy_sell_log_ratio = _context_feature_array(context, "taker_buy_sell_log_ratio", fill_value=0.0)
+    range_bps = _context_feature_array(context, "range_bps", fill_value=0.0)
+    volume_ratio = _context_feature_array(context, "volume_ratio", fill_value=0.0)
+    if fast_engine == "numba" and not return_trace:
         result = _fast_overlay_replay_kernel(
             context["close"],
             context["bucket_codes"][float(route_breadth_threshold)],
@@ -1020,6 +1527,16 @@ def fast_overlay_replay_from_context(
             library_lookup["cooldown_days"],
             context["order_imbalance"],
             context["buy_volume_share"],
+            close_location_value,
+            body_to_range,
+            wick_skew,
+            candle_micro_score,
+            oi_rel,
+            basis_rate,
+            top_pos_log_ratio,
+            taker_buy_sell_log_ratio,
+            range_bps,
+            volume_ratio,
             context["dc_trend_05"],
             context["dc_run_05"],
             np.asarray(mapping, dtype="int64"),
@@ -1034,6 +1551,9 @@ def fast_overlay_replay_from_context(
             role_regime_buffer_mults,
             float(abstain_edge_pct),
             float(specialist_isolation_mult),
+            float(liquidity_range_gate_bp),
+            float(liquidity_volume_ratio_floor),
+            float(short_horizon_abstain_mult),
             float(microstructure_align_gate_pct),
             float(dc_align_gate_pct),
             int(min_alignment_votes),
@@ -1076,6 +1596,10 @@ def fast_overlay_replay_from_context(
     confirm_side = 0
     confirm_count = 0
     last_role_idx = -1
+    target_weight_trace: list[float] = []
+    requested_weight_trace: list[float] = []
+    signal_pct_trace: list[float] = []
+    role_idx_trace: list[int] = []
 
     for i in range(len(close) - 1):
         active_idx = int(mapping[int(bucket_codes[i])])
@@ -1113,12 +1637,24 @@ def fast_overlay_replay_from_context(
                 requested_side = 1
             elif requested_weight < -1e-12:
                 requested_side = -1
-            if should_abstain_for_alignment(
+            micro_score = blended_microstructure_score(
+                float(context["order_imbalance"][i]),
+                float(context["buy_volume_share"][i]),
+                float(close_location_value[i]),
+                float(body_to_range[i]),
+                float(wick_skew[i]),
+            )
+            positioning_score = derivative_positioning_score(
+                float(oi_rel[i]),
+                float(basis_rate[i]),
+                float(top_pos_log_ratio[i]),
+                float(taker_buy_sell_log_ratio[i]),
+            )
+            if current_weight * requested_side <= 0.0 and requested_side * positioning_score < -0.35 and requested_side * micro_score < 0.10:
+                requested_weight = 0.0
+            if requested_weight != 0.0 and current_weight * requested_side <= 0.0 and should_abstain_for_alignment(
                 requested_side,
-                microstructure_alignment_score(
-                    float(context["order_imbalance"][i]),
-                    float(context["buy_volume_share"][i]),
-                ),
+                micro_score,
                 dc_alignment_score(
                     float(context["dc_trend_05"][i]),
                     float(context["dc_run_05"][i]),
@@ -1126,6 +1662,29 @@ def fast_overlay_replay_from_context(
                 float(microstructure_align_gate_pct),
                 float(dc_align_gate_pct),
                 int(min_alignment_votes),
+            ):
+                requested_weight = 0.0
+            elif should_abstain_for_liquidity(
+                requested_side,
+                current_weight,
+                float(range_bps[i]),
+                float(volume_ratio[i]),
+                float(liquidity_range_gate_bp),
+                float(liquidity_volume_ratio_floor),
+            ):
+                requested_weight = 0.0
+            elif should_abstain_for_weak_tape(
+                requested_side,
+                current_weight,
+                micro_score,
+                dc_alignment_score(
+                    float(context["dc_trend_05"][i]),
+                    float(context["dc_run_05"][i]),
+                ),
+                float(range_bps[i]),
+                float(volume_ratio[i]),
+                float(equity_corr_gross_scale[i]),
+                float(short_horizon_abstain_mult),
             ):
                 requested_weight = 0.0
 
@@ -1178,10 +1737,15 @@ def fast_overlay_replay_from_context(
         equity *= (1.0 + bar_net)
         peak_equity = max(peak_equity, equity)
         current_weight = target_weight
+        if return_trace:
+            target_weight_trace.append(float(target_weight))
+            requested_weight_trace.append(float(requested_weight))
+            signal_pct_trace.append(float(signal_pct))
+            role_idx_trace.append(int(role_idx))
         net_ret.append(bar_net)
         equity_curve.append(float(equity))
 
-    return {
+    result = {
         "total_return": float(equity / gp.INITIAL_CASH - 1.0),
         "n_trades": int(n_trades),
         "sharpe": float(np.mean(net_ret) / np.std(net_ret) * BAR_FACTOR) if len(net_ret) > 1 and np.std(net_ret) > 1e-12 else 0.0,
@@ -1189,6 +1753,14 @@ def fast_overlay_replay_from_context(
         "final_equity": float(equity),
         "daily_metrics": gp.compute_daily_metrics(np.asarray(net_ret, dtype="float64")),
     }
+    if return_trace:
+        result["trace"] = {
+            "target_weight": np.asarray(target_weight_trace, dtype="float64"),
+            "requested_weight": np.asarray(requested_weight_trace, dtype="float64"),
+            "signal_pct": np.asarray(signal_pct_trace, dtype="float64"),
+            "role_idx": np.asarray(role_idx_trace, dtype="int64"),
+        }
+    return result
 
 
 def realistic_overlay_replay_from_context(
@@ -1205,6 +1777,8 @@ def realistic_overlay_replay_from_context(
     execution_gene: dict[str, Any] | None = None,
     state_specialists: tuple[int, ...] | list[int] | None = None,
     engine: str = "auto",
+    entry_keep_flags: np.ndarray | None = None,
+    return_trace: bool = False,
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
     expected_state_count = len(route_state_names(route_state_mode))
@@ -1216,6 +1790,16 @@ def realistic_overlay_replay_from_context(
     effective_state_specialists = np.asarray(state_specialists_source, dtype="int64")
     corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
     corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
+    close_location_value = _context_feature_array(context, "close_location_value", fill_value=0.0)
+    body_to_range = _context_feature_array(context, "body_to_range", fill_value=0.0)
+    wick_skew = _context_feature_array(context, "wick_skew", fill_value=0.0)
+    candle_micro_score = _context_feature_array(context, "candle_micro_score", fill_value=0.0)
+    oi_rel = _context_feature_array(context, "oi_rel", fill_value=1.0)
+    basis_rate = _context_feature_array(context, "basis_rate", fill_value=0.0)
+    top_pos_log_ratio = _context_feature_array(context, "top_pos_log_ratio", fill_value=0.0)
+    taker_buy_sell_log_ratio = _context_feature_array(context, "taker_buy_sell_log_ratio", fill_value=0.0)
+    range_bps = _context_feature_array(context, "range_bps", fill_value=0.0)
+    volume_ratio = _context_feature_array(context, "volume_ratio", fill_value=0.0)
     if execution_gene is not None:
         fee_rate = float(execution_profile["fee_rate"])
         slippage = float(execution_profile["slippage"])
@@ -1230,11 +1814,18 @@ def realistic_overlay_replay_from_context(
         signal_gate_pct = 0.0
         regime_buffer_mult = 0.0
         confirm_bars = 1
+        liquidity_range_gate_bp = 0.0
+        liquidity_volume_ratio_floor = 0.0
+        short_horizon_abstain_mult = 0.0
     min_alignment_votes = int(execution_profile["min_alignment_votes"])
+    if execution_gene is not None:
+        liquidity_range_gate_bp = float(execution_profile["liquidity_range_gate_bp"])
+        liquidity_volume_ratio_floor = float(execution_profile["liquidity_volume_ratio_floor"])
+        short_horizon_abstain_mult = float(execution_profile["short_horizon_abstain_mult"])
     kernel = _realistic_overlay_replay_kernel
-    if str(engine) == "python":
+    if str(engine) == "python" or entry_keep_flags is not None or return_trace:
         kernel = _realistic_overlay_replay_kernel_impl
-    result = kernel(
+    base_args = (
         context["open"],
         context["close"],
         context["funding_rates"],
@@ -1255,6 +1846,16 @@ def realistic_overlay_replay_from_context(
         library_lookup["cooldown_days"],
         context["order_imbalance"],
         context["buy_volume_share"],
+        close_location_value,
+        body_to_range,
+        wick_skew,
+        candle_micro_score,
+        oi_rel,
+        basis_rate,
+        top_pos_log_ratio,
+        taker_buy_sell_log_ratio,
+        range_bps,
+        volume_ratio,
         context["dc_trend_05"],
         context["dc_run_05"],
         np.asarray(mapping, dtype="int64"),
@@ -1272,6 +1873,19 @@ def realistic_overlay_replay_from_context(
         np.asarray(execution_profile["role_regime_buffer_mults"], dtype="float64"),
         float(execution_profile["abstain_edge_pct"]),
         float(execution_profile["specialist_isolation_mult"]),
+        float(liquidity_range_gate_bp),
+        float(liquidity_volume_ratio_floor),
+        float(short_horizon_abstain_mult),
+        float(execution_profile["countertrend_weight_scale"]),
+        bool(execution_profile["countertrend_rebalance_bypass"]),
+        float(execution_profile["countertrend_signal_floor_pct"]),
+        float(execution_profile["countertrend_regime_score_cap"]),
+        float(execution_profile["countertrend_breadth_slack"]),
+        float(execution_profile["countertrend_microstructure_floor"]),
+        float(execution_profile["countertrend_positioning_floor"]),
+        float(execution_profile["countertrend_dc_floor"]),
+        float(execution_profile["countertrend_range_bps_floor"]),
+        float(execution_profile["countertrend_volume_ratio_floor"]),
         float(execution_profile["microstructure_align_gate_pct"]),
         float(execution_profile["dc_align_gate_pct"]),
         int(min_alignment_votes),
@@ -1279,6 +1893,47 @@ def realistic_overlay_replay_from_context(
         float(gp.DAILY_TARGET_PCT),
         float(BAR_FACTOR),
     )
+    if kernel is _realistic_overlay_replay_kernel_impl:
+        result = kernel(*base_args, entry_keep_flags, return_trace)
+    else:
+        result = kernel(*base_args)
+    if kernel is _realistic_overlay_replay_kernel_impl:
+        if isinstance(result, tuple):
+            return {
+                "avg_daily_return": float(result[5]),
+                "total_return": float(result[0]),
+                "max_drawdown": float(result[3]),
+                "sharpe": float(result[2]),
+                "daily_target_hit_rate": float(result[6]),
+                "daily_win_rate": float(result[7]),
+                "worst_day": float(result[8]),
+                "best_day": float(result[9]),
+                "n_trades": int(result[1]),
+                "fee_paid": float(result[10]),
+                "slippage_paid": float(result[11]),
+                "funding_paid": float(result[12]),
+                "funding_events": int(result[13]),
+                "final_equity": float(result[4]),
+            }
+        metrics = {
+            "avg_daily_return": float(result["daily_metrics"]["avg_daily_return"]),
+            "total_return": float(result["total_return"]),
+            "max_drawdown": float(result["max_drawdown"]),
+            "sharpe": float(result["sharpe"]),
+            "daily_target_hit_rate": float(result["daily_metrics"]["daily_target_hit_rate"]),
+            "daily_win_rate": float(result["daily_metrics"]["daily_win_rate"]),
+            "worst_day": float(result["daily_metrics"]["worst_day"]),
+            "best_day": float(result["daily_metrics"]["best_day"]),
+            "n_trades": int(result["n_trades"]),
+            "fee_paid": float(result.get("fee_paid", 0.0)),
+            "slippage_paid": float(result.get("slippage_paid", 0.0)),
+            "funding_paid": float(result.get("funding_paid", 0.0)),
+            "funding_events": int(result.get("funding_events", 0)),
+            "final_equity": float(result["final_equity"]),
+        }
+        if return_trace:
+            metrics["trace"] = result.get("trace") or {}
+        return metrics
     return {
         "avg_daily_return": float(result[5]),
         "total_return": float(result[0]),
@@ -1349,18 +2004,35 @@ def score_candidate(agg_6m: dict[str, Any], agg_4y: dict[str, Any]) -> float:
 
 
 def score_realistic_candidate(report: dict[str, Any]) -> float:
+    recent_2m = report["windows"]["recent_2m"]["aggregate"]
+    recent_4m = report["windows"]["recent_4m"]["aggregate"]
     recent_6m = report["windows"]["recent_6m"]["aggregate"]
     full_4y = report["windows"]["full_4y"]["aggregate"]
 
     score = 0.0
+    score += float(recent_2m["worst_pair_avg_daily_return"]) * 240000.0
+    score += float(recent_2m["mean_avg_daily_return"]) * 60000.0
     score += float(recent_6m["worst_pair_avg_daily_return"]) * 380000.0
     score += float(full_4y["worst_pair_avg_daily_return"]) * 280000.0
     score += float(full_4y["mean_avg_daily_return"]) * 180000.0
     score += float(recent_6m["mean_avg_daily_return"]) * 50000.0
+    score -= abs(float(recent_2m["worst_max_drawdown"])) * 15000.0
     score -= abs(float(recent_6m["worst_max_drawdown"])) * 18000.0
     score -= abs(float(full_4y["worst_max_drawdown"])) * 9000.0
+    score -= float(recent_2m["pair_return_dispersion"]) * 100000.0
     score -= float(recent_6m["pair_return_dispersion"]) * 120000.0
     score -= float(full_4y["pair_return_dispersion"]) * 60000.0
+    recent_2m_trades = float(recent_2m.get("mean_n_trades", 0.0))
+    recent_4m_trades = float(recent_4m.get("mean_n_trades", recent_2m_trades))
+    recent_6m_trades = float(recent_6m.get("mean_n_trades", 0.0))
+    full_4y_trades = float(full_4y.get("mean_n_trades", 0.0))
+    score += min(recent_2m_trades, 48.0) * 180.0
+    score += min(recent_4m_trades, 96.0) * 90.0
+    score += min(recent_6m_trades, 192.0) * 35.0
+    score += min(full_4y_trades, 1440.0) * 1.5
+    score -= max(0.0, 12.0 - recent_2m_trades) * 900.0
+    score -= max(0.0, 24.0 - recent_4m_trades) * 420.0
+    score -= max(0.0, 36.0 - recent_6m_trades) * 220.0
     return float(score)
 
 
@@ -1441,6 +2113,7 @@ def main() -> None:
         for pair in pairs
     }
     funding_all = {pair: load_or_fetch_funding(pair, start_all, end_all) for pair in pairs}
+    derivatives_all = {pair: _load_derivative_bundle(pair) for pair in pairs}
 
     prepare_started = perf_counter()
     window_cache = {}
@@ -1468,6 +2141,7 @@ def main() -> None:
                     route_thresholds=route_thresholds,
                     library_lookup=library_lookup,
                     funding_df=funding_slice,
+                    derivative_bundle=derivatives_all[pair],
                     route_state_mode=route_state_mode,
                 ),
             }

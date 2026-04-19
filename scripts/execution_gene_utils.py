@@ -27,6 +27,72 @@ def microstructure_alignment_score(order_imbalance: float, buy_volume_share: flo
     )
 
 
+def candle_microstructure_proxy_score(close_location_value: float, body_to_range: float, wick_skew: float) -> float:
+    directional_body = (1.0 if float(close_location_value) >= 0.0 else -1.0) * float(body_to_range)
+    return _clip(
+        0.50 * float(close_location_value) + 0.30 * directional_body + 0.20 * float(wick_skew),
+        -1.0,
+        1.0,
+    )
+
+
+def blended_microstructure_score(
+    order_imbalance: float,
+    buy_volume_share: float,
+    close_location_value: float,
+    body_to_range: float,
+    wick_skew: float,
+) -> float:
+    flow_score = microstructure_alignment_score(order_imbalance, buy_volume_share)
+    candle_score = candle_microstructure_proxy_score(close_location_value, body_to_range, wick_skew)
+    return _clip(0.65 * flow_score + 0.35 * candle_score, -1.0, 1.0)
+
+
+def derivative_positioning_score(
+    oi_rel: float,
+    basis_rate: float,
+    top_pos_log_ratio: float,
+    taker_buy_sell_log_ratio: float,
+) -> float:
+    oi_component = _clip((float(oi_rel) - 1.0) / 0.10, -1.0, 1.0)
+    basis_component = _clip(float(basis_rate) / 0.0015, -1.0, 1.0)
+    return _clip(
+        0.35 * float(top_pos_log_ratio)
+        + 0.35 * float(taker_buy_sell_log_ratio)
+        + 0.20 * oi_component
+        + 0.10 * basis_component,
+        -1.0,
+        1.0,
+    )
+
+
+def blended_entry_quality_score(
+    order_imbalance: float,
+    buy_volume_share: float,
+    close_location_value: float,
+    body_to_range: float,
+    wick_skew: float,
+    oi_rel: float,
+    basis_rate: float,
+    top_pos_log_ratio: float,
+    taker_buy_sell_log_ratio: float,
+) -> float:
+    flow_score = blended_microstructure_score(
+        order_imbalance,
+        buy_volume_share,
+        close_location_value,
+        body_to_range,
+        wick_skew,
+    )
+    positioning_score = derivative_positioning_score(
+        oi_rel,
+        basis_rate,
+        top_pos_log_ratio,
+        taker_buy_sell_log_ratio,
+    )
+    return _clip(0.75 * flow_score + 0.25 * positioning_score, -1.0, 1.0)
+
+
 def dc_alignment_score(dc_trend_05: float, dc_run_05: float) -> float:
     return _clip(
         0.75 * float(dc_trend_05) + 0.25 * float(dc_run_05),
@@ -53,6 +119,112 @@ def should_abstain_for_alignment(
     if float(requested_side) * float(dc_score) >= float(dc_align_gate_pct):
         votes += 1
     return votes < max(1, min(int(min_alignment_votes), 2))
+
+
+def should_abstain_for_liquidity(
+    requested_side: int,
+    current_weight: float,
+    range_bps: float,
+    volume_ratio: float,
+    liquidity_range_gate_bp: float,
+    liquidity_volume_ratio_floor: float,
+) -> bool:
+    if requested_side == 0:
+        return False
+    if float(current_weight) * float(requested_side) > 0.0:
+        return False
+    range_gate_enabled = float(liquidity_range_gate_bp) > 0.0
+    volume_gate_enabled = float(liquidity_volume_ratio_floor) > 0.0
+    if not range_gate_enabled and not volume_gate_enabled:
+        return False
+    range_bad = range_gate_enabled and float(range_bps) >= float(liquidity_range_gate_bp)
+    volume_bad = volume_gate_enabled and float(volume_ratio) <= float(liquidity_volume_ratio_floor)
+    if range_gate_enabled and volume_gate_enabled:
+        return bool(range_bad and volume_bad)
+    return bool(range_bad or volume_bad)
+
+
+def should_abstain_for_weak_tape(
+    requested_side: int,
+    current_weight: float,
+    microstructure_score: float,
+    dc_score: float,
+    range_bps: float,
+    volume_ratio: float,
+    equity_corr_gross_scale: float,
+    short_horizon_abstain_mult: float,
+) -> bool:
+    if requested_side == 0:
+        return False
+    if float(current_weight) * float(requested_side) > 0.0:
+        return False
+    strength = float(short_horizon_abstain_mult)
+    if strength <= 0.0:
+        return False
+    weak_votes = 0
+    if float(requested_side) * float(microstructure_score) < 0.15 * strength:
+        weak_votes += 1
+    if float(requested_side) * float(dc_score) < 0.10 * strength:
+        weak_votes += 1
+    if float(range_bps) <= 45.0 and float(volume_ratio) <= 1.0:
+        weak_votes += 1
+    if float(equity_corr_gross_scale) < max(0.75, 1.0 - 0.10 * strength):
+        weak_votes += 1
+    return weak_votes >= 2
+
+
+def should_allow_countertrend_entry(
+    requested_side: int,
+    signal_pct: float,
+    regime_score: float,
+    breadth_score: float,
+    breadth_threshold: float,
+    microstructure_score: float,
+    positioning_score: float,
+    dc_score: float,
+    range_bps: float,
+    volume_ratio: float,
+    signal_floor_pct: float,
+    regime_score_cap: float,
+    breadth_slack: float,
+    microstructure_floor: float,
+    positioning_floor: float,
+    dc_floor: float,
+    range_bps_floor: float,
+    volume_ratio_floor: float,
+) -> bool:
+    if int(requested_side) == 0:
+        return False
+    if float(signal_floor_pct) <= 0.0:
+        return False
+    if abs(float(signal_pct)) < float(signal_floor_pct):
+        return False
+    if float(range_bps) < float(range_bps_floor):
+        return False
+    if float(volume_ratio) < float(volume_ratio_floor):
+        return False
+
+    side = float(requested_side)
+    if side > 0.0:
+        if float(regime_score) < -float(regime_score_cap):
+            return False
+        if float(breadth_score) < max(0.0, float(breadth_threshold) - float(breadth_slack)):
+            return False
+    else:
+        if float(regime_score) > float(regime_score_cap):
+            return False
+        if float(breadth_score) > min(1.0, (1.0 - float(breadth_threshold)) + float(breadth_slack)):
+            return False
+
+    if side * float(microstructure_score) < float(microstructure_floor):
+        return False
+    if side * float(positioning_score) < float(positioning_floor):
+        return False
+    if side * float(dc_score) < float(dc_floor):
+        return False
+    return True
+
+
 
 
 def normalize_execution_gene(raw: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -88,6 +260,19 @@ def normalize_execution_gene(raw: Mapping[str, Any] | None) -> dict[str, Any]:
         "confirm_bars": max(int(payload.get("confirm_bars", 1)), 1),
         "abstain_edge_pct": _clip(float(payload.get("abstain_edge_pct", 0.0)), 0.0, 1.5),
         "specialist_isolation_mult": _clip(float(payload.get("specialist_isolation_mult", 0.0)), 0.0, 1.5),
+        "liquidity_range_gate_bp": max(float(payload.get("liquidity_range_gate_bp", 0.0)), 0.0),
+        "liquidity_volume_ratio_floor": _clip(float(payload.get("liquidity_volume_ratio_floor", 0.0)), 0.0, 2.0),
+        "short_horizon_abstain_mult": _clip(float(payload.get("short_horizon_abstain_mult", 0.0)), 0.0, 1.5),
+        "countertrend_weight_scale": _clip(float(payload.get("countertrend_weight_scale", 0.0)), 0.0, 1.0),
+        "countertrend_rebalance_bypass": bool(payload.get("countertrend_rebalance_bypass", False)),
+        "countertrend_signal_floor_pct": _clip(float(payload.get("countertrend_signal_floor_pct", 0.0)), 0.0, 500.0),
+        "countertrend_regime_score_cap": _clip(float(payload.get("countertrend_regime_score_cap", 0.0)), 0.0, 0.25),
+        "countertrend_breadth_slack": _clip(float(payload.get("countertrend_breadth_slack", 0.0)), 0.0, 0.5),
+        "countertrend_microstructure_floor": _clip(float(payload.get("countertrend_microstructure_floor", 0.0)), -1.0, 1.0),
+        "countertrend_positioning_floor": _clip(float(payload.get("countertrend_positioning_floor", 0.0)), -1.0, 1.0),
+        "countertrend_dc_floor": _clip(float(payload.get("countertrend_dc_floor", 0.0)), -1.0, 1.0),
+        "countertrend_range_bps_floor": max(float(payload.get("countertrend_range_bps_floor", 0.0)), 0.0),
+        "countertrend_volume_ratio_floor": _clip(float(payload.get("countertrend_volume_ratio_floor", 0.0)), 0.0, 3.0),
         "flow_alignment_threshold": flow_alignment_threshold,
         "dc_alignment_threshold": dc_alignment_threshold,
         "min_alignment_votes": min_alignment_votes,
@@ -156,6 +341,19 @@ def derive_execution_profile(raw: Mapping[str, Any] | None) -> dict[str, Any]:
         "confirm_bars": int(gene["confirm_bars"]),
         "abstain_edge_pct": float(gene["abstain_edge_pct"]),
         "specialist_isolation_mult": float(gene["specialist_isolation_mult"]),
+        "liquidity_range_gate_bp": float(gene["liquidity_range_gate_bp"]),
+        "liquidity_volume_ratio_floor": float(gene["liquidity_volume_ratio_floor"]),
+        "short_horizon_abstain_mult": float(gene["short_horizon_abstain_mult"]),
+        "countertrend_weight_scale": float(gene["countertrend_weight_scale"]),
+        "countertrend_rebalance_bypass": bool(gene["countertrend_rebalance_bypass"]),
+        "countertrend_signal_floor_pct": float(gene["countertrend_signal_floor_pct"]),
+        "countertrend_regime_score_cap": float(gene["countertrend_regime_score_cap"]),
+        "countertrend_breadth_slack": float(gene["countertrend_breadth_slack"]),
+        "countertrend_microstructure_floor": float(gene["countertrend_microstructure_floor"]),
+        "countertrend_positioning_floor": float(gene["countertrend_positioning_floor"]),
+        "countertrend_dc_floor": float(gene["countertrend_dc_floor"]),
+        "countertrend_range_bps_floor": float(gene["countertrend_range_bps_floor"]),
+        "countertrend_volume_ratio_floor": float(gene["countertrend_volume_ratio_floor"]),
         "flow_alignment_threshold": float(gene["flow_alignment_threshold"]),
         "dc_alignment_threshold": float(gene["dc_alignment_threshold"]),
         "min_alignment_votes": int(gene["min_alignment_votes"]),
@@ -181,6 +379,19 @@ def legacy_execution_profile() -> dict[str, Any]:
         "confirm_bars": 1,
         "abstain_edge_pct": 0.0,
         "specialist_isolation_mult": 0.0,
+        "liquidity_range_gate_bp": 0.0,
+        "liquidity_volume_ratio_floor": 0.0,
+        "short_horizon_abstain_mult": 0.0,
+        "countertrend_weight_scale": 0.0,
+        "countertrend_rebalance_bypass": False,
+        "countertrend_signal_floor_pct": 0.0,
+        "countertrend_regime_score_cap": 0.0,
+        "countertrend_breadth_slack": 0.0,
+        "countertrend_microstructure_floor": 0.0,
+        "countertrend_positioning_floor": 0.0,
+        "countertrend_dc_floor": 0.0,
+        "countertrend_range_bps_floor": 0.0,
+        "countertrend_volume_ratio_floor": 0.0,
         "flow_alignment_threshold": 0.0,
         "dc_alignment_threshold": 0.0,
         "min_alignment_votes": 0,
@@ -211,6 +422,19 @@ def legacy_execution_profile() -> dict[str, Any]:
         "confirm_bars": 1,
         "abstain_edge_pct": 0.0,
         "specialist_isolation_mult": 0.0,
+        "liquidity_range_gate_bp": 0.0,
+        "liquidity_volume_ratio_floor": 0.0,
+        "short_horizon_abstain_mult": 0.0,
+        "countertrend_weight_scale": 0.0,
+        "countertrend_rebalance_bypass": False,
+        "countertrend_signal_floor_pct": 0.0,
+        "countertrend_regime_score_cap": 0.0,
+        "countertrend_breadth_slack": 0.0,
+        "countertrend_microstructure_floor": 0.0,
+        "countertrend_positioning_floor": 0.0,
+        "countertrend_dc_floor": 0.0,
+        "countertrend_range_bps_floor": 0.0,
+        "countertrend_volume_ratio_floor": 0.0,
         "flow_alignment_threshold": 0.0,
         "dc_alignment_threshold": 0.0,
         "min_alignment_votes": 0,

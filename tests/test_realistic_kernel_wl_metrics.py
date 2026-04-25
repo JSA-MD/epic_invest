@@ -337,3 +337,137 @@ class TestRegimeWL(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFIFOPartialCloseAccounting(unittest.TestCase):
+    """Validate the FIFO + per-partial-close semantics implemented in the kernel.
+
+    Each partial close emits its own W/L event; FIFO order is enforced so the
+    oldest open lot is the basis for realised PnL. These cases exercise the
+    state machine through a python re-implementation that mirrors the kernel
+    block — direct kernel synthesis is fragile because the surrounding gates
+    will suppress trades at extremely small notional.
+    """
+
+    @staticmethod
+    def _simulate(transitions, fee_rate=0.0):
+        qty = 0.0
+        entry_lots = []
+        prev_side = 0
+        n_w = n_l = 0
+        tot_w = tot_l = 0.0
+        rwins = [0] * 16
+        rlosses = [0] * 16
+        for diff_qty, exec_price, regime in transitions:
+            fee = abs(diff_qty) * exec_price * fee_rate
+            qty += diff_qty
+            new_side = 1 if qty > 1e-12 else (-1 if qty < -1e-12 else 0)
+            if prev_side == 0 and new_side != 0:
+                entry_lots.append([abs(diff_qty), exec_price, fee, regime])
+                prev_side = new_side
+                continue
+            if prev_side != 0 and new_side == prev_side and (
+                (prev_side > 0 and diff_qty > 0) or (prev_side < 0 and diff_qty < 0)
+            ):
+                entry_lots.append([abs(diff_qty), exec_price, fee, regime])
+                continue
+            if prev_side != 0 and new_side == prev_side:
+                close_total = abs(diff_qty)
+                fee_close = fee
+            else:
+                close_total = sum(l[0] for l in entry_lots) if entry_lots else 0.0
+                share = close_total / abs(diff_qty) if abs(diff_qty) > 0 else 0.0
+                fee_close = fee * share
+            fee_open = fee - fee_close
+            fpu = fee_close / close_total if close_total > 1e-12 else 0.0
+            sign_prev = prev_side
+            remaining = close_total
+            while remaining > 1e-12 and entry_lots:
+                lq, lp, lef, lr = entry_lots[0]
+                if lq <= remaining + 1e-12:
+                    gross = (exec_price - lp) * lq * sign_prev
+                    net = gross - lef - fpu * lq
+                    if net > 0:
+                        n_w += 1
+                        tot_w += net
+                        rwins[lr] += 1
+                    elif net < 0:
+                        n_l += 1
+                        tot_l += abs(net)
+                        rlosses[lr] += 1
+                    remaining -= lq
+                    entry_lots.pop(0)
+                else:
+                    p = remaining
+                    gross = (exec_price - lp) * p * sign_prev
+                    pe = lef * (p / lq)
+                    net = gross - pe - fpu * p
+                    if net > 0:
+                        n_w += 1
+                        tot_w += net
+                        rwins[lr] += 1
+                    elif net < 0:
+                        n_l += 1
+                        tot_l += abs(net)
+                        rlosses[lr] += 1
+                    entry_lots[0][0] = lq - p
+                    entry_lots[0][2] = lef - pe
+                    remaining = 0
+            if not entry_lots:
+                prev_side = 0
+            if new_side != 0 and new_side != prev_side:
+                entry_lots.append([abs(qty), exec_price, fee_open, regime])
+                prev_side = new_side
+        return n_w, n_l, tot_w, tot_l, rwins, rlosses, bool(entry_lots)
+
+    def test_partial_closes_each_emit_wl(self):
+        """Two partial closes after a single open should emit two W/L events."""
+        n_w, n_l, *_ = self._simulate([(100, 50, 0), (-50, 60, 0), (-50, 40, 0)])
+        self.assertEqual((n_w, n_l), (1, 1))
+
+    def test_fifo_uses_oldest_lot_basis(self):
+        """Scale-up then partial close: FIFO closes the older lot first.
+        Lots [100@50, 100@60]; close 50 @55 should book +250 (W), not 0 (WAVG)."""
+        n_w, n_l, tot_w, tot_l, *_ = self._simulate(
+            [(100, 50, 0), (100, 60, 0), (-50, 55, 0)]
+        )
+        self.assertEqual(n_w, 1)
+        self.assertEqual(n_l, 0)
+        self.assertAlmostEqual(tot_w, 250.0, places=4)
+
+    def test_open_position_at_end_not_counted(self):
+        n_w, n_l, *_, open_end = self._simulate([(100, 50, 0)])
+        self.assertEqual((n_w, n_l), (0, 0))
+        self.assertTrue(open_end)
+
+    def test_flip_emits_close_and_opens_new(self):
+        """Long 100, then sell 200 (flip to short 100): close emits 1 W/L event,
+        new short opens with the remaining size."""
+        n_w, n_l, _, tot_l, *_, open_end = self._simulate(
+            [(100, 50, 0), (-200, 45, 0)]
+        )
+        self.assertEqual((n_w, n_l), (0, 1))
+        self.assertAlmostEqual(tot_l, 500.0, places=4)
+        self.assertTrue(open_end)
+
+    def test_fee_can_flip_w_to_l(self):
+        """Tiny gross win that fees turn into a net loss → should classify as L."""
+        n_w, n_l, *_ = self._simulate(
+            [(100, 50.0, 0), (-100, 50.001, 0)], fee_rate=0.0004
+        )
+        self.assertEqual((n_w, n_l), (0, 1))
+
+    def test_each_lot_carries_its_own_regime(self):
+        """Open in regime 1, scale-up in regime 2; close 100 should attribute
+        the W/L to regime 1 (FIFO oldest)."""
+        n_w, n_l, _, _, rw, rl, *_ = self._simulate(
+            [(100, 50, 1), (100, 60, 2), (-100, 55, 0)]
+        )
+        self.assertEqual(n_w + n_l, 1)
+        # +50 gross at exec=55 from lot @50 (regime 1) → win in regime 1
+        self.assertEqual(rw[1], 1)
+        self.assertEqual(rw[2], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

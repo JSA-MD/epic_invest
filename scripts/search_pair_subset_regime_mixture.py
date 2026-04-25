@@ -846,11 +846,8 @@ def _realistic_overlay_replay_kernel_impl(
     n_losses = 0
     total_win_pnl = 0.0
     total_loss_pnl = 0.0
-    entry_qty = 0.0
-    entry_price = 0.0
-    entry_regime_idx = 0
-    roundtrip_realized_pnl = 0.0
-    roundtrip_fees_paid = 0.0
+    entry_lots: list[list[float]] = []
+    prev_side = 0
     regime_n_wins = np.zeros(MAX_REGIME_BUCKETS, dtype=np.int64)
     regime_n_losses = np.zeros(MAX_REGIME_BUCKETS, dtype=np.int64)
     fee_paid = 0.0
@@ -1144,73 +1141,80 @@ def _realistic_overlay_replay_kernel_impl(
             fee_paid += fee
             slippage_paid += abs(diff_qty) * px_open * slippage
             new_qty_signed = qty
-            if abs(prev_qty_signed) <= 1e-12 and abs(new_qty_signed) > 1e-12:
-                entry_qty = new_qty_signed
-                entry_price = exec_price
-                entry_regime_idx = int(bucket_codes[signal_idx])
-                roundtrip_realized_pnl = 0.0
-                roundtrip_fees_paid = fee
-            elif abs(prev_qty_signed) > 1e-12 and abs(new_qty_signed) <= 1e-12:
-                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
-                final_pnl = (exec_price - entry_price) * abs(prev_qty_signed) * sign_prev
-                total_pnl = roundtrip_realized_pnl + final_pnl - (roundtrip_fees_paid + fee)
-                if total_pnl > 0.0:
-                    n_wins += 1
-                    total_win_pnl += total_pnl
-                    if entry_regime_idx < MAX_REGIME_BUCKETS:
-                        regime_n_wins[entry_regime_idx] += 1
-                    else:
-                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
-                elif total_pnl < 0.0:
-                    n_losses += 1
-                    total_loss_pnl += abs(total_pnl)
-                    if entry_regime_idx < MAX_REGIME_BUCKETS:
-                        regime_n_losses[entry_regime_idx] += 1
-                    else:
-                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
-                entry_qty = 0.0
-                entry_price = 0.0
-                entry_regime_idx = 0
-                roundtrip_realized_pnl = 0.0
-                roundtrip_fees_paid = 0.0
-            elif prev_qty_signed * new_qty_signed < 0.0:
-                close_share = abs(prev_qty_signed) / abs(diff_qty)
-                fee_close = fee * close_share
-                fee_open_new = fee - fee_close
-                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
-                close_pnl = (exec_price - entry_price) * abs(prev_qty_signed) * sign_prev
-                total_pnl = roundtrip_realized_pnl + close_pnl - (roundtrip_fees_paid + fee_close)
-                if total_pnl > 0.0:
-                    n_wins += 1
-                    total_win_pnl += total_pnl
-                    if entry_regime_idx < MAX_REGIME_BUCKETS:
-                        regime_n_wins[entry_regime_idx] += 1
-                    else:
-                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
-                elif total_pnl < 0.0:
-                    n_losses += 1
-                    total_loss_pnl += abs(total_pnl)
-                    if entry_regime_idx < MAX_REGIME_BUCKETS:
-                        regime_n_losses[entry_regime_idx] += 1
-                    else:
-                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
-                entry_qty = new_qty_signed
-                entry_price = exec_price
-                entry_regime_idx = int(bucket_codes[signal_idx])
-                roundtrip_realized_pnl = 0.0
-                roundtrip_fees_paid = fee_open_new
-            elif abs(new_qty_signed) > abs(prev_qty_signed):
-                added = abs(new_qty_signed) - abs(prev_qty_signed)
-                total = abs(new_qty_signed)
-                entry_price = (entry_price * abs(prev_qty_signed) + exec_price * added) / total
-                entry_qty = new_qty_signed
-                roundtrip_fees_paid += fee
+            current_regime_idx = int(bucket_codes[signal_idx])
+            if current_regime_idx >= MAX_REGIME_BUCKETS:
+                raise RuntimeError(
+                    f"current_regime_idx {current_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}"
+                )
+            new_side = 1 if new_qty_signed > 1e-12 else (-1 if new_qty_signed < -1e-12 else 0)
+
+            if prev_side == 0 and new_side != 0:
+                entry_lots.append([abs(diff_qty), exec_price, fee, current_regime_idx])
+                prev_side = new_side
+            elif prev_side != 0 and new_side == prev_side and (
+                (prev_side > 0 and diff_qty > 0.0) or (prev_side < 0 and diff_qty < 0.0)
+            ):
+                entry_lots.append([abs(diff_qty), exec_price, fee, current_regime_idx])
             else:
-                closed = abs(prev_qty_signed) - abs(new_qty_signed)
-                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
-                roundtrip_realized_pnl += (exec_price - entry_price) * closed * sign_prev
-                roundtrip_fees_paid += fee
-                entry_qty = new_qty_signed
+                if prev_side != 0 and new_side == prev_side:
+                    close_qty_total = abs(diff_qty)
+                    fee_close_total = fee
+                else:
+                    if entry_lots:
+                        close_qty_total = sum(lot[0] for lot in entry_lots)
+                    else:
+                        close_qty_total = 0.0
+                    if abs(diff_qty) > 0.0:
+                        close_share = close_qty_total / abs(diff_qty)
+                    else:
+                        close_share = 0.0
+                    fee_close_total = fee * close_share
+                fee_open_new = fee - fee_close_total
+                if close_qty_total > 1e-12:
+                    fee_per_unit_close = fee_close_total / close_qty_total
+                else:
+                    fee_per_unit_close = 0.0
+                sign_prev = prev_side
+                remaining_to_close = close_qty_total
+                while remaining_to_close > 1e-12 and entry_lots:
+                    lot_qty, lot_price, lot_entry_fee, lot_regime = entry_lots[0]
+                    if lot_qty <= remaining_to_close + 1e-12:
+                        gross = (exec_price - lot_price) * lot_qty * float(sign_prev)
+                        slice_close_fee = fee_per_unit_close * lot_qty
+                        net = gross - lot_entry_fee - slice_close_fee
+                        if net > 0.0:
+                            n_wins += 1
+                            total_win_pnl += net
+                            regime_n_wins[lot_regime] += 1
+                        elif net < 0.0:
+                            n_losses += 1
+                            total_loss_pnl += abs(net)
+                            regime_n_losses[lot_regime] += 1
+                        remaining_to_close -= lot_qty
+                        entry_lots.pop(0)
+                    else:
+                        portion = remaining_to_close
+                        gross = (exec_price - lot_price) * portion * float(sign_prev)
+                        partial_entry_fee = lot_entry_fee * (portion / lot_qty)
+                        slice_close_fee = fee_per_unit_close * portion
+                        net = gross - partial_entry_fee - slice_close_fee
+                        if net > 0.0:
+                            n_wins += 1
+                            total_win_pnl += net
+                            regime_n_wins[lot_regime] += 1
+                        elif net < 0.0:
+                            n_losses += 1
+                            total_loss_pnl += abs(net)
+                            regime_n_losses[lot_regime] += 1
+                        entry_lots[0][0] = lot_qty - portion
+                        entry_lots[0][2] = lot_entry_fee - partial_entry_fee
+                        remaining_to_close = 0.0
+                if not entry_lots:
+                    prev_side = 0
+                if new_side != 0 and new_side != prev_side:
+                    new_open_qty = abs(new_qty_signed)
+                    entry_lots.append([new_open_qty, exec_price, fee_open_new, current_regime_idx])
+                    prev_side = new_side
 
         equity_after = cash + qty * next_open
         if equity_after > peak_equity:
@@ -1264,7 +1268,9 @@ def _realistic_overlay_replay_kernel_impl(
     daily_win_rate = 0.0 if day_count == 0 else day_wins / day_count
     final_equity = cash + qty * open_p[-1]
 
-    open_position_at_end = bool(abs(entry_qty) > 1e-12)
+    open_position_at_end = bool(entry_lots)
+    open_roundtrip_realized_pnl = 0.0
+    open_roundtrip_fees_paid = float(sum(lot[2] for lot in entry_lots)) if entry_lots else 0.0
 
     decided = n_wins + n_losses
     avg_win_size = total_win_pnl / n_wins if n_wins > 0 else 0.0
@@ -1293,8 +1299,8 @@ def _realistic_overlay_replay_kernel_impl(
             "n_wins": int(n_wins),
             "n_losses": int(n_losses),
             "open_position_at_end": int(open_position_at_end),
-            "open_roundtrip_realized_pnl": float(roundtrip_realized_pnl),
-            "open_roundtrip_fees_paid": float(roundtrip_fees_paid),
+            "open_roundtrip_realized_pnl": float(open_roundtrip_realized_pnl),
+            "open_roundtrip_fees_paid": float(open_roundtrip_fees_paid),
             "sharpe": float(sharpe),
             "max_drawdown": float(max_drawdown),
             "final_equity": float(final_equity),
@@ -1347,8 +1353,8 @@ def _realistic_overlay_replay_kernel_impl(
         n_wins,
         n_losses,
         int(open_position_at_end),
-        float(roundtrip_realized_pnl),
-        float(roundtrip_fees_paid),
+        float(open_roundtrip_realized_pnl),
+        float(open_roundtrip_fees_paid),
         float(total_win_pnl),
         float(total_loss_pnl),
         tuple(int(x) for x in regime_n_wins),

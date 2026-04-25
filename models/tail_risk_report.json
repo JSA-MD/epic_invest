@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-04-25T15:27:48.258986+00:00",
+  "window": "full_4y",
+  "window_start": "2022-04-06",
+  "window_end": "2026-04-06",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "per_pair": {
+    "BTCUSDT": {
+      "n_days": 1129,
+      "mean_daily": 0.00506985243235106,
+      "std_daily": 0.018668893908780647,
+      "skew": 3.4497171645671076,
+      "kurtosis_excess": 21.552638261062217,
+      "VaR_95": -0.009117193919420296,
+      "VaR_99": -0.0291997377723286,
+      "CVaR_95": -0.021410695088273365,
+      "CVaR_99": -0.035838565330794,
+      "tail_index_hill": 1.3102860104202063,
+      "tail_index_k": 57,
+      "rolling_dd_1d": -0.05882840608849216,
+      "rolling_dd_7d": -0.04044056566699139,
+      "rolling_dd_30d": -0.022394700022870806,
+      "gaussian_implied_mdd": -0.2569193997298663,
+      "actual_mdd": -0.0592618394907376,
+      "tail_fatness_ratio": 0.23066315565522683
+    },
+    "BNBUSDT": {
+      "n_days": 1129,
+      "mean_daily": 0.005089143874967341,
+      "std_daily": 0.01898376440468879,
+      "skew": 2.5348449592697864,
+      "kurtosis_excess": 11.554557448965125,
+      "VaR_95": -0.013400165783525786,
+      "VaR_99": -0.03144163604812365,
+      "CVaR_95": -0.02554909471845119,
+      "CVaR_99": -0.04119049346628365,
+      "tail_index_hill": 1.7269643794773228,
+      "tail_index_k": 57,
+      "rolling_dd_1d": -0.07638310790083302,
+      "rolling_dd_7d": -0.07977053054469652,
+      "rolling_dd_30d": -0.05807070008382942,
+      "gaussian_implied_mdd": -0.263239123383447,
+      "actual_mdd": -0.09124614384966201,
+      "tail_fatness_ratio": 0.34662835325107966
+    }
+  },
+  "verdict": "extreme_fat"
+}

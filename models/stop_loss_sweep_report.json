@@ -1,0 +1,632 @@
+{
+  "generated_at": "2026-04-25T15:26:07.195399+00:00",
+  "stop_loss_pcts": [
+    0.005,
+    0.01,
+    0.015,
+    0.02,
+    0.03,
+    0.05
+  ],
+  "per_pct": {
+    "0.005": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.24037626709618132,
+            "stop_mdd": -0.10725404765951163,
+            "stop_sharpe": 4.349809537558671,
+            "stop_avg_daily": 0.003800296645774093,
+            "stop_event_count": 41,
+            "delta_roi": -0.07256492035357875,
+            "delta_mdd": -0.019225842318788988,
+            "delta_sharpe": -0.9903462656951385
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.043202025040764314,
+            "stop_mdd": -0.12173411625374686,
+            "stop_sharpe": 1.0779678126173426,
+            "stop_avg_daily": 0.0008025163392655317,
+            "stop_event_count": 65,
+            "delta_roi": -0.42723304178671406,
+            "delta_mdd": -0.020667984848179777,
+            "delta_sharpe": -5.3822203555921755
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.1035813298312966,
+            "stop_mdd": -0.10730427488962335,
+            "stop_sharpe": 5.53448812249267,
+            "stop_avg_daily": 0.006458561802000026,
+            "stop_event_count": 95,
+            "delta_roi": -0.47807656934978127,
+            "delta_mdd": -0.019152696758226395,
+            "delta_sharpe": -0.6177527085748977
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 0.8664313838883935,
+            "stop_mdd": -0.1217340403149132,
+            "stop_sharpe": 3.221502635292824,
+            "stop_avg_daily": 0.0036368304601311066,
+            "stop_event_count": 257,
+            "delta_roi": -1.7035641275141096,
+            "delta_mdd": -0.020662539995511042,
+            "delta_sharpe": -2.7134811960910503
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 3.856210783810564,
+            "stop_mdd": -0.16040252973361357,
+            "stop_sharpe": 2.5248904817248965,
+            "stop_avg_daily": 0.0014371328276180431,
+            "stop_event_count": 218,
+            "delta_roi": -208.75669499277708,
+            "delta_mdd": -0.029194978629125234,
+            "delta_sharpe": -2.582786224869449
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 1.9977998087204014,
+            "stop_mdd": -0.12119249862852666,
+            "stop_sharpe": 2.0380225045519214,
+            "stop_avg_daily": 0.001038205636416924,
+            "stop_event_count": 491,
+            "delta_roi": -248.97935045809734,
+            "delta_mdd": -0.005409381604853047,
+            "delta_sharpe": -3.162981057097642
+          }
+        }
+      }
+    },
+    "0.01": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.26513990911392793,
+            "stop_mdd": -0.10754459656242021,
+            "stop_sharpe": 4.6569321416425575,
+            "stop_avg_daily": 0.004111486416237543,
+            "stop_event_count": 17,
+            "delta_roi": -0.04780127833583214,
+            "delta_mdd": -0.01951639122169757,
+            "delta_sharpe": -0.6832236616112519
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.4446831152520798,
+            "stop_mdd": -0.09424037778217442,
+            "stop_sharpe": 6.222176098824432,
+            "stop_avg_daily": 0.006375734007142962,
+            "stop_event_count": 34,
+            "delta_roi": -0.025751951575398557,
+            "delta_mdd": 0.006825753623392661,
+            "delta_sharpe": -0.23801206938508557
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.3827104079413646,
+            "stop_mdd": -0.10761752588042728,
+            "stop_sharpe": 5.889421539895675,
+            "stop_avg_daily": 0.00692199090708965,
+            "stop_event_count": 43,
+            "delta_roi": -0.19894749123971334,
+            "delta_mdd": -0.01946594774903032,
+            "delta_sharpe": -0.2628192911718923
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 2.042092823919806,
+            "stop_mdd": -0.10943703084736611,
+            "stop_sharpe": 5.2621878271297255,
+            "stop_avg_daily": 0.006341213665540868,
+            "stop_event_count": 122,
+            "delta_roi": -0.5279026874826971,
+            "delta_mdd": -0.00836553052796396,
+            "delta_sharpe": -0.672796004254149
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 149.5791323188005,
+            "stop_mdd": -0.15246442911092173,
+            "stop_sharpe": 4.828909867318094,
+            "stop_avg_daily": 0.004558144931631986,
+            "stop_event_count": 212,
+            "delta_roi": -63.033773457787134,
+            "delta_mdd": -0.02125687800643339,
+            "delta_sharpe": -0.27876683927625123
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 2.9594060461347276,
+            "stop_mdd": -0.12240596163243689,
+            "stop_sharpe": 2.5042444147550853,
+            "stop_avg_daily": 0.0012823845611266988,
+            "stop_event_count": 218,
+            "delta_roi": -248.01774422068303,
+            "delta_mdd": -0.006622844608763279,
+            "delta_sharpe": -2.696759146894478
+          }
+        }
+      }
+    },
+    "0.015": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.29179655826674145,
+            "stop_mdd": -0.10439944247728106,
+            "stop_sharpe": 5.041688385602887,
+            "stop_avg_daily": 0.004471560540256747,
+            "stop_event_count": 8,
+            "delta_roi": -0.021144629183018626,
+            "delta_mdd": -0.016371237136558414,
+            "delta_sharpe": -0.29846741765092233
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.42686221221462217,
+            "stop_mdd": -0.10674678331485565,
+            "stop_sharpe": 5.9678982465546255,
+            "stop_avg_daily": 0.006172553572510402,
+            "stop_event_count": 22,
+            "delta_roi": -0.043572854612856204,
+            "delta_mdd": -0.00568065190928857,
+            "delta_sharpe": -0.4922899216548924
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.5450905252174234,
+            "stop_mdd": -0.10493851414127131,
+            "stop_sharpe": 6.106713880518417,
+            "stop_avg_daily": 0.007181815363052518,
+            "stop_event_count": 21,
+            "delta_roi": -0.036567373963654504,
+            "delta_mdd": -0.016786936009874354,
+            "delta_sharpe": -0.045526950549150236
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 2.034687468741209,
+            "stop_mdd": -0.10753259669080384,
+            "stop_sharpe": 5.214939066686223,
+            "stop_avg_daily": 0.006333561789547654,
+            "stop_event_count": 79,
+            "delta_roi": -0.5353080426612942,
+            "delta_mdd": -0.006461096371401687,
+            "delta_sharpe": -0.7200447646976516
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 179.72565639554807,
+            "stop_mdd": -0.11506752361788031,
+            "stop_sharpe": 4.982771614666469,
+            "stop_avg_daily": 0.0047198082727140005,
+            "stop_event_count": 131,
+            "delta_roi": -32.88724938103957,
+            "delta_mdd": 0.016140027486608033,
+            "delta_sharpe": -0.12490509192787602
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 3.232690290194003,
+            "stop_mdd": -0.12305936169135112,
+            "stop_sharpe": 2.5991340612830833,
+            "stop_avg_daily": 0.0013412384367223738,
+            "stop_event_count": 142,
+            "delta_roi": -247.74445997662374,
+            "delta_mdd": -0.007276244667677512,
+            "delta_sharpe": -2.60186950036648
+          }
+        }
+      }
+    },
+    "0.02": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.28302889768521733,
+            "stop_mdd": -0.10584194123021573,
+            "stop_sharpe": 4.911099462340629,
+            "stop_avg_daily": 0.004348729102483559,
+            "stop_event_count": 5,
+            "delta_roi": -0.029912289764542743,
+            "delta_mdd": -0.017813735889493088,
+            "delta_sharpe": -0.42905634091318046
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.47210510101388503,
+            "stop_mdd": -0.1056468548324081,
+            "stop_sharpe": 6.52642576228548,
+            "stop_avg_daily": 0.006710787754375926,
+            "stop_event_count": 14,
+            "delta_roi": 0.0016700341864066548,
+            "delta_mdd": -0.004580723426841016,
+            "delta_sharpe": 0.06623759407596186
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.4907124220694583,
+            "stop_mdd": -0.10585412947944939,
+            "stop_sharpe": 6.030892123599075,
+            "stop_avg_daily": 0.007095665028954609,
+            "stop_event_count": 13,
+            "delta_roi": -0.0909454771116196,
+            "delta_mdd": -0.01770255134805243,
+            "delta_sharpe": -0.12134870746849291
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 2.3717480263041857,
+            "stop_mdd": -0.10564363108317487,
+            "stop_sharpe": 5.689545259216268,
+            "stop_avg_daily": 0.006919795357728684,
+            "stop_event_count": 52,
+            "delta_roi": -0.19824748509831736,
+            "delta_mdd": -0.004572130763772719,
+            "delta_sharpe": -0.24543857216760667
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 208.02485087187384,
+            "stop_mdd": -0.11210022275663611,
+            "stop_sharpe": 5.109643573679164,
+            "stop_avg_daily": 0.004849018138798409,
+            "stop_event_count": 87,
+            "delta_roi": -4.5880549047138,
+            "delta_mdd": 0.019107328347852226,
+            "delta_sharpe": 0.0019668670848185243
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 28.76236934363336,
+            "stop_mdd": -0.1215450389069509,
+            "stop_sharpe": 4.130237623500758,
+            "stop_avg_daily": 0.0031499832632236055,
+            "stop_event_count": 171,
+            "delta_roi": -222.21478092318438,
+            "delta_mdd": -0.005761921883277288,
+            "delta_sharpe": -1.0707659381488055
+          }
+        }
+      }
+    },
+    "0.03": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.3046701208784477,
+            "stop_mdd": -0.09374426409317993,
+            "stop_sharpe": 5.2381087890935225,
+            "stop_avg_daily": 0.0046274435020353085,
+            "stop_event_count": 1,
+            "delta_roi": -0.00827106657131238,
+            "delta_mdd": -0.005716058752457287,
+            "delta_sharpe": -0.10204701416028694
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.4486929542286078,
+            "stop_mdd": -0.10478274857406988,
+            "stop_sharpe": 6.230447800048398,
+            "stop_avg_daily": 0.006428418006658228,
+            "stop_event_count": 10,
+            "delta_roi": -0.0217421125988706,
+            "delta_mdd": -0.0037166171685028004,
+            "delta_sharpe": -0.22974036816111987
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.5584043008278456,
+            "stop_mdd": -0.0941021389519654,
+            "stop_sharpe": 6.119092265105067,
+            "stop_avg_daily": 0.0071965261444573315,
+            "stop_event_count": 6,
+            "delta_roi": -0.023253598353232263,
+            "delta_mdd": -0.00595056082056844,
+            "delta_sharpe": -0.0331485659625006
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 2.4606818976425036,
+            "stop_mdd": -0.10478620233773683,
+            "stop_sharpe": 5.793861896376337,
+            "stop_avg_daily": 0.007058720961124475,
+            "stop_event_count": 26,
+            "delta_roi": -0.10931361375999948,
+            "delta_mdd": -0.0037147020183346813,
+            "delta_sharpe": -0.14112193500753722
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 215.97635143844667,
+            "stop_mdd": -0.10876876456350737,
+            "stop_sharpe": 5.138118501062521,
+            "stop_avg_daily": 0.004878977117442013,
+            "stop_event_count": 51,
+            "delta_roi": 3.363445661859032,
+            "delta_mdd": 0.02243878654098097,
+            "delta_sharpe": 0.03044179446817541
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 61.451616122389275,
+            "stop_mdd": -0.1287830394030055,
+            "stop_sharpe": 4.558447526634696,
+            "stop_avg_daily": 0.0038401270608030605,
+            "stop_event_count": 131,
+            "delta_roi": -189.52553414442846,
+            "delta_mdd": -0.012999922379331896,
+            "delta_sharpe": -0.6425560350148674
+          }
+        }
+      }
+    },
+    "0.05": {
+      "recent_2m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 0.31294118744976007,
+            "baseline_mdd": -0.08802820534072264,
+            "baseline_sharpe": 5.3401558032538095,
+            "baseline_avg_daily": 0.004732653799550414,
+            "stop_roi": 0.31294118744976007,
+            "stop_mdd": -0.08802820534072264,
+            "stop_sharpe": 5.3401558032538095,
+            "stop_avg_daily": 0.004732653799550414,
+            "stop_event_count": 0,
+            "delta_roi": 0.0,
+            "delta_mdd": 0.0,
+            "delta_sharpe": 0.0
+          },
+          "BNBUSDT": {
+            "baseline_roi": 0.4704350668274784,
+            "baseline_mdd": -0.10106613140556708,
+            "baseline_sharpe": 6.460188168209518,
+            "baseline_avg_daily": 0.006679167735310133,
+            "stop_roi": 0.470238715434923,
+            "stop_mdd": -0.10201113617374835,
+            "stop_sharpe": 6.456944331488595,
+            "stop_avg_daily": 0.006676840247117765,
+            "stop_event_count": 6,
+            "delta_roi": -0.0001963513925553606,
+            "delta_mdd": -0.0009450047681812679,
+            "delta_sharpe": -0.003243836720923099
+          }
+        }
+      },
+      "recent_6m": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 2.581657899181078,
+            "baseline_mdd": -0.08815157813139696,
+            "baseline_sharpe": 6.152240831067568,
+            "baseline_avg_daily": 0.007230004550168861,
+            "stop_roi": 2.607475814337892,
+            "stop_mdd": -0.08820414358380524,
+            "stop_sharpe": 6.180474859826252,
+            "stop_avg_daily": 0.0072689376895262075,
+            "stop_event_count": 3,
+            "delta_roi": 0.02581791515681431,
+            "delta_mdd": -5.256545240828192e-05,
+            "delta_sharpe": 0.028234028758684637
+          },
+          "BNBUSDT": {
+            "baseline_roi": 2.569995511402503,
+            "baseline_mdd": -0.10107150031940215,
+            "baseline_sharpe": 5.9349838313838745,
+            "baseline_avg_daily": 0.007227192157570508,
+            "stop_roi": 2.472974152509383,
+            "stop_mdd": -0.10201161679642978,
+            "stop_sharpe": 5.823441156426125,
+            "stop_avg_daily": 0.00707415613746263,
+            "stop_event_count": 13,
+            "delta_roi": -0.09702135889311991,
+            "delta_mdd": -0.0009401164770276305,
+            "delta_sharpe": -0.11154267495774928
+          }
+        }
+      },
+      "full_4y": {
+        "per_pair": {
+          "BTCUSDT": {
+            "baseline_roi": 212.61290577658764,
+            "baseline_mdd": -0.13120755110448834,
+            "baseline_sharpe": 5.107676706594345,
+            "baseline_avg_daily": 0.004865426716436557,
+            "stop_roi": 210.9970607414392,
+            "stop_mdd": -0.10877868863730156,
+            "stop_sharpe": 5.108967415428947,
+            "stop_avg_daily": 0.004858715189288265,
+            "stop_event_count": 23,
+            "delta_roi": -1.6158450351484248,
+            "delta_mdd": 0.022428862467186783,
+            "delta_sharpe": 0.0012907088346016948
+          },
+          "BNBUSDT": {
+            "baseline_roi": 250.97715026681774,
+            "baseline_mdd": -0.11578311702367361,
+            "baseline_sharpe": 5.201003561649563,
+            "baseline_avg_daily": 0.0051116327865196615,
+            "stop_roi": 239.2640403962506,
+            "stop_mdd": -0.11225790303813776,
+            "stop_sharpe": 5.161753125379108,
+            "stop_avg_daily": 0.005069380040461806,
+            "stop_event_count": 69,
+            "delta_roi": -11.713109870567138,
+            "delta_mdd": 0.0035252139855358466,
+            "delta_sharpe": -0.039250436270455324
+          }
+        }
+      }
+    }
+  },
+  "optimal_per_pair_window": {
+    "BTCUSDT": {
+      "recent_2m": {
+        "pct": "0.05",
+        "delta_sharpe": 0.0
+      },
+      "recent_6m": {
+        "pct": "0.05",
+        "delta_sharpe": 0.028234028758684637
+      },
+      "full_4y": {
+        "pct": "0.03",
+        "delta_sharpe": 0.03044179446817541
+      }
+    },
+    "BNBUSDT": {
+      "recent_2m": {
+        "pct": "0.02",
+        "delta_sharpe": 0.06623759407596186
+      },
+      "recent_6m": {
+        "pct": "0.05",
+        "delta_sharpe": -0.11154267495774928
+      },
+      "full_4y": {
+        "pct": "0.05",
+        "delta_sharpe": -0.039250436270455324
+      }
+    }
+  },
+  "summary": "Optimal stop-loss pct per pair/window (maximize \u0394Sharpe): |   BTCUSDT: recent_2m=0.05 (\u0394Sharpe=+0.0000), recent_6m=0.05 (\u0394Sharpe=+0.0282), full_4y=0.03 (\u0394Sharpe=+0.0304)\n  BNBUSDT: recent_2m=0.02 (\u0394Sharpe=+0.0662), recent_6m=0.05 (\u0394Sharpe=-0.1115), full_4y=0.05 (\u0394Sharpe=-0.0393)\nBest global config: pct=0.03, pair=BTCUSDT, window=recent_2m, \u0394Sharpe=+0.0304\nBTC full_4y stop-loss impact:\n  pct=0.005: \u0394Sharpe=-2.5828, \u0394MDD=-0.0292, stops=218\n  pct=0.01: \u0394Sharpe=-0.2788, \u0394MDD=-0.0213, stops=212\n  pct=0.015: \u0394Sharpe=-0.1249, \u0394MDD=+0.0161, stops=131\n  pct=0.02: \u0394Sharpe=+0.0020, \u0394MDD=+0.0191, stops=87\n  pct=0.03: \u0394Sharpe=+0.0304, \u0394MDD=+0.0224, stops=51\n  pct=0.05: \u0394Sharpe=+0.0013, \u0394MDD=+0.0224, stops=23"
+}

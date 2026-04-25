@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-04-25T15:27:01.820110+00:00",
+  "method": {
+    "dsr": "Bailey & López de Prado (2014) Deflated Sharpe Ratio",
+    "pbo": "López de Prado CSCV – Combinatorial Symmetric Cross-Validation",
+    "n_trials_assumed": 20,
+    "window": "full_4y",
+    "window_start": "2022-04-06",
+    "window_end": "2026-04-06",
+    "n_blocks": 8,
+    "annualisation_factor": 324.3332
+  },
+  "deflated_sharpe": {
+    "BTCUSDT": {
+      "baseline_full_4y": {
+        "SR_obs": 5.286352,
+        "T": 324939,
+        "skew": 10.269851,
+        "kurt_excess": 1144.486265,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "corr_risk_full_4y": {
+        "SR_obs": 5.293789,
+        "T": 324939,
+        "skew": 10.380884,
+        "kurt_excess": 1160.633878,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_+1_full_4y": {
+        "SR_obs": 5.286352,
+        "T": 324939,
+        "skew": 10.269851,
+        "kurt_excess": 1144.486265,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_-1_full_4y": {
+        "SR_obs": 3.948542,
+        "T": 324939,
+        "skew": 18.679049,
+        "kurt_excess": 2704.644048,
+        "DSR": 0.999942,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_+2_full_4y": {
+        "SR_obs": 5.159054,
+        "T": 324939,
+        "skew": 9.831309,
+        "kurt_excess": 1076.6859,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_bnb_shift_+1_full_4y": {
+        "SR_obs": 5.286352,
+        "T": 324939,
+        "skew": 10.269851,
+        "kurt_excess": 1144.486265,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_bnb_shift_-1_full_4y": {
+        "SR_obs": 5.286352,
+        "T": 324939,
+        "skew": 10.269851,
+        "kurt_excess": 1144.486265,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "corr_map_shift_+1_full_4y": {
+        "SR_obs": 5.293789,
+        "T": 324939,
+        "skew": 10.380884,
+        "kurt_excess": 1160.633878,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      }
+    },
+    "BNBUSDT": {
+      "baseline_full_4y": {
+        "SR_obs": 5.186354,
+        "T": 324939,
+        "skew": 2.285702,
+        "kurt_excess": 178.265623,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "corr_risk_full_4y": {
+        "SR_obs": 5.202894,
+        "T": 324939,
+        "skew": 2.301411,
+        "kurt_excess": 180.779864,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_+1_full_4y": {
+        "SR_obs": 5.186354,
+        "T": 324939,
+        "skew": 2.285702,
+        "kurt_excess": 178.265623,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_-1_full_4y": {
+        "SR_obs": 5.186354,
+        "T": 324939,
+        "skew": 2.285702,
+        "kurt_excess": 178.265623,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_btc_shift_+2_full_4y": {
+        "SR_obs": 5.186354,
+        "T": 324939,
+        "skew": 2.285702,
+        "kurt_excess": 178.265623,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_bnb_shift_+1_full_4y": {
+        "SR_obs": 5.186354,
+        "T": 324939,
+        "skew": 2.285702,
+        "kurt_excess": 178.265623,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "map_bnb_shift_-1_full_4y": {
+        "SR_obs": 2.497377,
+        "T": 324939,
+        "skew": 12.283711,
+        "kurt_excess": 4013.789894,
+        "DSR": 0.857144,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      },
+      "corr_map_shift_+1_full_4y": {
+        "SR_obs": 5.202894,
+        "T": 324939,
+        "skew": 2.301411,
+        "kurt_excess": 180.779864,
+        "DSR": 1.0,
+        "SR0_threshold": 1.900708,
+        "threshold_p": 0.5
+      }
+    }
+  },
+  "pbo": {
+    "M_strategies": 8,
+    "S_blocks": 8,
+    "n_combinations_evaluated": 70,
+    "PBO": 0.371429,
+    "avg_is_best_oos_percentile": 0.689796,
+    "strategy_keys": [
+      "baseline",
+      "corr_risk",
+      "map_btc_shift_+1",
+      "map_btc_shift_-1",
+      "map_btc_shift_+2",
+      "map_bnb_shift_+1",
+      "map_bnb_shift_-1",
+      "corr_map_shift_+1"
+    ],
+    "splits_omitted": 70,
+    "interpretation": "PBO=0.371 (lower is better; <0.30 robust, >0.50 overfit). Avg DSR (BTC+BNB baseline)=1.000 (>0.50 = SR survives trial-count penalty). Verdict: moderate."
+  },
+  "verdict": "moderate"
+}

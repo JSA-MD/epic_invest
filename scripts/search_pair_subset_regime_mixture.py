@@ -51,6 +51,7 @@ from validate_pair_subset_summary import build_validation_bundle
 UTC = timezone.utc
 BARS_PER_DAY = gp.periods_per_day(gp.TIMEFRAME)
 BAR_FACTOR = np.sqrt(365.25 * 24.0 * 60.0 / 5.0)
+MAX_REGIME_BUCKETS = 16
 DEFAULT_WINDOWS = (
     ("recent_2m", "2026-02-06", "2026-04-06"),
     ("recent_6m", "2025-10-06", "2026-04-06"),
@@ -837,16 +838,21 @@ def _realistic_overlay_replay_kernel_impl(
     bar_factor: float,
     entry_keep_flags: np.ndarray | None = None,
     return_trace: bool = False,
-) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int] | dict[str, Any]:
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float, float, float, tuple, tuple] | dict[str, Any]:
     cash = initial_cash
     qty = 0.0
     n_trades = 0
     n_wins = 0
     n_losses = 0
+    total_win_pnl = 0.0
+    total_loss_pnl = 0.0
     entry_qty = 0.0
     entry_price = 0.0
+    entry_regime_idx = 0
     roundtrip_realized_pnl = 0.0
     roundtrip_fees_paid = 0.0
+    regime_n_wins = np.zeros(MAX_REGIME_BUCKETS, dtype=np.int64)
+    regime_n_losses = np.zeros(MAX_REGIME_BUCKETS, dtype=np.int64)
     fee_paid = 0.0
     slippage_paid = 0.0
     funding_paid = 0.0
@@ -1141,6 +1147,7 @@ def _realistic_overlay_replay_kernel_impl(
             if abs(prev_qty_signed) <= 1e-12 and abs(new_qty_signed) > 1e-12:
                 entry_qty = new_qty_signed
                 entry_price = exec_price
+                entry_regime_idx = int(bucket_codes[signal_idx])
                 roundtrip_realized_pnl = 0.0
                 roundtrip_fees_paid = fee
             elif abs(prev_qty_signed) > 1e-12 and abs(new_qty_signed) <= 1e-12:
@@ -1149,10 +1156,21 @@ def _realistic_overlay_replay_kernel_impl(
                 total_pnl = roundtrip_realized_pnl + final_pnl - (roundtrip_fees_paid + fee)
                 if total_pnl > 0.0:
                     n_wins += 1
+                    total_win_pnl += total_pnl
+                    if entry_regime_idx < MAX_REGIME_BUCKETS:
+                        regime_n_wins[entry_regime_idx] += 1
+                    else:
+                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
                 elif total_pnl < 0.0:
                     n_losses += 1
+                    total_loss_pnl += abs(total_pnl)
+                    if entry_regime_idx < MAX_REGIME_BUCKETS:
+                        regime_n_losses[entry_regime_idx] += 1
+                    else:
+                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
                 entry_qty = 0.0
                 entry_price = 0.0
+                entry_regime_idx = 0
                 roundtrip_realized_pnl = 0.0
                 roundtrip_fees_paid = 0.0
             elif prev_qty_signed * new_qty_signed < 0.0:
@@ -1164,10 +1182,21 @@ def _realistic_overlay_replay_kernel_impl(
                 total_pnl = roundtrip_realized_pnl + close_pnl - (roundtrip_fees_paid + fee_close)
                 if total_pnl > 0.0:
                     n_wins += 1
+                    total_win_pnl += total_pnl
+                    if entry_regime_idx < MAX_REGIME_BUCKETS:
+                        regime_n_wins[entry_regime_idx] += 1
+                    else:
+                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
                 elif total_pnl < 0.0:
                     n_losses += 1
+                    total_loss_pnl += abs(total_pnl)
+                    if entry_regime_idx < MAX_REGIME_BUCKETS:
+                        regime_n_losses[entry_regime_idx] += 1
+                    else:
+                        raise RuntimeError(f"entry_regime_idx {entry_regime_idx} >= MAX_REGIME_BUCKETS {MAX_REGIME_BUCKETS}")
                 entry_qty = new_qty_signed
                 entry_price = exec_price
+                entry_regime_idx = int(bucket_codes[signal_idx])
                 roundtrip_realized_pnl = 0.0
                 roundtrip_fees_paid = fee_open_new
             elif abs(new_qty_signed) > abs(prev_qty_signed):
@@ -1237,6 +1266,26 @@ def _realistic_overlay_replay_kernel_impl(
 
     open_position_at_end = bool(abs(entry_qty) > 1e-12)
 
+    decided = n_wins + n_losses
+    avg_win_size = total_win_pnl / n_wins if n_wins > 0 else 0.0
+    avg_loss_size = total_loss_pnl / n_losses if n_losses > 0 else 0.0
+    payoff_ratio = avg_win_size / avg_loss_size if avg_loss_size > 0.0 else float("inf")
+    if decided > 0 and avg_loss_size > 0.0:
+        win_rate = n_wins / decided
+        _payoff_denom = payoff_ratio if payoff_ratio > 0.0 else 1e-12
+        kelly_fraction = max(-1.0, min(1.0, win_rate - (1.0 - win_rate) / _payoff_denom))
+    else:
+        kelly_fraction = 0.0
+    payoff_ratio_safe = payoff_ratio if payoff_ratio != float("inf") else 0.0
+
+    regime_n_wins_list = [int(x) for x in regime_n_wins]
+    regime_n_losses_list = [int(x) for x in regime_n_losses]
+    regime_win_rate_list = [
+        float(regime_n_wins_list[i]) / float(regime_n_wins_list[i] + regime_n_losses_list[i])
+        if (regime_n_wins_list[i] + regime_n_losses_list[i]) > 0 else 0.0
+        for i in range(MAX_REGIME_BUCKETS)
+    ]
+
     if return_trace:
         return {
             "total_return": float(total_return),
@@ -1253,6 +1302,15 @@ def _realistic_overlay_replay_kernel_impl(
             "slippage_paid": float(slippage_paid),
             "funding_paid": float(funding_paid),
             "funding_events": int(funding_events),
+            "avg_win_size": float(avg_win_size),
+            "avg_loss_size": float(avg_loss_size),
+            "total_win_pnl": float(total_win_pnl),
+            "total_loss_pnl": float(total_loss_pnl),
+            "payoff_ratio": float(payoff_ratio_safe),
+            "kelly_fraction": float(kelly_fraction),
+            "regime_n_wins": regime_n_wins_list,
+            "regime_n_losses": regime_n_losses_list,
+            "regime_win_rate": regime_win_rate_list,
             "daily_metrics": {
                 "avg_daily_return": float(avg_daily),
                 "daily_target_hit_rate": float(daily_target_hit_rate),
@@ -1291,6 +1349,10 @@ def _realistic_overlay_replay_kernel_impl(
         int(open_position_at_end),
         float(roundtrip_realized_pnl),
         float(roundtrip_fees_paid),
+        float(total_win_pnl),
+        float(total_loss_pnl),
+        tuple(int(x) for x in regime_n_wins),
+        tuple(int(x) for x in regime_n_losses),
     )
 
 
@@ -1351,7 +1413,7 @@ def _realistic_overlay_replay_kernel_numba_impl(
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
-) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float]:
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float, float, float, tuple[int, ...], tuple[int, ...]]:
     return _realistic_overlay_replay_kernel_impl(
         open_p,
         close_p,
@@ -2003,9 +2065,26 @@ def realistic_overlay_replay_from_context(
             open_at_end_v = int(result[16]) if len(result) > 16 else 0
             open_realized_pnl_v = float(result[17]) if len(result) > 17 else 0.0
             open_fees_v = float(result[18]) if len(result) > 18 else 0.0
+            total_win_pnl_v = float(result[19]) if len(result) > 19 else 0.0
+            total_loss_pnl_v = float(result[20]) if len(result) > 20 else 0.0
+            regime_n_wins_v = list(result[21]) if len(result) > 21 else [0] * MAX_REGIME_BUCKETS
+            regime_n_losses_v = list(result[22]) if len(result) > 22 else [0] * MAX_REGIME_BUCKETS
             n_trades_v = int(result[1])
             decided = n_wins_v + n_losses_v
             roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
+            avg_win_size_v = total_win_pnl_v / n_wins_v if n_wins_v > 0 else 0.0
+            avg_loss_size_v = total_loss_pnl_v / n_losses_v if n_losses_v > 0 else 0.0
+            payoff_ratio_v = avg_win_size_v / avg_loss_size_v if avg_loss_size_v > 0.0 else 0.0
+            if decided > 0 and avg_loss_size_v > 0.0:
+                win_rate_v = n_wins_v / decided
+                kelly_v = max(-1.0, min(1.0, win_rate_v - (1.0 - win_rate_v) / (payoff_ratio_v if payoff_ratio_v > 0.0 else 1e-12)))
+            else:
+                kelly_v = 0.0
+            regime_win_rate_v = [
+                float(regime_n_wins_v[i]) / float(regime_n_wins_v[i] + regime_n_losses_v[i])
+                if (regime_n_wins_v[i] + regime_n_losses_v[i]) > 0 else 0.0
+                for i in range(len(regime_n_wins_v))
+            ]
             return {
                 "avg_daily_return": float(result[5]),
                 "total_return": float(result[0]),
@@ -2027,11 +2106,37 @@ def realistic_overlay_replay_from_context(
                 "funding_paid": float(result[12]),
                 "funding_events": int(result[13]),
                 "final_equity": float(result[4]),
+                "avg_win_size": float(avg_win_size_v),
+                "avg_loss_size": float(avg_loss_size_v),
+                "total_win_pnl": float(total_win_pnl_v),
+                "total_loss_pnl": float(total_loss_pnl_v),
+                "payoff_ratio": float(payoff_ratio_v),
+                "kelly_fraction": float(kelly_v),
+                "regime_n_wins": regime_n_wins_v,
+                "regime_n_losses": regime_n_losses_v,
+                "regime_win_rate": regime_win_rate_v,
             }
         n_wins_v = int(result.get("n_wins", 0))
         n_losses_v = int(result.get("n_losses", 0))
         decided = n_wins_v + n_losses_v
         roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
+        total_win_pnl_v = float(result.get("total_win_pnl", 0.0))
+        total_loss_pnl_v = float(result.get("total_loss_pnl", 0.0))
+        avg_win_size_v = total_win_pnl_v / n_wins_v if n_wins_v > 0 else 0.0
+        avg_loss_size_v = total_loss_pnl_v / n_losses_v if n_losses_v > 0 else 0.0
+        payoff_ratio_v = avg_win_size_v / avg_loss_size_v if avg_loss_size_v > 0.0 else 0.0
+        if decided > 0 and avg_loss_size_v > 0.0:
+            win_rate_v = n_wins_v / decided
+            kelly_v = max(-1.0, min(1.0, win_rate_v - (1.0 - win_rate_v) / (payoff_ratio_v if payoff_ratio_v > 0.0 else 1e-12)))
+        else:
+            kelly_v = 0.0
+        regime_n_wins_v = list(result.get("regime_n_wins", [0] * MAX_REGIME_BUCKETS))
+        regime_n_losses_v = list(result.get("regime_n_losses", [0] * MAX_REGIME_BUCKETS))
+        regime_win_rate_v = [
+            float(regime_n_wins_v[i]) / float(regime_n_wins_v[i] + regime_n_losses_v[i])
+            if (regime_n_wins_v[i] + regime_n_losses_v[i]) > 0 else 0.0
+            for i in range(len(regime_n_wins_v))
+        ]
         metrics = {
             "avg_daily_return": float(result["daily_metrics"]["avg_daily_return"]),
             "total_return": float(result["total_return"]),
@@ -2053,6 +2158,15 @@ def realistic_overlay_replay_from_context(
             "funding_paid": float(result.get("funding_paid", 0.0)),
             "funding_events": int(result.get("funding_events", 0)),
             "final_equity": float(result["final_equity"]),
+            "avg_win_size": float(avg_win_size_v),
+            "avg_loss_size": float(avg_loss_size_v),
+            "total_win_pnl": float(total_win_pnl_v),
+            "total_loss_pnl": float(total_loss_pnl_v),
+            "payoff_ratio": float(payoff_ratio_v),
+            "kelly_fraction": float(kelly_v),
+            "regime_n_wins": regime_n_wins_v,
+            "regime_n_losses": regime_n_losses_v,
+            "regime_win_rate": regime_win_rate_v,
         }
         if return_trace:
             metrics["trace"] = result.get("trace") or {}
@@ -2062,8 +2176,25 @@ def realistic_overlay_replay_from_context(
     open_at_end_v = int(result[16]) if len(result) > 16 else 0
     open_realized_pnl_v = float(result[17]) if len(result) > 17 else 0.0
     open_fees_v = float(result[18]) if len(result) > 18 else 0.0
+    total_win_pnl_v = float(result[19]) if len(result) > 19 else 0.0
+    total_loss_pnl_v = float(result[20]) if len(result) > 20 else 0.0
+    regime_n_wins_v = list(result[21]) if len(result) > 21 else [0] * MAX_REGIME_BUCKETS
+    regime_n_losses_v = list(result[22]) if len(result) > 22 else [0] * MAX_REGIME_BUCKETS
     decided = n_wins_v + n_losses_v
     roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
+    avg_win_size_v = total_win_pnl_v / n_wins_v if n_wins_v > 0 else 0.0
+    avg_loss_size_v = total_loss_pnl_v / n_losses_v if n_losses_v > 0 else 0.0
+    payoff_ratio_v = avg_win_size_v / avg_loss_size_v if avg_loss_size_v > 0.0 else 0.0
+    if decided > 0 and avg_loss_size_v > 0.0:
+        win_rate_v = n_wins_v / decided
+        kelly_v = max(-1.0, min(1.0, win_rate_v - (1.0 - win_rate_v) / (payoff_ratio_v if payoff_ratio_v > 0.0 else 1e-12)))
+    else:
+        kelly_v = 0.0
+    regime_win_rate_v = [
+        float(regime_n_wins_v[i]) / float(regime_n_wins_v[i] + regime_n_losses_v[i])
+        if (regime_n_wins_v[i] + regime_n_losses_v[i]) > 0 else 0.0
+        for i in range(len(regime_n_wins_v))
+    ]
     return {
         "avg_daily_return": float(result[5]),
         "total_return": float(result[0]),
@@ -2085,6 +2216,15 @@ def realistic_overlay_replay_from_context(
         "funding_paid": float(result[12]),
         "funding_events": int(result[13]),
         "final_equity": float(result[4]),
+        "avg_win_size": float(avg_win_size_v),
+        "avg_loss_size": float(avg_loss_size_v),
+        "total_win_pnl": float(total_win_pnl_v),
+        "total_loss_pnl": float(total_loss_pnl_v),
+        "payoff_ratio": float(payoff_ratio_v),
+        "kelly_fraction": float(kelly_v),
+        "regime_n_wins": regime_n_wins_v,
+        "regime_n_losses": regime_n_losses_v,
+        "regime_win_rate": regime_win_rate_v,
     }
 
 

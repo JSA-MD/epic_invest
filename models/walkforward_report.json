@@ -1,0 +1,1800 @@
+{
+  "generated_at": "2026-04-25T15:25:34.765680+00:00",
+  "strategy_class": "pairwise_walkforward_oos",
+  "params": {
+    "start": "2023-04-01",
+    "end": "2026-04-06",
+    "train_days": 90,
+    "test_days": 30,
+    "step_days": 30,
+    "pairs": [
+      "BTCUSDT",
+      "BNBUSDT"
+    ],
+    "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+    "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill"
+  },
+  "folds": [
+    {
+      "fold": "fold_001",
+      "fold_idx": 1,
+      "train_start": "2023-01-01T00:00:00+00:00",
+      "train_end": "2023-04-01T00:00:00+00:00",
+      "test_start": "2023-04-01T00:00:00+00:00",
+      "test_end": "2023-05-01T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": -0.0014159527169221864,
+          "sharpe": -0.7834277327279803,
+          "max_drawdown": -0.008611340888272978,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 21,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.13296204361078723,
+          "sharpe": 5.477852367336877,
+          "max_drawdown": -0.044230853149465066,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 1626,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.13398431416562318,
+          "sharpe": 7.18985159483441,
+          "max_drawdown": -0.02796901503278959,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 68,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.08297885258601156,
+          "sharpe": 3.320865881324897,
+          "max_drawdown": -0.07062019086640492,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 1422,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_002",
+      "fold_idx": 2,
+      "train_start": "2023-01-31T00:00:00+00:00",
+      "train_end": "2023-05-01T00:00:00+00:00",
+      "test_start": "2023-05-01T00:00:00+00:00",
+      "test_end": "2023-05-31T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.13815320840626133,
+          "sharpe": 4.097813771447546,
+          "max_drawdown": -0.04389151138490921,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 105,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.22716031640338108,
+          "sharpe": 4.310273352906091,
+          "max_drawdown": -0.0706200389505981,
+          "n_wins": 3,
+          "n_losses": 2,
+          "n_trades": 2915,
+          "roundtrip_win_rate": 0.6
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.060436152616327954,
+          "sharpe": 3.147904406655872,
+          "max_drawdown": -0.05278764396381064,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 54,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.17041888173662634,
+          "sharpe": 6.66553164183077,
+          "max_drawdown": -0.03956705784228598,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 2597,
+          "roundtrip_win_rate": 0.75
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_003",
+      "fold_idx": 3,
+      "train_start": "2023-03-02T00:00:00+00:00",
+      "train_end": "2023-05-31T00:00:00+00:00",
+      "test_start": "2023-05-31T00:00:00+00:00",
+      "test_end": "2023-06-30T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3143489844289187,
+          "sharpe": 4.101232182203021,
+          "max_drawdown": -0.05573528137489436,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 256,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.4335827760217501,
+          "sharpe": 4.915054869082215,
+          "max_drawdown": -0.0706200389505981,
+          "n_wins": 3,
+          "n_losses": 2,
+          "n_trades": 5507,
+          "roundtrip_win_rate": 0.6
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.01041464474988163,
+          "sharpe": 1.6053419132228386,
+          "max_drawdown": -0.024736463999075142,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 6,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.20321256640596874,
+          "sharpe": 7.585146515786028,
+          "max_drawdown": -0.035065371604556916,
+          "n_wins": 9,
+          "n_losses": 2,
+          "n_trades": 1875,
+          "roundtrip_win_rate": 0.8181818181818182
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_004",
+      "fold_idx": 4,
+      "train_start": "2023-04-01T00:00:00+00:00",
+      "train_end": "2023-06-30T00:00:00+00:00",
+      "test_start": "2023-06-30T00:00:00+00:00",
+      "test_end": "2023-07-30T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.5676008203408709,
+          "sharpe": 5.760574012436027,
+          "max_drawdown": -0.0560437672941384,
+          "n_wins": 5,
+          "n_losses": 1,
+          "n_trades": 603,
+          "roundtrip_win_rate": 0.8333333333333334
+        },
+        "BNBUSDT": {
+          "total_return": 0.594878646722456,
+          "sharpe": 6.142182179424492,
+          "max_drawdown": -0.07062019086640492,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 6226,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.106007838517993,
+          "sharpe": 5.117082712478897,
+          "max_drawdown": -0.03523687639348516,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 56,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.016213827936034875,
+          "sharpe": 1.0987897922765482,
+          "max_drawdown": -0.06755747794300693,
+          "n_wins": 0,
+          "n_losses": 2,
+          "n_trades": 1711,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_005",
+      "fold_idx": 5,
+      "train_start": "2023-05-01T00:00:00+00:00",
+      "train_end": "2023-07-30T00:00:00+00:00",
+      "test_start": "2023-07-30T00:00:00+00:00",
+      "test_end": "2023-08-29T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.404356681114159,
+          "sharpe": 4.903527302459055,
+          "max_drawdown": -0.06451312635441742,
+          "n_wins": 7,
+          "n_losses": 0,
+          "n_trades": 215,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.6323275158465878,
+          "sharpe": 6.970615917838582,
+          "max_drawdown": -0.040787113703709355,
+          "n_wins": 7,
+          "n_losses": 2,
+          "n_trades": 6464,
+          "roundtrip_win_rate": 0.7777777777777778
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.25187090132202306,
+          "sharpe": 5.360224328233958,
+          "max_drawdown": -0.037872874618955166,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 44,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.2717495229638145,
+          "sharpe": 7.915736981869464,
+          "max_drawdown": -0.050075229545367694,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 2486,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_006",
+      "fold_idx": 6,
+      "train_start": "2023-05-31T00:00:00+00:00",
+      "train_end": "2023-08-29T00:00:00+00:00",
+      "test_start": "2023-08-29T00:00:00+00:00",
+      "test_end": "2023-09-28T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4485327475218819,
+          "sharpe": 4.26438549699871,
+          "max_drawdown": -0.06447103891675088,
+          "n_wins": 8,
+          "n_losses": 3,
+          "n_trades": 114,
+          "roundtrip_win_rate": 0.7272727272727273
+        },
+        "BNBUSDT": {
+          "total_return": 0.7582006866304796,
+          "sharpe": 7.400805315704831,
+          "max_drawdown": -0.04078952820639192,
+          "n_wins": 15,
+          "n_losses": 7,
+          "n_trades": 5751,
+          "roundtrip_win_rate": 0.6818181818181818
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.021185483106870406,
+          "sharpe": -1.4813113965428943,
+          "max_drawdown": -0.0741898885887895,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 16,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.029757353082747073,
+          "sharpe": 1.4052907902474614,
+          "max_drawdown": -0.0785807226032933,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 1637,
+          "roundtrip_win_rate": 0.6666666666666666
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_007",
+      "fold_idx": 7,
+      "train_start": "2023-06-30T00:00:00+00:00",
+      "train_end": "2023-09-28T00:00:00+00:00",
+      "test_start": "2023-09-28T00:00:00+00:00",
+      "test_end": "2023-10-28T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.5442375410512643,
+          "sharpe": 4.800362750688336,
+          "max_drawdown": -0.08162545870113325,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 155,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.49831135579400976,
+          "sharpe": 5.77878001770227,
+          "max_drawdown": -0.06755747794300693,
+          "n_wins": 1,
+          "n_losses": 3,
+          "n_trades": 5299,
+          "roundtrip_win_rate": 0.25
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.0034558869469367703,
+          "sharpe": -0.38652820788548214,
+          "max_drawdown": -0.026478486052002093,
+          "n_wins": 0,
+          "n_losses": 2,
+          "n_trades": 5,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.0015088273874835911,
+          "sharpe": 0.0400691666480987,
+          "max_drawdown": -0.04214124880222725,
+          "n_wins": 0,
+          "n_losses": 1,
+          "n_trades": 1567,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_008",
+      "fold_idx": 8,
+      "train_start": "2023-07-30T00:00:00+00:00",
+      "train_end": "2023-10-28T00:00:00+00:00",
+      "test_start": "2023-10-28T00:00:00+00:00",
+      "test_end": "2023-11-27T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.38269813361377447,
+          "sharpe": 3.90508162445187,
+          "max_drawdown": -0.08162870958012036,
+          "n_wins": 7,
+          "n_losses": 3,
+          "n_trades": 113,
+          "roundtrip_win_rate": 0.7
+        },
+        "BNBUSDT": {
+          "total_return": 0.4973633036245311,
+          "sharpe": 5.740542094975145,
+          "max_drawdown": -0.06589208206951502,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 5134,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.10739149467652087,
+          "sharpe": 6.565374516965978,
+          "max_drawdown": -0.027948307097648173,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 28,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.03368985592757667,
+          "sharpe": 1.7337394544849893,
+          "max_drawdown": -0.045053193642815015,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 1124,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_009",
+      "fold_idx": 9,
+      "train_start": "2023-08-29T00:00:00+00:00",
+      "train_end": "2023-11-27T00:00:00+00:00",
+      "test_start": "2023-11-27T00:00:00+00:00",
+      "test_end": "2023-12-27T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.11134875392235499,
+          "sharpe": 2.581074371776323,
+          "max_drawdown": -0.0741898885887895,
+          "n_wins": 4,
+          "n_losses": 3,
+          "n_trades": 57,
+          "roundtrip_win_rate": 0.5714285714285714
+        },
+        "BNBUSDT": {
+          "total_return": 0.1448942625682088,
+          "sharpe": 2.3804932537777996,
+          "max_drawdown": -0.0785807226032933,
+          "n_wins": 6,
+          "n_losses": 1,
+          "n_trades": 4136,
+          "roundtrip_win_rate": 0.8571428571428571
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.05047335893775684,
+          "sharpe": 4.297737956534941,
+          "max_drawdown": -0.02794303076236948,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 65,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.061657059103259915,
+          "sharpe": 3.9718967287280145,
+          "max_drawdown": -0.03494402614104131,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 804,
+          "roundtrip_win_rate": 0.6666666666666666
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_010",
+      "fold_idx": 10,
+      "train_start": "2023-09-28T00:00:00+00:00",
+      "train_end": "2023-12-27T00:00:00+00:00",
+      "test_start": "2023-12-27T00:00:00+00:00",
+      "test_end": "2024-01-26T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.1586610867745435,
+          "sharpe": 4.029693121045888,
+          "max_drawdown": -0.031150919572002223,
+          "n_wins": 4,
+          "n_losses": 3,
+          "n_trades": 121,
+          "roundtrip_win_rate": 0.5714285714285714
+        },
+        "BNBUSDT": {
+          "total_return": 0.12631971394746988,
+          "sharpe": 2.301568611027773,
+          "max_drawdown": -0.04724053688384566,
+          "n_wins": 6,
+          "n_losses": 1,
+          "n_trades": 4150,
+          "roundtrip_win_rate": 0.8571428571428571
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.1657360602677993,
+          "sharpe": 5.535785082411767,
+          "max_drawdown": -0.06767868374501906,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 803,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.11567650380629524,
+          "sharpe": 4.332015798792721,
+          "max_drawdown": -0.07144976049331453,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 2050,
+          "roundtrip_win_rate": 0.5
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_011",
+      "fold_idx": 11,
+      "train_start": "2023-10-28T00:00:00+00:00",
+      "train_end": "2024-01-26T00:00:00+00:00",
+      "test_start": "2024-01-26T00:00:00+00:00",
+      "test_end": "2024-02-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.37251178932446316,
+          "sharpe": 5.215101471206651,
+          "max_drawdown": -0.06926744679583152,
+          "n_wins": 5,
+          "n_losses": 2,
+          "n_trades": 89,
+          "roundtrip_win_rate": 0.7142857142857143
+        },
+        "BNBUSDT": {
+          "total_return": 0.18879353967984458,
+          "sharpe": 2.481632513051576,
+          "max_drawdown": -0.09172150977768101,
+          "n_wins": 5,
+          "n_losses": 1,
+          "n_trades": 4517,
+          "roundtrip_win_rate": 0.8333333333333334
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.10743106421133908,
+          "sharpe": -11.230045352017529,
+          "max_drawdown": -0.11769118448831117,
+          "n_wins": 1,
+          "n_losses": 3,
+          "n_trades": 262,
+          "roundtrip_win_rate": 0.25
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_012",
+      "fold_idx": 12,
+      "train_start": "2023-11-27T00:00:00+00:00",
+      "train_end": "2024-02-25T00:00:00+00:00",
+      "test_start": "2024-02-25T00:00:00+00:00",
+      "test_end": "2024-03-26T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.23453600193338242,
+          "sharpe": 3.8848630428151907,
+          "max_drawdown": -0.06774113322936337,
+          "n_wins": 6,
+          "n_losses": 1,
+          "n_trades": 894,
+          "roundtrip_win_rate": 0.8571428571428571
+        },
+        "BNBUSDT": {
+          "total_return": 0.16547004926834852,
+          "sharpe": 2.3633896288886604,
+          "max_drawdown": -0.09171629237893908,
+          "n_wins": 3,
+          "n_losses": 2,
+          "n_trades": 3129,
+          "roundtrip_win_rate": 0.6
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.15141846995814912,
+          "sharpe": 7.050515871710431,
+          "max_drawdown": -0.04103532050171177,
+          "n_wins": 3,
+          "n_losses": 2,
+          "n_trades": 399,
+          "roundtrip_win_rate": 0.6
+        },
+        "BNBUSDT": {
+          "total_return": -0.05344367792866822,
+          "sharpe": -2.690932825279971,
+          "max_drawdown": -0.07360809148647174,
+          "n_wins": 5,
+          "n_losses": 6,
+          "n_trades": 875,
+          "roundtrip_win_rate": 0.45454545454545453
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_013",
+      "fold_idx": 13,
+      "train_start": "2023-12-27T00:00:00+00:00",
+      "train_end": "2024-03-26T00:00:00+00:00",
+      "test_start": "2024-03-26T00:00:00+00:00",
+      "test_end": "2024-04-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.34207515226555874,
+          "sharpe": 4.963145637012502,
+          "max_drawdown": -0.06767868374501906,
+          "n_wins": 6,
+          "n_losses": 3,
+          "n_trades": 1207,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.12003067642200027,
+          "sharpe": 2.0954970632229166,
+          "max_drawdown": -0.07144976049331453,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 3297,
+          "roundtrip_win_rate": 0.6666666666666666
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.17632922634570702,
+          "sharpe": 6.182631425733935,
+          "max_drawdown": -0.04794456782574452,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 703,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.09417374637129594,
+          "sharpe": 3.571246662314801,
+          "max_drawdown": -0.047048569326635925,
+          "n_wins": 4,
+          "n_losses": 0,
+          "n_trades": 1637,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_014",
+      "fold_idx": 14,
+      "train_start": "2024-01-26T00:00:00+00:00",
+      "train_end": "2024-04-25T00:00:00+00:00",
+      "test_start": "2024-04-25T00:00:00+00:00",
+      "test_end": "2024-05-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4573827480912558,
+          "sharpe": 5.751148930752124,
+          "max_drawdown": -0.048157428500669064,
+          "n_wins": 6,
+          "n_losses": 2,
+          "n_trades": 1260,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": -0.11867240791540667,
+          "sharpe": -6.885476003612736,
+          "max_drawdown": -0.12140865391380617,
+          "n_wins": 1,
+          "n_losses": 4,
+          "n_trades": 300,
+          "roundtrip_win_rate": 0.2
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.005101164528423352,
+          "sharpe": 0.629237256972256,
+          "max_drawdown": -0.02800459933800281,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 8,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.07168757367057954,
+          "sharpe": 3.0010179752597823,
+          "max_drawdown": -0.05694183426839372,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 1925,
+          "roundtrip_win_rate": 0.5
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_015",
+      "fold_idx": 15,
+      "train_start": "2024-02-25T00:00:00+00:00",
+      "train_end": "2024-05-25T00:00:00+00:00",
+      "test_start": "2024-05-25T00:00:00+00:00",
+      "test_end": "2024-06-24T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7608302266912497,
+          "sharpe": 6.704559451604528,
+          "max_drawdown": -0.06822106884090517,
+          "n_wins": 10,
+          "n_losses": 3,
+          "n_trades": 2159,
+          "roundtrip_win_rate": 0.7692307692307693
+        },
+        "BNBUSDT": {
+          "total_return": 0.20074190542390213,
+          "sharpe": 2.509136793165234,
+          "max_drawdown": -0.08955560199157842,
+          "n_wins": 11,
+          "n_losses": 10,
+          "n_trades": 3652,
+          "roundtrip_win_rate": 0.5238095238095238
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.12709840665593575,
+          "sharpe": 4.194008393408404,
+          "max_drawdown": -0.08455582109190862,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 904,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.25312271463519553,
+          "sharpe": 6.245258519847393,
+          "max_drawdown": -0.08454413961871032,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 2717,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_016",
+      "fold_idx": 16,
+      "train_start": "2024-03-26T00:00:00+00:00",
+      "train_end": "2024-06-24T00:00:00+00:00",
+      "test_start": "2024-06-24T00:00:00+00:00",
+      "test_end": "2024-07-24T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6810124866890055,
+          "sharpe": 5.816790838642157,
+          "max_drawdown": -0.08487922219468058,
+          "n_wins": 9,
+          "n_losses": 2,
+          "n_trades": 2635,
+          "roundtrip_win_rate": 0.8181818181818182
+        },
+        "BNBUSDT": {
+          "total_return": 0.4272711255354611,
+          "sharpe": 4.217852441209999,
+          "max_drawdown": -0.08454471517731532,
+          "n_wins": 5,
+          "n_losses": 4,
+          "n_trades": 4676,
+          "roundtrip_win_rate": 0.5555555555555556
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.03477242358951038,
+          "sharpe": -3.1415117020343577,
+          "max_drawdown": -0.04704330012237501,
+          "n_wins": 0,
+          "n_losses": 2,
+          "n_trades": 7,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.21520397103956124,
+          "sharpe": 7.632976765347496,
+          "max_drawdown": -0.064628035299364,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 1493,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_017",
+      "fold_idx": 17,
+      "train_start": "2024-04-25T00:00:00+00:00",
+      "train_end": "2024-07-24T00:00:00+00:00",
+      "test_start": "2024-07-24T00:00:00+00:00",
+      "test_end": "2024-08-23T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.431013497978473,
+          "sharpe": 4.440758311842066,
+          "max_drawdown": -0.08172375966088097,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 102,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.5502137790413777,
+          "sharpe": 4.922391593025113,
+          "max_drawdown": -0.11098859831880226,
+          "n_wins": 1,
+          "n_losses": 3,
+          "n_trades": 5304,
+          "roundtrip_win_rate": 0.25
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.03366400793502233,
+          "sharpe": 1.7982278334232522,
+          "max_drawdown": -0.05609436168214943,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 521,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.00698374324015294,
+          "sharpe": 0.4193752440255145,
+          "max_drawdown": -0.10484951241295759,
+          "n_wins": 0,
+          "n_losses": 1,
+          "n_trades": 1555,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_018",
+      "fold_idx": 18,
+      "train_start": "2024-05-25T00:00:00+00:00",
+      "train_end": "2024-08-23T00:00:00+00:00",
+      "test_start": "2024-08-23T00:00:00+00:00",
+      "test_end": "2024-09-22T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7840793877493126,
+          "sharpe": 6.225280736203849,
+          "max_drawdown": -0.08455582109190862,
+          "n_wins": 7,
+          "n_losses": 4,
+          "n_trades": 2867,
+          "roundtrip_win_rate": 0.6363636363636364
+        },
+        "BNBUSDT": {
+          "total_return": 1.1901879213420958,
+          "sharpe": 7.43730016004725,
+          "max_drawdown": -0.11099386522851351,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 6512,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.040660075875582624,
+          "sharpe": 2.5862753157709193,
+          "max_drawdown": -0.03765971945960511,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 185,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.2509316904890049,
+          "sharpe": 6.675252582208528,
+          "max_drawdown": -0.054285338460176136,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 2219,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_019",
+      "fold_idx": 19,
+      "train_start": "2024-06-24T00:00:00+00:00",
+      "train_end": "2024-09-22T00:00:00+00:00",
+      "test_start": "2024-09-22T00:00:00+00:00",
+      "test_end": "2024-10-22T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6150373442955333,
+          "sharpe": 5.95282251232537,
+          "max_drawdown": -0.06054913686775765,
+          "n_wins": 6,
+          "n_losses": 3,
+          "n_trades": 148,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 1.1853287496140497,
+          "sharpe": 7.732100815987688,
+          "max_drawdown": -0.07352640540439948,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 5527,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.003261191666718788,
+          "sharpe": -0.26073976120025205,
+          "max_drawdown": -0.06528990637881393,
+          "n_wins": 0,
+          "n_losses": 1,
+          "n_trades": 233,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.10133244244471928,
+          "sharpe": 3.92144222561059,
+          "max_drawdown": -0.06807703059894432,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 1599,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_020",
+      "fold_idx": 20,
+      "train_start": "2024-07-24T00:00:00+00:00",
+      "train_end": "2024-10-22T00:00:00+00:00",
+      "test_start": "2024-10-22T00:00:00+00:00",
+      "test_end": "2024-11-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.38463192820335124,
+          "sharpe": 4.356115925346569,
+          "max_drawdown": -0.0656000086693097,
+          "n_wins": 7,
+          "n_losses": 2,
+          "n_trades": 1897,
+          "roundtrip_win_rate": 0.7777777777777778
+        },
+        "BNBUSDT": {
+          "total_return": 0.41870667074873946,
+          "sharpe": 3.834406668792981,
+          "max_drawdown": -0.10484951241295759,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 4423,
+          "roundtrip_win_rate": 0.75
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.08451906925714159,
+          "sharpe": 3.051219253891991,
+          "max_drawdown": -0.08118612880940312,
+          "n_wins": 8,
+          "n_losses": 0,
+          "n_trades": 1560,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_021",
+      "fold_idx": 21,
+      "train_start": "2024-08-23T00:00:00+00:00",
+      "train_end": "2024-11-21T00:00:00+00:00",
+      "test_start": "2024-11-21T00:00:00+00:00",
+      "test_end": "2024-12-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.15416754741004612,
+          "sharpe": 2.5760600018644455,
+          "max_drawdown": -0.08081752859730185,
+          "n_wins": 4,
+          "n_losses": 1,
+          "n_trades": 955,
+          "roundtrip_win_rate": 0.8
+        },
+        "BNBUSDT": {
+          "total_return": 0.5880232083592896,
+          "sharpe": 5.353382151945955,
+          "max_drawdown": -0.08111019951833665,
+          "n_wins": 6,
+          "n_losses": 0,
+          "n_trades": 4473,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.10931659771492597,
+          "sharpe": 5.007996022124993,
+          "max_drawdown": -0.04553401386231237,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 231,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.25208265411120023,
+          "sharpe": 7.883672803001227,
+          "max_drawdown": -0.09402557731155947,
+          "n_wins": 4,
+          "n_losses": 3,
+          "n_trades": 1132,
+          "roundtrip_win_rate": 0.5714285714285714
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_022",
+      "fold_idx": 22,
+      "train_start": "2024-09-22T00:00:00+00:00",
+      "train_end": "2024-12-21T00:00:00+00:00",
+      "test_start": "2024-12-21T00:00:00+00:00",
+      "test_end": "2025-01-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.2195153208812637,
+          "sharpe": 3.476390820772341,
+          "max_drawdown": -0.08067863199662051,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 908,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.7182273574223541,
+          "sharpe": 6.548577574021705,
+          "max_drawdown": -0.08110420463982726,
+          "n_wins": 6,
+          "n_losses": 2,
+          "n_trades": 3886,
+          "roundtrip_win_rate": 0.75
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.11509846406096358,
+          "sharpe": 4.874497176241844,
+          "max_drawdown": -0.05414575287358203,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 302,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.11223542592440161,
+          "sharpe": 3.641493668940528,
+          "max_drawdown": -0.07477296055796523,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 1661,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_023",
+      "fold_idx": 23,
+      "train_start": "2024-10-22T00:00:00+00:00",
+      "train_end": "2025-01-20T00:00:00+00:00",
+      "test_start": "2025-01-20T00:00:00+00:00",
+      "test_end": "2025-02-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.40426039586682894,
+          "sharpe": 4.8600607580052095,
+          "max_drawdown": -0.060932528476073,
+          "n_wins": 4,
+          "n_losses": 0,
+          "n_trades": 136,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.7498792869907629,
+          "sharpe": 6.160472701847571,
+          "max_drawdown": -0.08118612880940312,
+          "n_wins": 16,
+          "n_losses": 4,
+          "n_trades": 4355,
+          "roundtrip_win_rate": 0.8
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.02678480018076579,
+          "sharpe": 1.1048018528388928,
+          "max_drawdown": -0.1043683753207375,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 162,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.21670295125530514,
+          "sharpe": 6.229411012145459,
+          "max_drawdown": -0.07773866614516634,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 2239,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_024",
+      "fold_idx": 24,
+      "train_start": "2024-11-21T00:00:00+00:00",
+      "train_end": "2025-02-19T00:00:00+00:00",
+      "test_start": "2025-02-19T00:00:00+00:00",
+      "test_end": "2025-03-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.43204342724685785,
+          "sharpe": 4.158348615179183,
+          "max_drawdown": -0.11760541460843354,
+          "n_wins": 6,
+          "n_losses": 2,
+          "n_trades": 2242,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.7916476282237108,
+          "sharpe": 6.061015202414846,
+          "max_drawdown": -0.09402557731155947,
+          "n_wins": 6,
+          "n_losses": 3,
+          "n_trades": 5345,
+          "roundtrip_win_rate": 0.6666666666666666
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.08898610003577634,
+          "sharpe": 3.5580648042586898,
+          "max_drawdown": -0.06815137581657715,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 293,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.23520889351277097,
+          "sharpe": 6.306574915153761,
+          "max_drawdown": -0.08138152906989216,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 2158,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_025",
+      "fold_idx": 25,
+      "train_start": "2024-12-21T00:00:00+00:00",
+      "train_end": "2025-03-21T00:00:00+00:00",
+      "test_start": "2025-03-21T00:00:00+00:00",
+      "test_end": "2025-04-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6027782882124948,
+          "sharpe": 4.88287766025828,
+          "max_drawdown": -0.11672318839549134,
+          "n_wins": 9,
+          "n_losses": 2,
+          "n_trades": 2636,
+          "roundtrip_win_rate": 0.8181818181818182
+        },
+        "BNBUSDT": {
+          "total_return": 0.8468656443558589,
+          "sharpe": 5.889129177974883,
+          "max_drawdown": -0.09342887916651155,
+          "n_wins": 3,
+          "n_losses": 0,
+          "n_trades": 6298,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.1275245202841213,
+          "sharpe": 5.056030579391697,
+          "max_drawdown": -0.07501595854467125,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 46,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.19329656316883748,
+          "sharpe": 6.229187734335093,
+          "max_drawdown": -0.05712392360921126,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 1933,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_026",
+      "fold_idx": 26,
+      "train_start": "2025-01-20T00:00:00+00:00",
+      "train_end": "2025-04-20T00:00:00+00:00",
+      "test_start": "2025-04-20T00:00:00+00:00",
+      "test_end": "2025-05-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7165136867642219,
+          "sharpe": 5.5964561245760365,
+          "max_drawdown": -0.1043683753207375,
+          "n_wins": 14,
+          "n_losses": 2,
+          "n_trades": 491,
+          "roundtrip_win_rate": 0.875
+        },
+        "BNBUSDT": {
+          "total_return": 0.8801292235664062,
+          "sharpe": 6.285167932542102,
+          "max_drawdown": -0.08138217416920024,
+          "n_wins": 3,
+          "n_losses": 1,
+          "n_trades": 6165,
+          "roundtrip_win_rate": 0.75
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.06778056845832559,
+          "sharpe": -4.7731911323360805,
+          "max_drawdown": -0.08324509302312233,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 707,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_027",
+      "fold_idx": 27,
+      "train_start": "2025-02-19T00:00:00+00:00",
+      "train_end": "2025-05-20T00:00:00+00:00",
+      "test_start": "2025-05-20T00:00:00+00:00",
+      "test_end": "2025-06-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3505029825685153,
+          "sharpe": 4.458462241857439,
+          "max_drawdown": -0.0741296752645807,
+          "n_wins": 8,
+          "n_losses": 2,
+          "n_trades": 1062,
+          "roundtrip_win_rate": 0.8
+        },
+        "BNBUSDT": {
+          "total_return": 0.40203716378454124,
+          "sharpe": 4.404496666542901,
+          "max_drawdown": -0.08138152906989216,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 4094,
+          "roundtrip_win_rate": 0.5
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.04210873526868353,
+          "sharpe": 2.0851453709862944,
+          "max_drawdown": -0.06858021657953073,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 536,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.008921693161502375,
+          "sharpe": 0.5556044852758503,
+          "max_drawdown": -0.09774911289445509,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 1531,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_028",
+      "fold_idx": 28,
+      "train_start": "2025-03-21T00:00:00+00:00",
+      "train_end": "2025-06-19T00:00:00+00:00",
+      "test_start": "2025-06-19T00:00:00+00:00",
+      "test_end": "2025-07-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.21170725392460144,
+          "sharpe": 3.328728069854072,
+          "max_drawdown": -0.07501595854467125,
+          "n_wins": 5,
+          "n_losses": 1,
+          "n_trades": 60,
+          "roundtrip_win_rate": 0.8333333333333334
+        },
+        "BNBUSDT": {
+          "total_return": 0.2957737464807966,
+          "sharpe": 3.9671215312928236,
+          "max_drawdown": -0.07906548323146179,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 4016,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.06279094676095331,
+          "sharpe": 4.283157148305049,
+          "max_drawdown": -0.037378245213391614,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 672,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_029",
+      "fold_idx": 29,
+      "train_start": "2025-04-20T00:00:00+00:00",
+      "train_end": "2025-07-19T00:00:00+00:00",
+      "test_start": "2025-07-19T00:00:00+00:00",
+      "test_end": "2025-08-18T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.14011574432498008,
+          "sharpe": 2.628735246521394,
+          "max_drawdown": -0.068748442940337,
+          "n_wins": 5,
+          "n_losses": 1,
+          "n_trades": 1161,
+          "roundtrip_win_rate": 0.8333333333333334
+        },
+        "BNBUSDT": {
+          "total_return": -0.11308385203659566,
+          "sharpe": -4.362636707167083,
+          "max_drawdown": -0.12253257884059243,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 774,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.016777479805172635,
+          "sharpe": -2.039635745859204,
+          "max_drawdown": -0.0363434175872126,
+          "n_wins": 0,
+          "n_losses": 2,
+          "n_trades": 66,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.056874463271066045,
+          "sharpe": -2.8337974384057705,
+          "max_drawdown": -0.10432164955495193,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 660,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_030",
+      "fold_idx": 30,
+      "train_start": "2025-05-20T00:00:00+00:00",
+      "train_end": "2025-08-18T00:00:00+00:00",
+      "test_start": "2025-08-18T00:00:00+00:00",
+      "test_end": "2025-09-17T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.1615528504944106,
+          "sharpe": 2.708492065603413,
+          "max_drawdown": -0.06870618118765282,
+          "n_wins": 6,
+          "n_losses": 2,
+          "n_trades": 1330,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.10393540588133132,
+          "sharpe": 1.7447347564907578,
+          "max_drawdown": -0.09774911289445509,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 2815,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.005231755997068821,
+          "sharpe": -0.5829253139121748,
+          "max_drawdown": -0.045925612854783915,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 219,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.052685116168703416,
+          "sharpe": 2.3274579139216556,
+          "max_drawdown": -0.05899196099615889,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 1364,
+          "roundtrip_win_rate": 0.6666666666666666
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_031",
+      "fold_idx": 31,
+      "train_start": "2025-06-19T00:00:00+00:00",
+      "train_end": "2025-09-17T00:00:00+00:00",
+      "test_start": "2025-09-17T00:00:00+00:00",
+      "test_end": "2025-10-17T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.19269022739784747,
+          "sharpe": 3.5173546157967217,
+          "max_drawdown": -0.04977367964193047,
+          "n_wins": 6,
+          "n_losses": 1,
+          "n_trades": 1356,
+          "roundtrip_win_rate": 0.8571428571428571
+        },
+        "BNBUSDT": {
+          "total_return": 0.23005348175498264,
+          "sharpe": 3.9528250073844635,
+          "max_drawdown": -0.043701375142028986,
+          "n_wins": 4,
+          "n_losses": 0,
+          "n_trades": 1928,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.2321358106785607,
+          "sharpe": 6.064919760157284,
+          "max_drawdown": -0.06276660022530411,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 400,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.011611671396615564,
+          "sharpe": -0.3010342894546506,
+          "max_drawdown": -0.09505677873412277,
+          "n_wins": 3,
+          "n_losses": 5,
+          "n_trades": 990,
+          "roundtrip_win_rate": 0.375
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_032",
+      "fold_idx": 32,
+      "train_start": "2025-07-19T00:00:00+00:00",
+      "train_end": "2025-10-17T00:00:00+00:00",
+      "test_start": "2025-10-17T00:00:00+00:00",
+      "test_end": "2025-11-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.45093027290503906,
+          "sharpe": 4.845233127573659,
+          "max_drawdown": -0.06307513411574961,
+          "n_wins": 6,
+          "n_losses": 2,
+          "n_trades": 1755,
+          "roundtrip_win_rate": 0.75
+        },
+        "BNBUSDT": {
+          "total_return": 0.08488547390060086,
+          "sharpe": 1.391285982993427,
+          "max_drawdown": -0.10432164955495193,
+          "n_wins": 5,
+          "n_losses": 3,
+          "n_trades": 1914,
+          "roundtrip_win_rate": 0.625
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.2574560503925194,
+          "sharpe": 6.701491463972037,
+          "max_drawdown": -0.0694227434796062,
+          "n_wins": 2,
+          "n_losses": 1,
+          "n_trades": 821,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "BNBUSDT": {
+          "total_return": 0.2599007997523002,
+          "sharpe": 6.100170419091382,
+          "max_drawdown": -0.05726210490535555,
+          "n_wins": 3,
+          "n_losses": 2,
+          "n_trades": 1759,
+          "roundtrip_win_rate": 0.6
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_033",
+      "fold_idx": 33,
+      "train_start": "2025-08-18T00:00:00+00:00",
+      "train_end": "2025-11-16T00:00:00+00:00",
+      "test_start": "2025-11-16T00:00:00+00:00",
+      "test_end": "2025-12-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7313052667402715,
+          "sharpe": 5.5845210643177206,
+          "max_drawdown": -0.06761687764183799,
+          "n_wins": 8,
+          "n_losses": 1,
+          "n_trades": 2485,
+          "roundtrip_win_rate": 0.8888888888888888
+        },
+        "BNBUSDT": {
+          "total_return": 0.3880240679947491,
+          "sharpe": 3.4837634745361776,
+          "max_drawdown": -0.09891907295515323,
+          "n_wins": 7,
+          "n_losses": 5,
+          "n_trades": 4263,
+          "roundtrip_win_rate": 0.5833333333333334
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.16760937195562575,
+          "sharpe": 6.941511217901832,
+          "max_drawdown": -0.05425136104008832,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 440,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.18190852374053845,
+          "sharpe": 6.049988717794561,
+          "max_drawdown": -0.06220233107585438,
+          "n_wins": 2,
+          "n_losses": 0,
+          "n_trades": 1126,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_034",
+      "fold_idx": 34,
+      "train_start": "2025-09-17T00:00:00+00:00",
+      "train_end": "2025-12-16T00:00:00+00:00",
+      "test_start": "2025-12-16T00:00:00+00:00",
+      "test_end": "2026-01-15T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 1.168152980973829,
+          "sharpe": 6.947874786089559,
+          "max_drawdown": -0.07411539580014026,
+          "n_wins": 8,
+          "n_losses": 1,
+          "n_trades": 3079,
+          "roundtrip_win_rate": 0.8888888888888888
+        },
+        "BNBUSDT": {
+          "total_return": 0.6010963647375704,
+          "sharpe": 4.4658161506622,
+          "max_drawdown": -0.09554827118921305,
+          "n_wins": 3,
+          "n_losses": 7,
+          "n_trades": 4535,
+          "roundtrip_win_rate": 0.3
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.005479402412686074,
+          "sharpe": 0.6040853154769149,
+          "max_drawdown": -0.03475047750904148,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 2,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.059009907034140774,
+          "sharpe": 3.0321462591814465,
+          "max_drawdown": -0.03882937434525968,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 997,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_035",
+      "fold_idx": 35,
+      "train_start": "2025-10-17T00:00:00+00:00",
+      "train_end": "2026-01-15T00:00:00+00:00",
+      "test_start": "2026-01-15T00:00:00+00:00",
+      "test_end": "2026-02-14T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6828462980251393,
+          "sharpe": 5.469306191493311,
+          "max_drawdown": -0.07836178238223457,
+          "n_wins": 7,
+          "n_losses": 2,
+          "n_trades": 2668,
+          "roundtrip_win_rate": 0.7777777777777778
+        },
+        "BNBUSDT": {
+          "total_return": 0.681961638490064,
+          "sharpe": 5.283295486634794,
+          "max_drawdown": -0.06704064776652774,
+          "n_wins": 5,
+          "n_losses": 2,
+          "n_trades": 4691,
+          "roundtrip_win_rate": 0.7142857142857143
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.39110870119979846,
+          "sharpe": 8.312063626155439,
+          "max_drawdown": -0.08444228173365043,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 1128,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.5896195219635461,
+          "sharpe": 9.521114433615576,
+          "max_drawdown": -0.05711640447156907,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 3230,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_036",
+      "fold_idx": 36,
+      "train_start": "2025-11-16T00:00:00+00:00",
+      "train_end": "2026-02-14T00:00:00+00:00",
+      "test_start": "2026-02-14T00:00:00+00:00",
+      "test_end": "2026-03-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7665727419182775,
+          "sharpe": 5.733338021913136,
+          "max_drawdown": -0.0859594542157216,
+          "n_wins": 7,
+          "n_losses": 1,
+          "n_trades": 2635,
+          "roundtrip_win_rate": 0.875
+        },
+        "BNBUSDT": {
+          "total_return": 0.9468621486022113,
+          "sharpe": 6.357145169294859,
+          "max_drawdown": -0.06220233107585438,
+          "n_wins": 4,
+          "n_losses": 0,
+          "n_trades": 5168,
+          "roundtrip_win_rate": 1.0
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.08278036808668787,
+          "sharpe": 3.4436138515435903,
+          "max_drawdown": -0.08748991877815138,
+          "n_wins": 1,
+          "n_losses": 1,
+          "n_trades": 385,
+          "roundtrip_win_rate": 0.5
+        },
+        "BNBUSDT": {
+          "total_return": 0.13153894705370783,
+          "sharpe": 3.7524316956041615,
+          "max_drawdown": -0.10106563837884652,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 1933,
+          "roundtrip_win_rate": 0.0
+        }
+      },
+      "skipped_pairs": []
+    }
+  ],
+  "summary": {
+    "fold_count": 36,
+    "total_oos_pair_obs": 72,
+    "OOS_mean_return": 0.09865072032447192,
+    "OOS_median_return": 0.08287961033634972,
+    "OOS_std_return": 0.11556480600334904,
+    "IS_mean_return": 0.4456622010023892,
+    "IS_OOS_return_gap": 0.34701148067791726,
+    "IS_mean_sharpe": 4.317432431710734,
+    "OOS_mean_sharpe": 3.108222912101942,
+    "IS_OOS_sharpe_decay_pct": 28.007607269713684,
+    "IS_mean_win_rate": 0.7337943306693306,
+    "OOS_mean_win_rate": 0.5324419793169793,
+    "OOS_win_rate_decay": 0.2013523513523513,
+    "negative_oos_fold_count": 4,
+    "OOS_negative_fold_pct": 11.11111111111111
+  }
+}

@@ -29,6 +29,8 @@ import pandas_ta as ta
 import requests
 from deap import base, creator, gp, tools
 
+import postgres_market_data as pg_market_data
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,6 +110,7 @@ DERIVED_FEATURE_COLUMNS = tuple(
     dict.fromkeys(
         tuple(c for c in BASIC_FEATURES if c not in {"open", "high", "low", "close"})
         + ("buy_volume_share", "order_imbalance")
+        + ("close_location_value", "body_to_range", "wick_skew", "candle_micro_score")
         + DC_DERIVED_FEATURE_COLUMNS
     )
 )
@@ -336,6 +339,26 @@ def enrich_features(df: pd.DataFrame) -> pd.DataFrame:
     buy_volume_share = buy_volume_share.replace([np.inf, -np.inf], np.nan).clip(0.0, 1.0)
     base["buy_volume_share"] = buy_volume_share
     base["order_imbalance"] = (2.0 * buy_volume_share - 1.0).replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
+    price_range = (base["high"] - base["low"]).replace(0.0, np.nan)
+    close_location_value = (
+        ((base["close"] - base["low"]) - (base["high"] - base["close"])) / price_range
+    )
+    body_to_range = (
+        (base["close"] - base["open"]).abs() / price_range
+    )
+    upper_wick = (base["high"] - base[["open", "close"]].max(axis=1)).clip(lower=0.0)
+    lower_wick = (base[["open", "close"]].min(axis=1) - base["low"]).clip(lower=0.0)
+    wick_skew = (lower_wick - upper_wick) / price_range
+    directional_body = np.sign(close_location_value.fillna(0.0)) * body_to_range.fillna(0.0)
+    candle_micro_score = (
+        0.50 * close_location_value.fillna(0.0)
+        + 0.30 * directional_body
+        + 0.20 * wick_skew.fillna(0.0)
+    )
+    base["close_location_value"] = close_location_value.replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
+    base["body_to_range"] = body_to_range.replace([np.inf, -np.inf], np.nan).clip(0.0, 1.0)
+    base["wick_skew"] = wick_skew.replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
+    base["candle_micro_score"] = candle_micro_score.replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
 
     for suffix, threshold in DC_FEATURE_CONFIGS:
         base = add_directional_change_features(base, threshold=threshold, suffix=suffix)
@@ -349,6 +372,10 @@ def enrich_features(df: pd.DataFrame) -> pd.DataFrame:
     base["taker_quote"] = base["taker_quote"].replace([np.inf, -np.inf], np.nan).fillna(base["taker_base"] * base["close"])
     base["buy_volume_share"] = base["buy_volume_share"].replace([np.inf, -np.inf], np.nan).fillna(0.5).clip(0.0, 1.0)
     base["order_imbalance"] = base["order_imbalance"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(-1.0, 1.0)
+    base["close_location_value"] = base["close_location_value"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(-1.0, 1.0)
+    base["body_to_range"] = base["body_to_range"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(0.0, 1.0)
+    base["wick_skew"] = base["wick_skew"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(-1.0, 1.0)
+    base["candle_micro_score"] = base["candle_micro_score"].replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(-1.0, 1.0)
     return base[list(CACHE_COLUMNS)]
 
 
@@ -585,7 +612,23 @@ def load_pair(symbol: str, interval: str = TIMEFRAME,
               refresh_cache: bool = True) -> pd.DataFrame:
     """Load pair data, while persisting newly available bars into the cache."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    df = _sync_pair_cache(symbol, interval, start, end, refresh_cache=refresh_cache)
+    source = pg_market_data.market_data_source()
+    if source in pg_market_data.POSTGRES_SOURCE_VALUES:
+        print(f"  {symbol}: loading {interval} candles from PostgreSQL")
+        df = enrich_features(pg_market_data.load_ohlcv(symbol, interval, start, end))
+    elif source in pg_market_data.AUTO_SOURCE_VALUES:
+        try:
+            print(f"  {symbol}: trying PostgreSQL {interval} candles")
+            df = enrich_features(pg_market_data.load_ohlcv(symbol, interval, start, end))
+        except Exception as exc:
+            print(f"  {symbol}: PostgreSQL load failed; using cache ({exc})")
+            df = _sync_pair_cache(symbol, interval, start, end, refresh_cache=refresh_cache)
+        else:
+            if df.empty:
+                print(f"  {symbol}: PostgreSQL returned no rows; using cache")
+                df = _sync_pair_cache(symbol, interval, start, end, refresh_cache=refresh_cache)
+    else:
+        df = _sync_pair_cache(symbol, interval, start, end, refresh_cache=refresh_cache)
 
     if not df.empty:
         start_dt = _parse_time_boundary(start)
@@ -597,6 +640,90 @@ def load_pair(symbol: str, interval: str = TIMEFRAME,
 
     df.columns = [f"{symbol}_{c}" for c in df.columns]
     return df
+
+
+def validate_funding_coverage(
+    frame: pd.DataFrame,
+    symbol: str,
+    start: str | None,
+    end: str | None,
+    *,
+    tolerance_days: float = 1.0,
+    raise_on_gap: bool = True,
+) -> None:
+    """Validate that ``frame`` covers ``[start, end - tolerance_days]``.
+
+    Designed for replay/backtest entry points that must not silently use a
+    partially-populated funding history. ``raise_on_gap=False`` downgrades the
+    failure to a stderr warning for callers in non-strict contexts.
+    """
+    import sys as _sys
+
+    if end is None:
+        return
+    end_ts = pd.Timestamp(end)
+    if end_ts.tz is None:
+        end_ts = end_ts.tz_localize("UTC")
+    else:
+        end_ts = end_ts.tz_convert("UTC")
+    threshold = end_ts - pd.Timedelta(days=float(tolerance_days))
+    if frame.empty:
+        message = (
+            f"{symbol}: funding cache empty for window ending {end}; "
+            "refresh DB/CSV or pass raise_on_gap=False to override."
+        )
+    else:
+        max_ts = pd.to_datetime(frame["fundingTime"], utc=True).max()
+        if max_ts >= threshold:
+            return
+        message = (
+            f"{symbol}: funding coverage ends at {max_ts} (< {threshold}); "
+            f"window requires data through {end_ts}."
+        )
+    if raise_on_gap:
+        raise RuntimeError(message)
+    print(f"  WARNING: {message}", file=_sys.stderr)
+
+
+def load_funding_rates(
+    symbol: str,
+    start: str | None,
+    end: str | None,
+    *,
+    require_coverage: bool = False,
+    coverage_tolerance_days: float = 1.0,
+) -> pd.DataFrame:
+    """Load funding rates from the configured market-data source.
+
+    When ``require_coverage=True``, raise if the returned frame does not extend
+    to ``end - coverage_tolerance_days``. This protects replay paths from
+    silently treating a stale DB snapshot as authoritative.
+    """
+    source = pg_market_data.market_data_source()
+    frame: pd.DataFrame
+    if source in pg_market_data.POSTGRES_SOURCE_VALUES:
+        frame = pg_market_data.load_funding_rates(symbol, start, end)
+    elif source in pg_market_data.AUTO_SOURCE_VALUES:
+        try:
+            frame = pg_market_data.load_funding_rates(symbol, start, end)
+        except Exception as exc:
+            print(f"  {symbol}: PostgreSQL funding load failed ({exc})")
+            frame = pd.DataFrame(columns=["fundingTime", "fundingRate"])
+        else:
+            if frame.empty:
+                frame = pd.DataFrame(columns=["fundingTime", "fundingRate"])
+    else:
+        frame = pd.DataFrame(columns=["fundingTime", "fundingRate"])
+    if require_coverage:
+        validate_funding_coverage(
+            frame,
+            symbol,
+            start,
+            end,
+            tolerance_days=coverage_tolerance_days,
+            raise_on_gap=True,
+        )
+    return frame
 
 
 def load_all_pairs(

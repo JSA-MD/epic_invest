@@ -24,9 +24,11 @@ from search_gp_drawdown_overlay import OverlayParams, build_overlay_inputs
 
 API_BASE = "https://fapi.binance.com"
 DEFAULT_WINDOWS = (
-    ("recent_2m", "2026-02-06", "2026-04-06"),
-    ("recent_6m", "2025-10-06", "2026-04-06"),
-    ("full_4y", "2022-04-06", "2026-04-06"),
+    ("recent_2m", "2026-02-18", "2026-04-18"),
+    ("recent_4m", "2025-12-18", "2026-04-18"),
+    ("recent_6m", "2025-10-18", "2026-04-18"),
+    ("recent_1y", "2025-04-18", "2026-04-18"),
+    ("full_4y", "2022-04-18", "2026-04-18"),
 )
 
 
@@ -132,21 +134,67 @@ def fetch_funding_rates(symbol: str, start_dt: datetime, end_dt: datetime) -> pd
     return out.sort_values("fundingTime").reset_index(drop=True)
 
 
-def load_or_fetch_funding(path: Path, fetch: bool) -> pd.DataFrame:
+def load_or_fetch_funding(
+    path: Path,
+    fetch: bool,
+    *,
+    coverage_end: datetime | None = None,
+    coverage_tolerance_days: float = 1.0,
+    auto_extend: bool = True,
+    symbol: str = "BTCUSDT",
+) -> pd.DataFrame:
+    """Load funding from CSV; optionally fetch when missing or short.
+
+    When ``coverage_end`` is supplied the returned frame must reach
+    ``coverage_end - coverage_tolerance_days`` or the function raises so the
+    main replay path cannot silently use stale funding. ``auto_extend`` will
+    fetch the missing tail from Binance and append to the CSV before the check.
+    """
+    df = pd.DataFrame(columns=["fundingTime", "fundingRate"])
     if path.exists():
         df = pd.read_csv(path, parse_dates=["fundingTime"])
         df["fundingTime"] = pd.to_datetime(df["fundingTime"], utc=True, format='mixed')
         df["fundingRate"] = pd.to_numeric(df["fundingRate"], errors="coerce")
-        return df.dropna(subset=["fundingTime", "fundingRate"]).sort_values("fundingTime").reset_index(drop=True)
-    if not fetch:
-        return pd.DataFrame(columns=["fundingTime", "fundingRate"])
-    df = fetch_funding_rates(
-        "BTCUSDT",
-        datetime(2022, 4, 6, tzinfo=timezone.utc),
-        datetime(2026, 4, 7, tzinfo=timezone.utc),
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
+        df = df.dropna(subset=["fundingTime", "fundingRate"]).sort_values("fundingTime").reset_index(drop=True)
+    elif fetch:
+        df = fetch_funding_rates(
+            symbol,
+            datetime(2022, 4, 6, tzinfo=timezone.utc),
+            coverage_end or datetime(2026, 4, 19, tzinfo=timezone.utc),
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path, index=False)
+
+    if coverage_end is not None:
+        coverage_end_ts = pd.Timestamp(coverage_end)
+        if coverage_end_ts.tz is None:
+            coverage_end_ts = coverage_end_ts.tz_localize("UTC")
+        else:
+            coverage_end_ts = coverage_end_ts.tz_convert("UTC")
+        threshold_ts = coverage_end_ts - pd.Timedelta(days=float(coverage_tolerance_days))
+        max_ts = df["fundingTime"].max() if not df.empty else None
+        if max_ts is None or max_ts < threshold_ts:
+            if auto_extend and fetch:
+                if max_ts is not None:
+                    tail_start = (max_ts + pd.Timedelta(seconds=1)).to_pydatetime()
+                else:
+                    tail_start = datetime(2022, 4, 6, tzinfo=timezone.utc)
+                tail = fetch_funding_rates(symbol, tail_start, coverage_end_ts.to_pydatetime())
+                if not tail.empty:
+                    df = (
+                        pd.concat([df, tail], ignore_index=True)
+                        .drop_duplicates(subset=["fundingTime"])
+                        .sort_values("fundingTime")
+                        .reset_index(drop=True)
+                    )
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    df.to_csv(path, index=False)
+                max_ts = df["fundingTime"].max() if not df.empty else None
+        if max_ts is None or max_ts < threshold_ts:
+            raise RuntimeError(
+                f"{symbol}: funding coverage ends at {max_ts}; window requires "
+                f">= {threshold_ts} (set auto_extend=True with fetch=True or refresh CSV)."
+            )
     return df
 
 
@@ -410,7 +458,14 @@ def main() -> None:
         dtype="float64",
     ).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     overlay_inputs_all = build_overlay_inputs(df_all)
-    funding_df = load_or_fetch_funding(funding_cache_path, fetch=args.fetch_funding)
+    coverage_end_dt = datetime.fromisoformat(end_all).replace(tzinfo=timezone.utc) + timedelta(days=1)
+    funding_df = load_or_fetch_funding(
+        funding_cache_path,
+        fetch=args.fetch_funding,
+        coverage_end=coverage_end_dt,
+        auto_extend=bool(args.fetch_funding),
+        symbol=gp.PRIMARY_PAIR,
+    )
 
     windows_report = {}
     for label, start, end in DEFAULT_WINDOWS:

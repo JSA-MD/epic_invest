@@ -841,6 +841,12 @@ def _realistic_overlay_replay_kernel_impl(
     cash = initial_cash
     qty = 0.0
     n_trades = 0
+    n_wins = 0
+    n_losses = 0
+    entry_qty = 0.0
+    entry_price = 0.0
+    roundtrip_realized_pnl = 0.0
+    roundtrip_fees_paid = 0.0
     fee_paid = 0.0
     slippage_paid = 0.0
     funding_paid = 0.0
@@ -1124,12 +1130,58 @@ def _realistic_overlay_replay_kernel_impl(
             exec_price = px_open * (1.0 + slippage * side)
             trade_notional = diff_qty * exec_price
             fee = abs(diff_qty) * exec_price * fee_rate
+            prev_qty_signed = qty
             cash -= trade_notional
             cash -= fee
             qty += diff_qty
             n_trades += 1
             fee_paid += fee
             slippage_paid += abs(diff_qty) * px_open * slippage
+            new_qty_signed = qty
+            if abs(prev_qty_signed) <= 1e-12 and abs(new_qty_signed) > 1e-12:
+                entry_qty = new_qty_signed
+                entry_price = exec_price
+                roundtrip_realized_pnl = 0.0
+                roundtrip_fees_paid = fee
+            elif abs(prev_qty_signed) > 1e-12 and abs(new_qty_signed) <= 1e-12:
+                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
+                final_pnl = (exec_price - entry_price) * abs(prev_qty_signed) * sign_prev
+                total_pnl = roundtrip_realized_pnl + final_pnl - (roundtrip_fees_paid + fee)
+                if total_pnl > 0.0:
+                    n_wins += 1
+                elif total_pnl < 0.0:
+                    n_losses += 1
+                entry_qty = 0.0
+                entry_price = 0.0
+                roundtrip_realized_pnl = 0.0
+                roundtrip_fees_paid = 0.0
+            elif prev_qty_signed * new_qty_signed < 0.0:
+                close_share = abs(prev_qty_signed) / abs(diff_qty)
+                fee_close = fee * close_share
+                fee_open_new = fee - fee_close
+                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
+                close_pnl = (exec_price - entry_price) * abs(prev_qty_signed) * sign_prev
+                total_pnl = roundtrip_realized_pnl + close_pnl - (roundtrip_fees_paid + fee_close)
+                if total_pnl > 0.0:
+                    n_wins += 1
+                elif total_pnl < 0.0:
+                    n_losses += 1
+                entry_qty = new_qty_signed
+                entry_price = exec_price
+                roundtrip_realized_pnl = 0.0
+                roundtrip_fees_paid = fee_open_new
+            elif abs(new_qty_signed) > abs(prev_qty_signed):
+                added = abs(new_qty_signed) - abs(prev_qty_signed)
+                total = abs(new_qty_signed)
+                entry_price = (entry_price * abs(prev_qty_signed) + exec_price * added) / total
+                entry_qty = new_qty_signed
+                roundtrip_fees_paid += fee
+            else:
+                closed = abs(prev_qty_signed) - abs(new_qty_signed)
+                sign_prev = 1.0 if prev_qty_signed > 0.0 else -1.0
+                roundtrip_realized_pnl += (exec_price - entry_price) * closed * sign_prev
+                roundtrip_fees_paid += fee
+                entry_qty = new_qty_signed
 
         equity_after = cash + qty * next_open
         if equity_after > peak_equity:
@@ -1183,10 +1235,17 @@ def _realistic_overlay_replay_kernel_impl(
     daily_win_rate = 0.0 if day_count == 0 else day_wins / day_count
     final_equity = cash + qty * open_p[-1]
 
+    open_position_at_end = bool(abs(entry_qty) > 1e-12)
+
     if return_trace:
         return {
             "total_return": float(total_return),
             "n_trades": int(n_trades),
+            "n_wins": int(n_wins),
+            "n_losses": int(n_losses),
+            "open_position_at_end": int(open_position_at_end),
+            "open_roundtrip_realized_pnl": float(roundtrip_realized_pnl),
+            "open_roundtrip_fees_paid": float(roundtrip_fees_paid),
             "sharpe": float(sharpe),
             "max_drawdown": float(max_drawdown),
             "final_equity": float(final_equity),
@@ -1227,6 +1286,11 @@ def _realistic_overlay_replay_kernel_impl(
         slippage_paid,
         funding_paid,
         funding_events,
+        n_wins,
+        n_losses,
+        int(open_position_at_end),
+        float(roundtrip_realized_pnl),
+        float(roundtrip_fees_paid),
     )
 
 
@@ -1287,7 +1351,7 @@ def _realistic_overlay_replay_kernel_numba_impl(
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
-) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int]:
+) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float]:
     return _realistic_overlay_replay_kernel_impl(
         open_p,
         close_p,
@@ -1398,20 +1462,55 @@ def build_route_bucket_codes(
     return corr_codes.to_numpy(dtype="int8") * len(BASE_ROUTE_STATE_NAMES) + base_codes
 
 
-def load_or_fetch_funding(symbol: str, start: str, end: str) -> pd.DataFrame:
+def load_or_fetch_funding(
+    symbol: str,
+    start: str,
+    end: str,
+    *,
+    require_coverage: bool = True,
+    coverage_tolerance_days: float = 1.0,
+) -> pd.DataFrame:
+    """Load funding rates merging DB + CSV cache.
+
+    Validates that the union covers ``end - coverage_tolerance_days`` so a
+    partially-populated DB cannot silently look authoritative. Falls back to
+    Binance fetch only when neither DB nor CSV is present.
+    """
+    pg_frame = gp.load_funding_rates(symbol, start, end)
     path = gp.DATA_DIR / f"{symbol}_funding_{start}_{end}.csv"
+    csv_frame = pd.DataFrame(columns=["fundingTime", "fundingRate"])
     if path.exists():
-        df = pd.read_csv(path)
-        df["fundingTime"] = pd.to_datetime(df["fundingTime"], utc=True, format="mixed")
-        df["fundingRate"] = pd.to_numeric(df["fundingRate"], errors="coerce")
-        return df.dropna(subset=["fundingTime", "fundingRate"]).sort_values("fundingTime").reset_index(drop=True)
-    df = fetch_funding_rates(
-        symbol,
-        datetime.fromisoformat(start).replace(tzinfo=UTC),
-        datetime.fromisoformat(end).replace(tzinfo=UTC) + pd.Timedelta(days=1),
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
+        csv_frame = pd.read_csv(path)
+        csv_frame["fundingTime"] = pd.to_datetime(csv_frame["fundingTime"], utc=True, format="mixed")
+        csv_frame["fundingRate"] = pd.to_numeric(csv_frame["fundingRate"], errors="coerce")
+        csv_frame = csv_frame.dropna(subset=["fundingTime", "fundingRate"])
+
+    if pg_frame.empty and csv_frame.empty:
+        df = fetch_funding_rates(
+            symbol,
+            datetime.fromisoformat(start).replace(tzinfo=UTC),
+            datetime.fromisoformat(end).replace(tzinfo=UTC) + pd.Timedelta(days=1),
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path, index=False)
+    else:
+        frames = [frame for frame in (pg_frame, csv_frame) if not frame.empty]
+        df = (
+            pd.concat(frames, ignore_index=True)
+            .drop_duplicates(subset=["fundingTime"], keep="first")
+            .sort_values("fundingTime")
+            .reset_index(drop=True)
+        )
+
+    if require_coverage:
+        gp.validate_funding_coverage(
+            df,
+            symbol,
+            start,
+            end,
+            tolerance_days=coverage_tolerance_days,
+            raise_on_gap=True,
+        )
     return df
 
 
@@ -1899,6 +1998,14 @@ def realistic_overlay_replay_from_context(
         result = kernel(*base_args)
     if kernel is _realistic_overlay_replay_kernel_impl:
         if isinstance(result, tuple):
+            n_wins_v = int(result[14]) if len(result) > 14 else 0
+            n_losses_v = int(result[15]) if len(result) > 15 else 0
+            open_at_end_v = int(result[16]) if len(result) > 16 else 0
+            open_realized_pnl_v = float(result[17]) if len(result) > 17 else 0.0
+            open_fees_v = float(result[18]) if len(result) > 18 else 0.0
+            n_trades_v = int(result[1])
+            decided = n_wins_v + n_losses_v
+            roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
             return {
                 "avg_daily_return": float(result[5]),
                 "total_return": float(result[0]),
@@ -1908,13 +2015,23 @@ def realistic_overlay_replay_from_context(
                 "daily_win_rate": float(result[7]),
                 "worst_day": float(result[8]),
                 "best_day": float(result[9]),
-                "n_trades": int(result[1]),
+                "n_trades": n_trades_v,
+                "n_wins": n_wins_v,
+                "n_losses": n_losses_v,
+                "roundtrip_win_rate": float(roundtrip_winrate),
+                "open_position_at_end": bool(open_at_end_v),
+                "open_roundtrip_realized_pnl": float(open_realized_pnl_v),
+                "open_roundtrip_fees_paid": float(open_fees_v),
                 "fee_paid": float(result[10]),
                 "slippage_paid": float(result[11]),
                 "funding_paid": float(result[12]),
                 "funding_events": int(result[13]),
                 "final_equity": float(result[4]),
             }
+        n_wins_v = int(result.get("n_wins", 0))
+        n_losses_v = int(result.get("n_losses", 0))
+        decided = n_wins_v + n_losses_v
+        roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
         metrics = {
             "avg_daily_return": float(result["daily_metrics"]["avg_daily_return"]),
             "total_return": float(result["total_return"]),
@@ -1925,6 +2042,12 @@ def realistic_overlay_replay_from_context(
             "worst_day": float(result["daily_metrics"]["worst_day"]),
             "best_day": float(result["daily_metrics"]["best_day"]),
             "n_trades": int(result["n_trades"]),
+            "n_wins": n_wins_v,
+            "n_losses": n_losses_v,
+            "roundtrip_win_rate": float(roundtrip_winrate),
+            "open_position_at_end": bool(int(result.get("open_position_at_end", 0))),
+            "open_roundtrip_realized_pnl": float(result.get("open_roundtrip_realized_pnl", 0.0)),
+            "open_roundtrip_fees_paid": float(result.get("open_roundtrip_fees_paid", 0.0)),
             "fee_paid": float(result.get("fee_paid", 0.0)),
             "slippage_paid": float(result.get("slippage_paid", 0.0)),
             "funding_paid": float(result.get("funding_paid", 0.0)),
@@ -1934,6 +2057,13 @@ def realistic_overlay_replay_from_context(
         if return_trace:
             metrics["trace"] = result.get("trace") or {}
         return metrics
+    n_wins_v = int(result[14]) if len(result) > 14 else 0
+    n_losses_v = int(result[15]) if len(result) > 15 else 0
+    open_at_end_v = int(result[16]) if len(result) > 16 else 0
+    open_realized_pnl_v = float(result[17]) if len(result) > 17 else 0.0
+    open_fees_v = float(result[18]) if len(result) > 18 else 0.0
+    decided = n_wins_v + n_losses_v
+    roundtrip_winrate = (n_wins_v / decided) if decided > 0 else 0.0
     return {
         "avg_daily_return": float(result[5]),
         "total_return": float(result[0]),
@@ -1944,6 +2074,12 @@ def realistic_overlay_replay_from_context(
         "worst_day": float(result[8]),
         "best_day": float(result[9]),
         "n_trades": int(result[1]),
+        "n_wins": n_wins_v,
+        "n_losses": n_losses_v,
+        "roundtrip_win_rate": float(roundtrip_winrate),
+        "open_position_at_end": bool(open_at_end_v),
+        "open_roundtrip_realized_pnl": float(open_realized_pnl_v),
+        "open_roundtrip_fees_paid": float(open_fees_v),
         "fee_paid": float(result[10]),
         "slippage_paid": float(result[11]),
         "funding_paid": float(result[12]),

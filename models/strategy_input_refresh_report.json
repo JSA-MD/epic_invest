@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-04-25T09:47:18.203975+00:00",
+  "pairs": [
+    "BTCUSDT",
+    "BNBUSDT"
+  ],
+  "context_names": [
+    "QQQ",
+    "SPY",
+    "GLD",
+    "DXY"
+  ],
+  "lookback_days": 30,
+  "refresh_ohlcv": true,
+  "ohlcv_start": "2022-04-06",
+  "ohlcv": {
+    "status": "ok",
+    "per_pair": {
+      "BTCUSDT": {
+        "5m": {
+          "rows": 420882,
+          "last_timestamp": "2026-04-25T09:20:00+00:00"
+        },
+        "1d": {
+          "rows": 1117,
+          "last_timestamp": "2026-03-24T00:00:00+00:00"
+        }
+      },
+      "BNBUSDT": {
+        "5m": {
+          "rows": 324849,
+          "last_timestamp": "2026-04-05T16:05:00+00:00"
+        },
+        "1d": {
+          "rows": 1124,
+          "last_timestamp": "2026-03-31T00:00:00+00:00"
+        }
+      }
+    }
+  },
+  "refresh_funding": true,
+  "funding_start": "2022-04-06",
+  "funding": {
+    "status": "ok",
+    "per_pair": {
+      "BTCUSDT": {
+        "rows": 4442,
+        "last_timestamp": "2026-04-25T08:00:00.002000+00:00",
+        "path": "/Users/jsa/work/epic_invest/data/binance_futures/BTCUSDT_funding_2022-04-06_2026-04-25.csv"
+      },
+      "BNBUSDT": {
+        "rows": 4442,
+        "last_timestamp": "2026-04-25T08:00:00.002000+00:00",
+        "path": "/Users/jsa/work/epic_invest/data/binance_futures/BNBUSDT_funding_2022-04-06_2026-04-25.csv"
+      }
+    }
+  },
+  "market_context": {
+    "status": "ok",
+    "series": [
+      {
+        "name": "QQQ",
+        "label": "QQQ",
+        "status": "fetched",
+        "source": "yahoo",
+        "resolved_symbol": "QQQ",
+        "rows": 2515
+      },
+      {
+        "name": "SPY",
+        "label": "SPY",
+        "status": "fetched",
+        "source": "yahoo",
+        "resolved_symbol": "SPY",
+        "rows": 2515
+      },
+      {
+        "name": "GLD",
+        "label": "GLD",
+        "status": "fetched",
+        "source": "yahoo",
+        "resolved_symbol": "GLD",
+        "rows": 2515
+      },
+      {
+        "name": "DXY",
+        "label": "DXY",
+        "status": "fetched",
+        "source": "yahoo",
+        "resolved_symbol": "DX-Y.NYB",
+        "rows": 2515
+      }
+    ],
+    "usable_columns": [
+      "QQQ",
+      "SPY",
+      "GLD",
+      "DXY"
+    ],
+    "max_ffill_days": 3,
+    "min_context_days": 60
+  },
+  "derivatives": {
+    "status": "ok",
+    "per_pair": {
+      "BTCUSDT": {
+        "open_interest": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "top_trader_position_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "top_trader_account_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "global_long_short_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "taker_buy_sell_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:40:00+00:00"
+        },
+        "basis_perpetual": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        }
+      },
+      "BNBUSDT": {
+        "open_interest": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "top_trader_position_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "top_trader_account_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "global_long_short_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        },
+        "taker_buy_sell_ratio": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:40:00+00:00"
+        },
+        "basis_perpetual": {
+          "rows": 12790,
+          "last_timestamp": "2026-04-25T09:45:00+00:00"
+        }
+      }
+    }
+  }
+}

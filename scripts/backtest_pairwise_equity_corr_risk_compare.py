@@ -55,12 +55,55 @@ def json_safe(value: Any) -> Any:
     return value
 
 
-def load_funding_cache(pair: str) -> pd.DataFrame:
+def _load_funding_csv(pair: str) -> pd.DataFrame:
     path = gp.DATA_DIR / f"{pair}_funding_{FUNDING_RANGE_START}_{FUNDING_RANGE_END}.csv"
+    if not path.exists():
+        candidates = sorted(gp.DATA_DIR.glob(f"{pair}_funding_{FUNDING_RANGE_START}_*.csv"))
+        if not candidates:
+            return pd.DataFrame(columns=["fundingTime", "fundingRate"])
+        path = candidates[-1]
     df = pd.read_csv(path)
     df["fundingTime"] = pd.to_datetime(df["fundingTime"], utc=True, format="mixed")
     df["fundingRate"] = pd.to_numeric(df["fundingRate"], errors="coerce")
     return df.dropna(subset=["fundingTime", "fundingRate"]).sort_values("fundingTime").reset_index(drop=True)
+
+
+def load_funding_cache(pair: str) -> pd.DataFrame:
+    """Load funding rates, requiring full coverage of [FUNDING_RANGE_START, FUNDING_RANGE_END].
+
+    Merges PostgreSQL data with the CSV cache so a partially-populated DB does
+    not get treated as authoritative; CSV fills any gaps. Raises when the union
+    still falls short of the required end date so callers cannot silently use
+    stale funding data.
+    """
+    range_start = pd.Timestamp(FUNDING_RANGE_START, tz=UTC)
+    range_end = pd.Timestamp(FUNDING_RANGE_END, tz=UTC) + pd.Timedelta(days=1)
+    pg_frame = gp.load_funding_rates(pair, FUNDING_RANGE_START, FUNDING_RANGE_END)
+    csv_frame = _load_funding_csv(pair)
+
+    frames = [frame for frame in (pg_frame, csv_frame) if not frame.empty]
+    if not frames:
+        raise RuntimeError(f"No funding data available for {pair}")
+    merged = (
+        pd.concat(frames, ignore_index=True)
+        .drop_duplicates(subset=["fundingTime"], keep="first")
+        .sort_values("fundingTime")
+        .reset_index(drop=True)
+    )
+
+    actual_end = merged["fundingTime"].max()
+    expected_min_count = max(1, int((range_end - range_start).total_seconds() // (8 * 3600)) - 2)
+    if pd.isna(actual_end) or actual_end < range_end - pd.Timedelta(days=1):
+        raise RuntimeError(
+            f"Funding coverage for {pair} ends at {actual_end} but window requires "
+            f">= {range_end - pd.Timedelta(days=1)}; refresh CSV/DB before running."
+        )
+    if len(merged) < expected_min_count:
+        raise RuntimeError(
+            f"Funding rows for {pair}: {len(merged)} < expected ~{expected_min_count} "
+            f"for window {FUNDING_RANGE_START}..{FUNDING_RANGE_END}."
+        )
+    return merged
 
 
 def filter_window(df: pd.DataFrame, start: str, end: str) -> pd.DataFrame:

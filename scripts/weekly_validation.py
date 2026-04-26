@@ -283,13 +283,35 @@ def compute_live_win_rate(days: int = 30) -> dict:
 
     n_evaluated = daily_wins + daily_losses
     if n_evaluated == 0:
-        # pnl_pct not in log schema — report trade count only
+        # pnl_pct not in log schema — try the live_actual_pnl_30d report as fallback.
+        live_pnl_path = ROOT / "models" / "live_actual_pnl_30d.json"
+        if live_pnl_path.exists():
+            try:
+                live_pnl = json.loads(live_pnl_path.read_text())
+                daily_rows = live_pnl.get("daily_pnl_live") or []
+                wins = sum(1 for r in daily_rows if float(r.get("total", 0.0)) > 0.0)
+                losses = sum(1 for r in daily_rows if float(r.get("total", 0.0)) < 0.0)
+                fallback_evaluated = wins + losses
+                if fallback_evaluated > 0:
+                    fb_win_rate = wins / fallback_evaluated * 100.0
+                    return {
+                        "win_rate": round(fb_win_rate, 1),
+                        "n_trades": len(records),
+                        "n_days_evaluated": fallback_evaluated,
+                        "flag": fb_win_rate < WIN_RATE_WARN,
+                        "note": f"pnl_pct missing in decisions; fallback to live_actual_pnl_30d ({fallback_evaluated} days)",
+                    }
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
+                pass
+        # No usable pnl source -> mark unevaluated so the verdict gate flags it.
         return {
             "win_rate": None,
             "n_trades": len(records),
             "n_days_evaluated": 0,
             "flag": False,
-            "note": "pnl_pct not in log; trade count only",
+            "unevaluated": True,
+            "note": "pnl_pct not in log AND no fallback available",
+            "error": "win_rate could not be computed: pnl_pct absent from decision log",
         }
 
     win_rate = daily_wins / n_evaluated * 100.0

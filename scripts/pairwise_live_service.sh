@@ -89,6 +89,31 @@ write_launchd_env_file() {
     printf 'export PAIRWISE_FORCE_EXECUTE=%q\n' "$FORCE_EXECUTE"
     printf 'export PAIRWISE_FORCE_NOTE=%q\n' "$FORCE_NOTE"
     printf 'export PAIRWISE_LIVE_PROMOTION_REPORT_PATH=%q\n' "$PROMOTION_REPORT_PATH"
+    # Drift-fix overlays — pinned safe defaults so watchdog-triggered restarts
+    # never silently revert to unbounded sizing or stale-price exposure.
+    printf 'export PAIRWISE_GROSS_CAP=%q\n' "${PAIRWISE_GROSS_CAP:-0.01}"
+    printf 'export PAIRWISE_NO_TRADE_BAND_PCT=%q\n' "${PAIRWISE_NO_TRADE_BAND_PCT:-40}"
+    printf 'export PAIRWISE_MAX_HOLD_BARS=%q\n' "${PAIRWISE_MAX_HOLD_BARS:-288}"
+    printf 'export PAIRWISE_CVAR_CUT=%q\n' "${PAIRWISE_CVAR_CUT:-1}"
+    printf 'export PAIRWISE_CVAR_CUT_HOLD_HOURS=%q\n' "${PAIRWISE_CVAR_CUT_HOLD_HOURS:-24}"
+    printf 'export EPIC_MARKET_DATA_SOURCE=%q\n' "${EPIC_MARKET_DATA_SOURCE:-postgres}"
+    for key in \
+      MARKET_DATA_SOURCE \
+      EPIC_POSTGRES_CONTAINER \
+      EPIC_POSTGRES_USER \
+      EPIC_POSTGRES_DB \
+      EPIC_POSTGRES_SCHEMA \
+      EPIC_POSTGRES_CANDLES_TABLE \
+      EPIC_POSTGRES_FUNDING_TABLE \
+      EPIC_DOCKER_BIN \
+      PAIRWISE_DIRECTIONAL_GA_OVERLAY \
+      PAIRWISE_DIRECTIONAL_GA_MODE \
+      PAIRWISE_DIRECTIONAL_GA_PATH
+    do
+      if [[ -n "${!key:-}" ]]; then
+        printf 'export %s=%q\n' "$key" "${!key}"
+      fi
+    done
   } >"$PAIRWISE_LAUNCHD_ENV_PATH"
 }
 

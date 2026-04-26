@@ -49,7 +49,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--report-out", type=Path, default=ROOT / "models" / "live_vs_backtest_same_window.json")
     p.add_argument("--summary-path", type=Path, default=DEFAULT_SUMMARY_PATH)
     p.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH)
-    p.add_argument("--initial", type=float, default=100000.0, help="notional for backtest sizing")
+    p.add_argument(
+        "--initial",
+        type=float,
+        default=None,
+        help="notional for backtest sizing; defaults to live initial_equity_estimate from the live report",
+    )
     return p.parse_args()
 
 
@@ -63,6 +68,23 @@ def main() -> None:
     if not daily_rows:
         print("Live P&L report has no daily_pnl_live rows", file=sys.stderr)
         sys.exit(2)
+
+    live_initial = float(live.get("initial_equity_estimate") or 0.0)
+    if args.initial is not None:
+        notional = float(args.initial)
+        if abs(notional - live_initial) > 1.0:
+            print(
+                f"WARN: --initial={notional:.2f} differs from live initial_equity_estimate={live_initial:.2f};"
+                " dollar comparison will be biased.",
+                file=sys.stderr,
+            )
+    elif live_initial > 0:
+        notional = live_initial
+        print(f"Using live initial_equity_estimate as backtest notional: ${notional:,.2f}")
+    else:
+        notional = 100000.0
+        print(f"WARN: live initial_equity_estimate missing; defaulting to $100,000 — dollar comparison NOT meaningful", file=sys.stderr)
+    args.initial = notional
 
     # Resolve common live date window
     dates = sorted({r["date"] for r in daily_rows if r.get("date")})
@@ -133,7 +155,8 @@ def main() -> None:
             backtest_daily.setdefault(date_str, {})[pair] = float(ret) * args.initial
         print(f"  {pair}: {len(daily)} backtest dates; example: {daily.index[0]}={daily.iloc[0]*100:.2f}%, {daily.index[-1]}={daily.iloc[-1]*100:.2f}%")
 
-    # Align live vs backtest per (date, pair)
+    # Align live vs backtest per (date, pair). All percentages are pct-of-base;
+    # dollars use the SAME notional for both sides so $ comparison is fair.
     rows: list[dict[str, Any]] = []
     common_dates = sorted(set(live_by_date.keys()) & set(backtest_daily.keys()))
     for date in common_dates:
@@ -142,25 +165,37 @@ def main() -> None:
         for pair in PAIRS:
             live_p = live_pairs.get(pair, 0.0)
             bt_p = bt_pairs.get(pair, 0.0)
+            live_pct = live_p / args.initial * 100.0
+            bt_pct = bt_p / args.initial * 100.0
             rows.append({
                 "date": date,
                 "pair": pair,
                 "live_pnl_usd": live_p,
                 "backtest_pnl_usd": bt_p,
+                "live_pnl_pct_of_base": live_pct,
+                "backtest_pnl_pct_of_base": bt_pct,
                 "diff_usd": live_p - bt_p,
-                "diff_bps_of_initial": (live_p - bt_p) / args.initial * 1e4,
+                "diff_pct_of_base": live_pct - bt_pct,
+                "diff_bps_of_base": (live_p - bt_p) / args.initial * 1e4,
             })
 
-    diffs_bps = [abs(r["diff_bps_of_initial"]) for r in rows]
+    diffs_bps = [abs(r["diff_bps_of_base"]) for r in rows]
+    live_total_usd = sum(r["live_pnl_usd"] for r in rows)
+    backtest_total_usd = sum(r["backtest_pnl_usd"] for r in rows)
     drift_summary = {
+        "base_notional_usd": float(args.initial),
+        "live_initial_equity_estimate_usd": live_initial,
         "n_dates_compared": len(common_dates),
         "n_pair_days": len(rows),
         "mean_abs_diff_bps": float(sum(diffs_bps) / len(diffs_bps)) if diffs_bps else 0.0,
         "max_abs_diff_bps": float(max(diffs_bps)) if diffs_bps else 0.0,
         "days_drift_gt_50bps": sum(1 for d in diffs_bps if d > 50),
-        "live_total_usd": sum(r["live_pnl_usd"] for r in rows),
-        "backtest_total_usd": sum(r["backtest_pnl_usd"] for r in rows),
-        "gap_total_usd": sum(r["diff_usd"] for r in rows),
+        "live_total_usd": live_total_usd,
+        "backtest_total_usd": backtest_total_usd,
+        "gap_total_usd": live_total_usd - backtest_total_usd,
+        "live_total_pct_of_base": live_total_usd / args.initial * 100.0,
+        "backtest_total_pct_of_base": backtest_total_usd / args.initial * 100.0,
+        "gap_total_pct_of_base": (live_total_usd - backtest_total_usd) / args.initial * 100.0,
     }
 
     out = {

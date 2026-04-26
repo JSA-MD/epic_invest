@@ -179,23 +179,51 @@ def main() -> None:
                 "diff_bps_of_base": (live_p - bt_p) / args.initial * 1e4,
             })
 
-    diffs_bps = [abs(r["diff_bps_of_base"]) for r in rows]
+    pair_day_diffs_bps = [abs(r["diff_bps_of_base"]) for r in rows]
     live_total_usd = sum(r["live_pnl_usd"] for r in rows)
     backtest_total_usd = sum(r["backtest_pnl_usd"] for r in rows)
+
+    # Per-DATE aggregation (sum across pairs first, then take abs). This is
+    # the "daily drift" the user actually feels in account equity — it does
+    # NOT cancel BTC vs BNB signs within a single calendar day, and it does
+    # NOT get diluted by zero-trade pair-days. Codex 16th-round fix.
+    per_date_live: dict[str, float] = defaultdict(float)
+    per_date_backtest: dict[str, float] = defaultdict(float)
+    for r in rows:
+        per_date_live[r["date"]] += r["live_pnl_usd"]
+        per_date_backtest[r["date"]] += r["backtest_pnl_usd"]
+    per_date_diffs_usd = [per_date_live[d] - per_date_backtest[d] for d in common_dates]
+    per_date_abs_bps = [abs(diff_usd) / args.initial * 1e4 for diff_usd in per_date_diffs_usd]
+
     drift_summary = {
         "base_notional_usd": float(args.initial),
         "live_initial_equity_estimate_usd": live_initial,
         "n_dates_compared": len(common_dates),
         "n_pair_days": len(rows),
-        "mean_abs_diff_bps": float(sum(diffs_bps) / len(diffs_bps)) if diffs_bps else 0.0,
-        "max_abs_diff_bps": float(max(diffs_bps)) if diffs_bps else 0.0,
-        "days_drift_gt_50bps": sum(1 for d in diffs_bps if d > 50),
+        # Pair-day basis (kept for backwards compatibility but flagged as the
+        # weaker metric — diluted by per-date sign offsets)
+        "pair_day_mean_abs_diff_bps": float(sum(pair_day_diffs_bps) / len(pair_day_diffs_bps)) if pair_day_diffs_bps else 0.0,
+        "pair_day_max_abs_diff_bps": float(max(pair_day_diffs_bps)) if pair_day_diffs_bps else 0.0,
+        "pair_day_count_gt_50bps": sum(1 for d in pair_day_diffs_bps if d > 50),
+        # Per-date basis (PRIMARY metric for live drift)
+        "per_date_mean_abs_diff_bps": float(sum(per_date_abs_bps) / len(per_date_abs_bps)) if per_date_abs_bps else 0.0,
+        "per_date_max_abs_diff_bps": float(max(per_date_abs_bps)) if per_date_abs_bps else 0.0,
+        "per_date_days_drift_gt_50bps": sum(1 for d in per_date_abs_bps if d > 50),
+        "per_date_days_drift_gt_100bps": sum(1 for d in per_date_abs_bps if d > 100),
+        # Totals
         "live_total_usd": live_total_usd,
         "backtest_total_usd": backtest_total_usd,
         "gap_total_usd": live_total_usd - backtest_total_usd,
         "live_total_pct_of_base": live_total_usd / args.initial * 100.0,
         "backtest_total_pct_of_base": backtest_total_usd / args.initial * 100.0,
         "gap_total_pct_of_base": (live_total_usd - backtest_total_usd) / args.initial * 100.0,
+        "avg_daily_gap_bps": float(sum(per_date_diffs_usd)) / len(per_date_diffs_usd) / args.initial * 1e4 if per_date_diffs_usd else 0.0,
+        "primary_metric_note": (
+            "USE per_date_mean_abs_diff_bps as the daily drift figure."
+            " pair_day_mean_abs_diff_bps is diluted by zero-trade pair-rows and by"
+            " within-date sign offsets between BTC/BNB and will materially understate"
+            " the drift the user observes in account equity."
+        ),
     }
 
     out = {

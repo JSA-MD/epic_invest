@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.epicinvest.position-reconciliation</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jsa/work/epic_invest/scripts/position_reconciliation_launchd_entry.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jsa/work/epic_invest</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/epic-invest-recon.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/epic-invest-recon.log</string>
+</dict>
+</plist>

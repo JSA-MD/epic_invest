@@ -44,9 +44,17 @@ from search_pair_subset_regime_mixture import (
 load_dotenv(ROOT / ".env")
 
 PAIRS = ("BTCUSDT", "BNBUSDT")
+# If PAIRWISE_PAIR_OVERRIDE is set (e.g. "ETHUSDT"), restrict trading to that single pair.
+_pair_override = os.environ.get("PAIRWISE_PAIR_OVERRIDE", "").strip()
+if _pair_override:
+    PAIRS = (_pair_override,)
 PAIR_TO_MARKET = {
     "BTCUSDT": "BTC/USDT:USDT",
     "BNBUSDT": "BNB/USDT:USDT",
+    "ETHUSDT": "ETH/USDT:USDT",
+    "SOLUSDT": "SOL/USDT:USDT",
+    "XRPUSDT": "XRP/USDT:USDT",
+    "DOGEUSDT": "DOGE/USDT:USDT",
 }
 
 DEFAULT_SUMMARY_PATH = ROOT / "models" / "gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json"
@@ -79,6 +87,34 @@ PAIRWISE_EQUITY_CORR_RISK_ENABLED = os.getenv("PAIRWISE_EQUITY_CORR_RISK", "0").
     "no",
     "off",
 }
+DIRECTIONAL_GA_OVERLAY_ENABLED = os.getenv("PAIRWISE_DIRECTIONAL_GA_OVERLAY", "0").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+DIRECTIONAL_GA_OVERLAY_MODE = os.getenv("PAIRWISE_DIRECTIONAL_GA_MODE", "gate").strip().lower() or "gate"
+DIRECTIONAL_GA_OVERLAY_PATH = Path(
+    os.getenv("PAIRWISE_DIRECTIONAL_GA_PATH", str(ROOT / "models" / "directional_genetic_overlay_candidate.json"))
+)
+# D2: per-pair gross weight cap (1.0 = no cap; set PAIRWISE_GROSS_CAP=0.01 for Stage A)
+PAIRWISE_GROSS_CAP = float(os.getenv("PAIRWISE_GROSS_CAP", "1.0"))
+
+# D1: max-hold-bars auto-flatten (24 h = 288 × 5-min bars)
+PAIRWISE_MAX_HOLD_BARS = int(os.getenv("PAIRWISE_MAX_HOLD_BARS", "288"))
+_MAX_HOLD_SECONDS = PAIRWISE_MAX_HOLD_BARS * 5 * 60  # 288 bars × 300 s = 86 400 s
+
+# R3: CVaR-99 cut overlay
+PAIRWISE_CVAR_CUT_ENABLED = os.getenv("PAIRWISE_CVAR_CUT", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+PAIRWISE_CVAR_CUT_HOLD_HOURS = int(os.getenv("PAIRWISE_CVAR_CUT_HOLD_HOURS", "24"))
+
+DEFAULT_TAIL_RISK_PATH = ROOT / "models" / "tail_risk_report.json"
+DEFAULT_LIVE_PNL_PATH = ROOT / "models" / "live_actual_pnl_30d.json"
 
 
 def utc_now() -> datetime:
@@ -106,6 +142,82 @@ def minutes_since(value: Any) -> float:
     if parsed is None:
         return math.inf
     return max(0.0, (utc_now() - parsed).total_seconds() / 60.0)
+
+
+# ---------------------------------------------------------------------------
+# D1 / R3 overlay helpers (unit-testable, no side effects)
+# ---------------------------------------------------------------------------
+
+def compute_position_age_seconds(open_since_ts: Any) -> float:
+    """Return how many seconds a position has been open; inf if not open."""
+    parsed = parse_utc_datetime(open_since_ts)
+    if parsed is None:
+        return math.inf
+    return max(0.0, (utc_now() - parsed).total_seconds())
+
+
+def load_tail_risk_thresholds(path: Path = DEFAULT_TAIL_RISK_PATH) -> Dict[str, float]:
+    """Return {pair: CVaR_99} from models/tail_risk_report.json.
+
+    Returns an empty dict if the file is missing or malformed.
+    """
+    try:
+        payload = json.loads(path.read_text())
+        per_pair = payload.get("per_pair") or {}
+        return {pair: float(per_pair[pair]["CVaR_99"]) for pair in per_pair if "CVaR_99" in per_pair[pair]}
+    except Exception:
+        return {}
+
+
+def compute_rolling_30d_return(
+    pair: str,
+    path: Path = DEFAULT_LIVE_PNL_PATH,
+    initial_equity: float = 100_000.0,
+) -> float | None:
+    """Return rolling 30-day realised return for *pair* (fraction, e.g. -0.03 = -3%).
+
+    Uses models/live_actual_pnl_30d.json ``daily_pnl_live`` rows.
+    Returns None if the file is missing / pair has no rows.
+    """
+    try:
+        payload = json.loads(path.read_text())
+        rows = payload.get("daily_pnl_live") or []
+        equity_ref = float(payload.get("initial_equity_estimate") or initial_equity) or initial_equity
+        cutoff = (utc_now() - timedelta(days=30)).date()
+        total_pnl = 0.0
+        found = False
+        for row in rows:
+            if str(row.get("pair")) != pair:
+                continue
+            try:
+                row_date = datetime.fromisoformat(str(row["date"])).date()
+            except (KeyError, ValueError):
+                continue
+            if row_date < cutoff:
+                continue
+            total_pnl += float(row.get("total", 0.0) or 0.0)
+            found = True
+        if not found:
+            return None
+        return total_pnl / equity_ref
+    except Exception:
+        return None
+
+
+def should_apply_cvar_cut(
+    pair: str,
+    cvar_thresholds: Mapping[str, float],
+    live_pnl_path: Path = DEFAULT_LIVE_PNL_PATH,
+) -> bool:
+    """Return True if 30-day realised return is below the pair's CVaR-99 threshold."""
+    threshold = cvar_thresholds.get(pair)
+    if threshold is None:
+        return False
+    rolling_return = compute_rolling_30d_return(pair, live_pnl_path)
+    if rolling_return is None:
+        return False
+    # CVaR_99 from tail_risk_report is typically negative (loss); compare directly
+    return rolling_return < threshold
 
 
 def json_ready(value: Any) -> Any:
@@ -170,6 +282,8 @@ def _default_state() -> Dict[str, Any]:
         "latest_decision_snapshot": {},
         "promotion_gate": {},
         "decision_journal": [],
+        "position_open_since_ts": {},
+        "cvar_cut_until_ts": {},
     }
 
 
@@ -865,6 +979,36 @@ def build_pairwise_plan(
             **final_plan,
         }
 
+    directional_ga_overlay: Dict[str, Any] | None = None
+    if DIRECTIONAL_GA_OVERLAY_ENABLED:
+        try:
+            from directional_genetic_overlay import apply_overlay_to_targets, compute_overlay_targets, load_candidate
+
+            overlay_candidate = load_candidate(DIRECTIONAL_GA_OVERLAY_PATH)
+            overlay_targets = compute_overlay_targets(df, overlay_candidate, PAIRS)
+            adjusted_targets, overlay_details = apply_overlay_to_targets(
+                target_weights,
+                overlay_targets,
+                mode=DIRECTIONAL_GA_OVERLAY_MODE,
+            )
+            for pair in PAIRS:
+                target_weights[pair] = float(adjusted_targets.get(pair, target_weights.get(pair, 0.0)))
+                pair_plans[pair]["directional_ga_overlay"] = overlay_details["pairs"].get(pair, {})
+                pair_plans[pair]["target_weight"] = target_weights[pair]
+            directional_ga_overlay = {
+                "enabled": True,
+                "status": "applied",
+                "path": str(DIRECTIONAL_GA_OVERLAY_PATH),
+                **overlay_details,
+            }
+        except Exception as exc:
+            directional_ga_overlay = {
+                "enabled": True,
+                "status": "error",
+                "path": str(DIRECTIONAL_GA_OVERLAY_PATH),
+                "error": str(exc),
+            }
+
     gross = float(sum(abs(weight) for weight in target_weights.values()))
     net = float(sum(target_weights.values()))
     return {
@@ -882,6 +1026,7 @@ def build_pairwise_plan(
         "summary_path": str(resolved_summary_path),
         "promotion_report_path": str(resolved_promotion_report_path),
         "model_path": str(resolved_model_path),
+        "directional_ga_overlay": directional_ga_overlay,
     }
 
 
@@ -1442,7 +1587,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                 args.decision_log_path,
                 {
                     "at": iso_now(),
-                    "mode": "live-blocked",
+                    "mode": f"{args.mode}-blocked",
                     "execute": True,
                     "plan": plan,
                     "promotion_gate": promotion_gate,
@@ -1465,6 +1610,103 @@ def run_live_once(args: argparse.Namespace) -> int:
             )
             return 2
 
+        # D2: apply per-pair gross cap before order placement
+        if PAIRWISE_GROSS_CAP < 1.0:
+            plan["target_weights"] = {
+                pair: max(-PAIRWISE_GROSS_CAP, min(PAIRWISE_GROSS_CAP, float(w)))
+                for pair, w in plan["target_weights"].items()
+            }
+
+        # ------------------------------------------------------------------
+        # D1: max-hold-bars auto-flatten (24 h)
+        # ------------------------------------------------------------------
+        position_open_since: Dict[str, Any] = dict(state.get("position_open_since_ts") or {})
+        _now = utc_now()
+        for _pair in list(PAIRS):
+            _tw = float(plan["target_weights"].get(_pair, 0.0))
+            _prev_since = position_open_since.get(_pair)
+            if abs(_tw) > TARGET_WEIGHT_EPS:
+                if _prev_since is None:
+                    # Position just opened — record timestamp
+                    position_open_since[_pair] = _now.isoformat()
+                else:
+                    age_secs = compute_position_age_seconds(_prev_since)
+                    if age_secs > _MAX_HOLD_SECONDS:
+                        _msg = (
+                            f"[pairwise-live] D1 max_hold override: {_pair} position "
+                            f"open {age_secs/3600:.1f}h >= {PAIRWISE_MAX_HOLD_BARS} bars — forcing flat"
+                        )
+                        print(_msg)
+                        _notif = load_notification_bridge()
+                        _notif.send_telegram_notification(_msg)
+                        plan["target_weights"][_pair] = 0.0
+                        if _pair in plan.get("pair_plans", {}):
+                            plan["pair_plans"][_pair]["target_weight"] = 0.0
+                        position_open_since[_pair] = None
+                        # Log to decision_journal
+                        state.setdefault("decision_journal", []).append(
+                            {
+                                "at": _now.isoformat(),
+                                "pair": _pair,
+                                "override_reason": "max_hold",
+                                "age_seconds": age_secs,
+                                "max_hold_seconds": _MAX_HOLD_SECONDS,
+                                "target_weight_forced": 0.0,
+                            }
+                        )
+            else:
+                # Position closed / flat — clear open-since
+                position_open_since[_pair] = None
+        state["position_open_since_ts"] = position_open_since
+
+        # ------------------------------------------------------------------
+        # R3: CVaR-99 cut overlay
+        # ------------------------------------------------------------------
+        if PAIRWISE_CVAR_CUT_ENABLED:
+            cvar_thresholds = load_tail_risk_thresholds()
+            cvar_cut_until: Dict[str, Any] = dict(state.get("cvar_cut_until_ts") or {})
+            for _pair in list(PAIRS):
+                _cut_until_raw = cvar_cut_until.get(_pair)
+                _cut_until_dt = parse_utc_datetime(_cut_until_raw)
+                # Check if an existing cut is still active
+                if _cut_until_dt is not None and _now < _cut_until_dt:
+                    _tw = float(plan["target_weights"].get(_pair, 0.0))
+                    if abs(_tw) > TARGET_WEIGHT_EPS:
+                        plan["target_weights"][_pair] = 0.0
+                        if _pair in plan.get("pair_plans", {}):
+                            plan["pair_plans"][_pair]["target_weight"] = 0.0
+                    continue
+                else:
+                    # Cut expired — clear it
+                    if _cut_until_dt is not None and _now >= _cut_until_dt:
+                        cvar_cut_until[_pair] = None
+                # Evaluate whether a new cut should trigger
+                if should_apply_cvar_cut(_pair, cvar_thresholds):
+                    _resume_dt = _now + timedelta(hours=PAIRWISE_CVAR_CUT_HOLD_HOURS)
+                    cvar_cut_until[_pair] = _resume_dt.isoformat()
+                    _msg = (
+                        f"[pairwise-live] R3 CVaR-99 cut: {_pair} 30d return below "
+                        f"CVaR-99 threshold ({cvar_thresholds.get(_pair, 'N/A'):.4f}). "
+                        f"Forcing flat until {_resume_dt.strftime('%Y-%m-%dT%H:%MZ')}"
+                    )
+                    print(_msg)
+                    _notif = load_notification_bridge()
+                    _notif.send_telegram_notification(_msg)
+                    plan["target_weights"][_pair] = 0.0
+                    if _pair in plan.get("pair_plans", {}):
+                        plan["pair_plans"][_pair]["target_weight"] = 0.0
+                    state.setdefault("decision_journal", []).append(
+                        {
+                            "at": _now.isoformat(),
+                            "pair": _pair,
+                            "override_reason": "cvar_cut",
+                            "cvar_threshold": cvar_thresholds.get(_pair),
+                            "cvar_cut_until": _resume_dt.isoformat(),
+                            "target_weight_forced": 0.0,
+                        }
+                    )
+            state["cvar_cut_until_ts"] = cvar_cut_until
+
         actions = bridge.reconcile_target_positions(
             exchange,
             equity,
@@ -1475,10 +1717,10 @@ def run_live_once(args: argparse.Namespace) -> int:
         protection_report = bridge.install_shutdown_protection(exchange, state, execute=True)
         positions = bridge.fetch_open_position_map(exchange)
         sync_shadow_paper_from_live_positions(state, positions, equity)
-        execution_mode = "live-executed"
+        execution_mode = f"{args.mode}-executed"
         execution_override: Dict[str, Any] | None = None
         if force_execute and not gate_ready:
-            execution_mode = "live-forced"
+            execution_mode = f"{args.mode}-forced"
             execution_override = {
                 "force_execute": True,
                 "force_note": force_note,
@@ -1651,6 +1893,12 @@ def run_close_all(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # R4: override NO_TRADE_BAND in-memory before any kernel use
+    _no_trade_band = os.getenv("PAIRWISE_NO_TRADE_BAND_PCT")
+    if _no_trade_band:
+        gp.NO_TRADE_BAND = float(_no_trade_band)
+        print(f"[pairwise-live] NO_TRADE_BAND overridden to {gp.NO_TRADE_BAND} (from env)")
+    print(f"[pairwise-live] PAIRWISE_GROSS_CAP={PAIRWISE_GROSS_CAP}  NO_TRADE_BAND={gp.NO_TRADE_BAND}")
     args = parse_args()
     if args.command == "status":
         return run_status(args)

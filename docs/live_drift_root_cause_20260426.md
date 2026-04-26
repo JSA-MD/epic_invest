@@ -342,3 +342,77 @@ The live system produces `session_type=flat` due to two simultaneous suppression
 `state_alphas`) and separately investigate whether the BTC `specialist_pair_config` should carry
 a lower `regime_threshold` to allow short execution in the current `equity_mixed` regime. Stage A
 sizing (1% gross_cap) should be used to validate sign agreement before scaling.
+
+---
+
+## State File Schema Additions — Safety Overlays (2026-04-26)
+
+Two new top-level keys were added to `models/pairwise_regime_live_state.json` by
+`scripts/pairwise_regime_live.py` to support overlays D1 and R3.
+
+### `position_open_since_ts` (D1 — max-hold auto-flatten)
+
+```json
+"position_open_since_ts": {
+  "BTCUSDT": "2026-04-25T10:00:00+00:00",
+  "BNBUSDT": null
+}
+```
+
+- Type: `dict[str, str | null]`
+- Value is an ISO-8601 UTC datetime string when a position is open, `null` when flat.
+- Set to `now` on the first bar where `|target_weight| > TARGET_WEIGHT_EPS`.
+- Cleared to `null` when `target_weight` returns to flat or when the D1 override fires.
+- When `(now - open_since) > PAIRWISE_MAX_HOLD_BARS × 5 min` (default 24 h), `target_weight`
+  is forced to `0` and the entry is cleared.
+- Controlled by env var `PAIRWISE_MAX_HOLD_BARS` (default `288`).
+
+### `cvar_cut_until_ts` (R3 — CVaR-99 cut overlay)
+
+```json
+"cvar_cut_until_ts": {
+  "BTCUSDT": null,
+  "BNBUSDT": "2026-04-26T18:00:00+00:00"
+}
+```
+
+- Type: `dict[str, str | null]`
+- Value is the ISO-8601 UTC datetime until which the pair is forced flat, `null` otherwise.
+- Triggered when rolling 30-day realised return from `models/live_actual_pnl_30d.json`
+  falls below the pair's `CVaR_99` threshold from `models/tail_risk_report.json`.
+- Auto-resumes when `now >= cvar_cut_until_ts[pair]`.
+- Hold duration controlled by env var `PAIRWISE_CVAR_CUT_HOLD_HOURS` (default `24`).
+- Overlay can be disabled entirely with `PAIRWISE_CVAR_CUT=0`.
+
+### `decision_journal` override entries
+
+Both overlays append entries to the existing `decision_journal` list with an
+`override_reason` field (`"max_hold"` or `"cvar_cut"`):
+
+```json
+{
+  "at": "2026-04-26T10:00:00+00:00",
+  "pair": "BTCUSDT",
+  "override_reason": "max_hold",
+  "age_seconds": 86400.0,
+  "max_hold_seconds": 86400,
+  "target_weight_forced": 0.0
+}
+```
+
+```json
+{
+  "at": "2026-04-26T10:00:00+00:00",
+  "pair": "BNBUSDT",
+  "override_reason": "cvar_cut",
+  "cvar_threshold": -0.032,
+  "cvar_cut_until": "2026-04-27T10:00:00+00:00",
+  "target_weight_forced": 0.0
+}
+```
+
+### Telegram alert format
+
+D1: `[pairwise-live] D1 max_hold override: {PAIR} position open {N}h >= 288 bars — forcing flat`
+
+R3: `[pairwise-live] R3 CVaR-99 cut: {PAIR} 30d return below CVaR-99 threshold ({threshold:.4f}). Forcing flat until {YYYY-MM-DDTHH:MMZ}`

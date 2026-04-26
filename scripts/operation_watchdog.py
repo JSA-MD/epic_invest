@@ -97,6 +97,9 @@ WATCHDOG_TELEGRAM_ALERTS_ENABLED = os.getenv("WATCHDOG_TELEGRAM_ALERTS_ENABLED",
     "yes",
     "on",
 }
+PAIRWISE_STALENESS_MAX_MINUTES = int(os.getenv("PAIRWISE_STALENESS_MAX_MINUTES", "10"))
+PAIRWISE_STUCK_PRICE_BARS = int(os.getenv("PAIRWISE_STUCK_PRICE_BARS", "6"))
+PRICE_FEED_DEBOUNCE_SECONDS = 15 * 60
 
 
 def parse_args() -> argparse.Namespace:
@@ -720,6 +723,152 @@ def maybe_send_alert(report: dict[str, Any]) -> None:
         )
 
 
+def _debounce_alert(key: str, cooldown_seconds: int = PRICE_FEED_DEBOUNCE_SECONDS) -> bool:
+    """Return True if alert should fire; update last-fired timestamp if so."""
+    path = Path(f"/tmp/epic-invest-watchdog-{key}-alert.json")
+    state = read_json(path, {})
+    last_at = age_seconds(state.get("last_alert_at"))
+    if last_at is not None and last_at < cooldown_seconds:
+        return False
+    write_json(path, {"last_alert_at": utc_now().isoformat()})
+    return True
+
+
+def check_signal_staleness() -> dict[str, Any] | None:
+    """Check whether last_signal_timestamp in live state is stale (> PAIRWISE_STALENESS_MAX_MINUTES).
+
+    Returns a result dict if an alert was evaluated, None if the check was skipped.
+    """
+    state = read_json(PAIRWISE_STATE_PATH, {})
+    if not isinstance(state, dict):
+        return None
+
+    # Resolve signal timestamp from multiple candidate fields
+    latest_decision = state.get("latest_decision_snapshot") or {}
+    last_signal_ts = (
+        state.get("last_signal_timestamp")
+        or signal_timestamp_from_snapshot(latest_decision)
+        or signal_timestamp_from_snapshot(state.get("latest_runtime_snapshot") or {})
+    )
+    if not last_signal_ts:
+        return None
+
+    age_min = age_seconds(last_signal_ts)
+    if age_min is None:
+        return None
+    age_min = age_min / 60.0
+
+    threshold_min = float(PAIRWISE_STALENESS_MAX_MINUTES)
+    if age_min <= threshold_min:
+        return {"status": "ok", "age_min": round(age_min, 1)}
+
+    # Only alert when the service process is actually running
+    pid = resolve_live_pid(read_pid(PAIRWISE_PID_PATH), launchd_service_pid(PAIRWISE_LABEL))
+    service_running = is_pid_running(pid)
+    if not service_running:
+        return {"status": "skipped_not_running", "age_min": round(age_min, 1)}
+
+    result: dict[str, Any] = {
+        "status": "stale",
+        "age_min": round(age_min, 1),
+        "last_signal_ts": last_signal_ts,
+        "alerted": False,
+    }
+    if WATCHDOG_TELEGRAM_ALERTS_ENABLED and _debounce_alert("staleness"):
+        msg = (
+            f"[STALENESS ALERT] last_signal_ts is {age_min:.1f}min old"
+            f" (service running but no fresh signal)"
+        )
+        send_telegram_notification(msg)
+        result["alerted"] = True
+    return result
+
+
+def check_stuck_price() -> dict[str, Any] | None:
+    """Check whether the same price appears in >= PAIRWISE_STUCK_PRICE_BARS consecutive decision log entries.
+
+    Reads the last 12 lines of PAIRWISE_DECISION_LOG_PATH and inspects per-pair last_price fields.
+    Returns a result dict if an alert was evaluated, None if the check was skipped.
+    """
+    path = PAIRWISE_DECISION_LOG_PATH
+    if not path.exists():
+        return None
+
+    look_back = max(PAIRWISE_STUCK_PRICE_BARS * 2, 12)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    recent_lines = lines[-look_back:]
+    entries: list[dict[str, Any]] = []
+    for line in recent_lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    if not entries:
+        return None
+
+    # Collect per-pair price sequences; accept several candidate field names
+    price_by_pair: dict[str, list[float]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        # Top-level pair field
+        pair = str(entry.get("pair") or "")
+        price_val = entry.get("last_price") or entry.get("price") or entry.get("close")
+        if pair and price_val is not None:
+            try:
+                price_by_pair.setdefault(pair, []).append(float(price_val))
+            except (TypeError, ValueError):
+                pass
+        # Also check nested per_pair / pair_plans structures
+        for nested_key in ("per_pair", "pair_plans"):
+            nested = entry.get(nested_key)
+            if not isinstance(nested, dict):
+                continue
+            for p, pdata in nested.items():
+                if not isinstance(pdata, dict):
+                    continue
+                pv = pdata.get("last_price") or pdata.get("price") or pdata.get("close")
+                if pv is not None:
+                    try:
+                        price_by_pair.setdefault(str(p), []).append(float(pv))
+                    except (TypeError, ValueError):
+                        pass
+
+    threshold = PAIRWISE_STUCK_PRICE_BARS
+    stuck_pairs: list[dict[str, Any]] = []
+    for pair, prices in price_by_pair.items():
+        if len(prices) < threshold:
+            continue
+        # Count trailing consecutive identical prices
+        tail = prices[-threshold:]
+        if len(set(tail)) == 1:
+            stuck_pairs.append({"pair": pair, "price": tail[0], "bars": len(tail)})
+
+    result: dict[str, Any] = {"status": "ok", "pairs_checked": list(price_by_pair.keys()), "stuck": stuck_pairs}
+    if not stuck_pairs:
+        return result
+
+    result["status"] = "stuck"
+    for info in stuck_pairs:
+        key = f"stuck-price-{info['pair'].replace('/', '-')}"
+        if WATCHDOG_TELEGRAM_ALERTS_ENABLED and _debounce_alert(key):
+            msg = (
+                f"[PRICE STUCK ALERT] {info['pair']} price={info['price']}"
+                f" unchanged across {info['bars']} bars; possible feed freeze"
+            )
+            send_telegram_notification(msg)
+            result["alerted"] = True
+    return result
+
+
 def evaluate_trader() -> dict[str, Any]:
     profile = active_trader_profile()
     state = read_json(profile["state_path"], {})
@@ -1118,6 +1267,18 @@ def check_once(recover: bool) -> dict[str, Any]:
         report = maybe_recover(report)
     write_report(report)
     maybe_send_alert(report)
+    try:
+        staleness_result = check_signal_staleness()
+        if staleness_result is not None:
+            report["price_feed_staleness"] = staleness_result
+    except Exception as exc:
+        report["price_feed_staleness"] = {"error": str(exc)}
+    try:
+        stuck_result = check_stuck_price()
+        if stuck_result is not None:
+            report["price_feed_stuck"] = stuck_result
+    except Exception as exc:
+        report["price_feed_stuck"] = {"error": str(exc)}
     print(json.dumps(report, indent=2))
     return report
 

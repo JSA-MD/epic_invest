@@ -699,7 +699,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -707,7 +707,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -715,7 +715,7 @@
                 "actual": 0.0049276170693737555,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -723,7 +723,7 @@
                 "actual": 0.005108979073354359,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -731,7 +731,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -739,7 +739,7 @@
                 "actual": 0.11953942795216,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -752,7 +752,7 @@
                 "actual": 0.006432872049878131,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -760,7 +760,7 @@
                 "actual": 0.006432872049878131,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -768,7 +768,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -781,7 +781,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -789,7 +789,7 @@
                 "actual": 0.0049276170693737555,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -797,7 +797,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -805,7 +805,7 @@
                 "actual": 0.11953942795216,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -1467,7 +1467,7 @@
                 "actual": 0.007519447215190933,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -1475,7 +1475,7 @@
                 "actual": 0.007519447215190933,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -1483,7 +1483,7 @@
                 "actual": 0.005042045202267269,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -1491,7 +1491,7 @@
                 "actual": 0.005105563178156768,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -1499,7 +1499,7 @@
                 "actual": 0.10107158618365919,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -1507,7 +1507,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -1520,7 +1520,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -1528,7 +1528,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -1536,7 +1536,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -1549,7 +1549,7 @@
                 "actual": 0.007519447215190933,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -1557,7 +1557,7 @@
                 "actual": 0.005042045202267269,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -1565,7 +1565,7 @@
                 "actual": 0.10107158618365919,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -1573,7 +1573,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -2241,7 +2241,7 @@
                 "actual": 0.00746538093300995,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -2249,7 +2249,7 @@
                 "actual": 0.00746538093300995,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -2257,7 +2257,7 @@
                 "actual": 0.005070980824118514,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -2265,7 +2265,7 @@
                 "actual": 0.00512003098908239,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -2273,7 +2273,7 @@
                 "actual": 0.10107499373104056,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -2281,7 +2281,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -2294,7 +2294,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -2302,7 +2302,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -2310,7 +2310,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -2323,7 +2323,7 @@
                 "actual": 0.00746538093300995,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -2331,7 +2331,7 @@
                 "actual": 0.005070980824118514,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -2339,7 +2339,7 @@
                 "actual": 0.10107499373104056,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -2347,7 +2347,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -3017,7 +3017,7 @@
                 "actual": 0.007666680470704063,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -3025,7 +3025,7 @@
                 "actual": 0.007666680470704063,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -3033,7 +3033,7 @@
                 "actual": 0.004918907840032739,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -3041,7 +3041,7 @@
                 "actual": 0.005043994497039503,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -3049,7 +3049,7 @@
                 "actual": 0.1010749883461377,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -3057,7 +3057,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -3070,7 +3070,7 @@
                 "actual": 0.006192440176475393,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -3078,7 +3078,7 @@
                 "actual": 0.006192440176475393,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -3086,7 +3086,7 @@
                 "actual": 0.10106633475129956,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -3099,7 +3099,7 @@
                 "actual": 0.007666680470704063,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -3107,7 +3107,7 @@
                 "actual": 0.004918907840032739,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -3115,7 +3115,7 @@
                 "actual": 0.1010749883461377,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -3123,7 +3123,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -3792,7 +3792,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -3800,7 +3800,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -3808,7 +3808,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -3816,7 +3816,7 @@
                 "actual": 0.005055307625531602,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -3824,7 +3824,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -3832,7 +3832,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -3845,7 +3845,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -3853,7 +3853,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -3861,7 +3861,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -3874,7 +3874,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -3882,7 +3882,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -3890,7 +3890,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -3898,7 +3898,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -4567,7 +4567,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -4575,7 +4575,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -4583,7 +4583,7 @@
                 "actual": 0.004936910672992941,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -4591,7 +4591,7 @@
                 "actual": 0.005062212348100826,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -4599,7 +4599,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -4607,7 +4607,7 @@
                 "actual": 0.11900903283210595,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -4620,7 +4620,7 @@
                 "actual": 0.006451335910948463,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -4628,7 +4628,7 @@
                 "actual": 0.006451335910948463,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -4636,7 +4636,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -4649,7 +4649,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -4657,7 +4657,7 @@
                 "actual": 0.004936910672992941,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -4665,7 +4665,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -4673,7 +4673,7 @@
                 "actual": 0.11900903283210595,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -5343,7 +5343,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -5351,7 +5351,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -5359,7 +5359,7 @@
                 "actual": 0.00492334489495027,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -5367,7 +5367,7 @@
                 "actual": 0.005076082000441035,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -5375,7 +5375,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -5383,7 +5383,7 @@
                 "actual": 0.11932051275950728,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -5396,7 +5396,7 @@
                 "actual": 0.006304745219281729,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -5404,7 +5404,7 @@
                 "actual": 0.006304745219281729,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -5412,7 +5412,7 @@
                 "actual": 0.10106596361622189,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -5425,7 +5425,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -5433,7 +5433,7 @@
                 "actual": 0.00492334489495027,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -5441,7 +5441,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -5449,7 +5449,7 @@
                 "actual": 0.11932051275950728,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -6118,7 +6118,7 @@
                 "actual": 0.007589317045951287,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -6126,7 +6126,7 @@
                 "actual": 0.007589317045951287,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -6134,7 +6134,7 @@
                 "actual": 0.004889063130391872,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -6142,7 +6142,7 @@
                 "actual": 0.005029072142219069,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -6150,7 +6150,7 @@
                 "actual": 0.10107173920578616,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -6158,7 +6158,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -6171,7 +6171,7 @@
                 "actual": 0.005497890650090149,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -6179,7 +6179,7 @@
                 "actual": 0.005497890650090149,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -6187,7 +6187,7 @@
                 "actual": 0.10107496452397335,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -6200,7 +6200,7 @@
                 "actual": 0.007589317045951287,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -6208,7 +6208,7 @@
                 "actual": 0.004889063130391872,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -6216,7 +6216,7 @@
                 "actual": 0.10107173920578616,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -6224,7 +6224,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -6893,7 +6893,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -6901,7 +6901,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -6909,7 +6909,7 @@
                 "actual": 0.0049276170693737555,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -6917,7 +6917,7 @@
                 "actual": 0.005089661979024725,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -6925,7 +6925,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -6933,7 +6933,7 @@
                 "actual": 0.12233356532047246,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -6946,7 +6946,7 @@
                 "actual": 0.006355204957031028,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -6954,7 +6954,7 @@
                 "actual": 0.006355204957031028,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -6962,7 +6962,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -6975,7 +6975,7 @@
                 "actual": 0.007424653703392884,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -6983,7 +6983,7 @@
                 "actual": 0.0049276170693737555,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -6991,7 +6991,7 @@
                 "actual": 0.10107155614846863,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -6999,7 +6999,7 @@
                 "actual": 0.12233356532047246,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -7668,7 +7668,7 @@
                 "actual": 0.007583211017061659,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -7676,7 +7676,7 @@
                 "actual": 0.007583211017061659,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -7684,7 +7684,7 @@
                 "actual": 0.004930573785274819,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -7692,7 +7692,7 @@
                 "actual": 0.005049827469660543,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -7700,7 +7700,7 @@
                 "actual": 0.10107151399195391,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -7708,7 +7708,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -7721,7 +7721,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -7729,7 +7729,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -7737,7 +7737,7 @@
                 "actual": 0.10106613462823266,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -7750,7 +7750,7 @@
                 "actual": 0.007583211017061659,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -7758,7 +7758,7 @@
                 "actual": 0.004930573785274819,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -7766,7 +7766,7 @@
                 "actual": 0.10107151399195391,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -7774,7 +7774,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -8443,7 +8443,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -8451,7 +8451,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -8459,7 +8459,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -8467,7 +8467,7 @@
                 "actual": 0.005055307625531602,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -8475,7 +8475,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -8483,7 +8483,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -8496,7 +8496,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -8504,7 +8504,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -8512,7 +8512,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -8525,7 +8525,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -8533,7 +8533,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -8541,7 +8541,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -8549,7 +8549,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -9218,7 +9218,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_pair_vs_baseline",
@@ -9226,7 +9226,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.007199890465284453,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 기준 baseline 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_positive",
@@ -9234,7 +9234,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "full_4y_mean_vs_baseline",
@@ -9242,7 +9242,7 @@
                 "actual": 0.005055307625531602,
                 "target": 0.004405309109093952,
                 "comparator": ">=",
-                "note": "4년 평균 일수익률은 baseline 이상"
+                "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -9250,7 +9250,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -9258,7 +9258,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -9271,7 +9271,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.0,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
               },
               {
                 "name": "recent_2m_worst_pair_vs_baseline",
@@ -9279,7 +9279,7 @@
                 "actual": 0.006571313572256077,
                 "target": 0.005458408080128212,
                 "comparator": ">=",
-                "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
               },
               {
                 "name": "recent_2m_worst_mdd_cap",
@@ -9287,7 +9287,7 @@
                 "actual": 0.10106613140556708,
                 "target": 0.18,
                 "comparator": "<=",
-                "note": "최근 2개월 최악 MDD 18% 이내"
+                "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
               }
             ],
             "passed": true
@@ -9300,7 +9300,7 @@
                 "actual": 0.007596325421536472,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "최근 6개월 최악 코인 0.6%/day 이상"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "full_4y_worst_pair_target_060",
@@ -9308,7 +9308,7 @@
                 "actual": 0.004941534097016939,
                 "target": 0.006,
                 "comparator": ">=",
-                "note": "4년 전체 최악 코인 0.6%/day 이상"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
               },
               {
                 "name": "recent_6m_worst_mdd_cap",
@@ -9316,7 +9316,7 @@
                 "actual": 0.1010714114090111,
                 "target": 0.17,
                 "comparator": "<=",
-                "note": "최근 6개월 최악 MDD 17% 이내"
+                "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
               },
               {
                 "name": "full_4y_worst_mdd_cap",
@@ -9324,7 +9324,7 @@
                 "actual": 0.13120797822524488,
                 "target": 0.2,
                 "comparator": "<=",
-                "note": "4년 전체 최악 MDD 20% 이내"
+                "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
               }
             ],
             "passed": false
@@ -10132,7 +10132,7 @@
               "actual": 0.007384081825232269,
               "target": 0.006,
               "comparator": ">=",
-              "note": "최근 6개월 최악 코인은 목표 0.6%/day 이상"
+              "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \ubaa9\ud45c 0.6%/day \uc774\uc0c1"
             },
             {
               "name": "recent_6m_worst_pair_vs_baseline",
@@ -10140,7 +10140,7 @@
               "actual": 0.007384081825232269,
               "target": 0.007199890465284453,
               "comparator": ">=",
-              "note": "최근 6개월 최악 코인 기준 baseline 이상"
+              "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 \uae30\uc900 baseline \uc774\uc0c1"
             },
             {
               "name": "full_4y_worst_pair_positive",
@@ -10148,7 +10148,7 @@
               "actual": 0.004924246606262009,
               "target": 0.0,
               "comparator": ">=",
-              "note": "4년 전체 최악 코인도 음수가 아니어야 함"
+              "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778\ub3c4 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
             },
             {
               "name": "full_4y_mean_vs_baseline",
@@ -10156,7 +10156,7 @@
               "actual": 0.005105484559624294,
               "target": 0.004405309109093952,
               "comparator": ">=",
-              "note": "4년 평균 일수익률은 baseline 이상"
+              "note": "4\ub144 \ud3c9\uade0 \uc77c\uc218\uc775\ub960\uc740 baseline \uc774\uc0c1"
             },
             {
               "name": "recent_6m_worst_mdd_cap",
@@ -10164,7 +10164,7 @@
               "actual": 0.10107155614846863,
               "target": 0.17,
               "comparator": "<=",
-              "note": "최근 6개월 최악 MDD 17% 이내"
+              "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
             },
             {
               "name": "full_4y_worst_mdd_cap",
@@ -10172,7 +10172,7 @@
               "actual": 0.11953942795216,
               "target": 0.2,
               "comparator": "<=",
-              "note": "4년 전체 최악 MDD 20% 이내"
+              "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
             }
           ],
           "passed": true
@@ -10185,7 +10185,7 @@
               "actual": 0.006325673435801806,
               "target": 0.0,
               "comparator": ">=",
-              "note": "최근 2개월 최악 코인은 음수가 아니어야 함"
+              "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 \uc74c\uc218\uac00 \uc544\ub2c8\uc5b4\uc57c \ud568"
             },
             {
               "name": "recent_2m_worst_pair_vs_baseline",
@@ -10193,7 +10193,7 @@
               "actual": 0.006325673435801806,
               "target": 0.005458408080128212,
               "comparator": ">=",
-              "note": "최근 2개월 최악 코인은 baseline의 97% 이상 유지"
+              "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778\uc740 baseline\uc758 97% \uc774\uc0c1 \uc720\uc9c0"
             },
             {
               "name": "recent_2m_worst_mdd_cap",
@@ -10201,7 +10201,7 @@
               "actual": 0.10106613140556708,
               "target": 0.18,
               "comparator": "<=",
-              "note": "최근 2개월 최악 MDD 18% 이내"
+              "note": "\ucd5c\uadfc 2\uac1c\uc6d4 \ucd5c\uc545 MDD 18% \uc774\ub0b4"
             }
           ],
           "passed": true
@@ -10214,7 +10214,7 @@
               "actual": 0.007384081825232269,
               "target": 0.006,
               "comparator": ">=",
-              "note": "최근 6개월 최악 코인 0.6%/day 이상"
+              "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
             },
             {
               "name": "full_4y_worst_pair_target_060",
@@ -10222,7 +10222,7 @@
               "actual": 0.004924246606262009,
               "target": 0.006,
               "comparator": ">=",
-              "note": "4년 전체 최악 코인 0.6%/day 이상"
+              "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 \ucf54\uc778 0.6%/day \uc774\uc0c1"
             },
             {
               "name": "recent_6m_worst_mdd_cap",
@@ -10230,7 +10230,7 @@
               "actual": 0.10107155614846863,
               "target": 0.17,
               "comparator": "<=",
-              "note": "최근 6개월 최악 MDD 17% 이내"
+              "note": "\ucd5c\uadfc 6\uac1c\uc6d4 \ucd5c\uc545 MDD 17% \uc774\ub0b4"
             },
             {
               "name": "full_4y_worst_mdd_cap",
@@ -10238,7 +10238,7 @@
               "actual": 0.11953942795216,
               "target": 0.2,
               "comparator": "<=",
-              "note": "4년 전체 최악 MDD 20% 이내"
+              "note": "4\ub144 \uc804\uccb4 \ucd5c\uc545 MDD 20% \uc774\ub0b4"
             }
           ],
           "passed": false
@@ -10756,7 +10756,8 @@
         "alpha": 0.2,
         "mode": "state_alphas",
         "state_alphas": {
-          "equity_mixed:bull_broad": 0.2
+          "equity_mixed:bull_broad": 0.2,
+          "equity_mixed:bull_narrow": 0.2
         },
         "specialist_pair_config": {
           "route_breadth_threshold": 0.5,

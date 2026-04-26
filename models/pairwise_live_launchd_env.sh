@@ -1,0 +1,9 @@
+export PAIRWISE_LIVE_PID_FILE=/tmp/epic_pairwise_live.pid
+export PAIRWISE_LIVE_LOG_FILE=/Users/jsa/work/epic_invest/logs/pairwise_live_service.log
+export PAIRWISE_LIVE_STATE_PATH=/Users/jsa/work/epic_invest/models/pairwise_regime_live_state.json
+export PAIRWISE_LIVE_DECISION_LOG_PATH=/Users/jsa/work/epic_invest/logs/pairwise_regime_decisions.jsonl
+export PAIRWISE_LIVE_POLL_SECONDS=300
+export PAIRWISE_LIVE_MODE=demo
+export PAIRWISE_FORCE_EXECUTE=0
+export PAIRWISE_FORCE_NOTE=watchdog_recovery
+export PAIRWISE_LIVE_PROMOTION_REPORT_PATH=/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json

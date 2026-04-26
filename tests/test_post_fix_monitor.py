@@ -28,7 +28,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 def _make_module(
-    shadow_state_path: Path,
+    live_state_path: Path,
     decisions_log_path: Path,
     slippage_log_path: Path,
     models_dir: Path,
@@ -39,7 +39,7 @@ def _make_module(
     import importlib
     import monitor_post_fix_evolution as m
 
-    m.SHADOW_STATE_PATH = shadow_state_path
+    m.LIVE_STATE_PATH = live_state_path
     m.DECISIONS_LOG_PATH = decisions_log_path
     m.SLIPPAGE_LOG_PATH = slippage_log_path
     m.MODELS_DIR = models_dir
@@ -61,7 +61,7 @@ def tmp(tmp_path):
 def module(tmp):
     """Patched module instance."""
     import monitor_post_fix_evolution as m
-    m.SHADOW_STATE_PATH = tmp / "shadow_state.json"
+    m.LIVE_STATE_PATH = tmp / "live_state.json"
     m.DECISIONS_LOG_PATH = tmp / "pairwise_regime_decisions.jsonl"
     m.SLIPPAGE_LOG_PATH = tmp / "pairwise_slippage.jsonl"
     m.MODELS_DIR = tmp / "models"
@@ -75,7 +75,7 @@ def module(tmp):
 # Helper builders
 # ---------------------------------------------------------------------------
 
-def _write_shadow_state(path: Path, btc_cd: int, bnb_cd: int) -> None:
+def _write_live_state(path: Path, btc_cd: int, bnb_cd: int) -> None:
     state = {
         "shadow_paper": {
             "cooldown_bars_left": {"BTCUSDT": btc_cd, "BNBUSDT": bnb_cd}
@@ -132,7 +132,7 @@ def _snapshot(date: str, btc_cd: int, bnb_cd: int, btc_trades: int, bnb_trades: 
 
 class TestCooldownSnapshot:
     def test_returns_correct_values(self, module, tmp):
-        _write_shadow_state(module.SHADOW_STATE_PATH, btc_cd=144, bnb_cd=271)
+        _write_live_state(module.LIVE_STATE_PATH, btc_cd=144, bnb_cd=271)
         result = module.collect_cooldown_snapshot()
         assert result["BTCUSDT"] == 144
         assert result["BNBUSDT"] == 271
@@ -144,7 +144,7 @@ class TestCooldownSnapshot:
         assert result["BNBUSDT"] == -1
 
     def test_zero_cooldown(self, module):
-        _write_shadow_state(module.SHADOW_STATE_PATH, btc_cd=0, bnb_cd=0)
+        _write_live_state(module.LIVE_STATE_PATH, btc_cd=0, bnb_cd=0)
         result = module.collect_cooldown_snapshot()
         assert result["BTCUSDT"] == 0
         assert result["BNBUSDT"] == 0
@@ -297,7 +297,7 @@ class TestEvaluateAlerts:
 class TestTelegramSend:
     def test_send_called_on_alert(self, module, tmp):
         """run() calls _send_telegram when alerts are present."""
-        _write_shadow_state(module.SHADOW_STATE_PATH, btc_cd=0, bnb_cd=0)
+        _write_live_state(module.LIVE_STATE_PATH, btc_cd=0, bnb_cd=0)
 
         # Write 3 days of zero-trade history snapshots
         for i in range(2):
@@ -327,7 +327,7 @@ class TestTelegramSend:
 
     def test_dry_run_no_send(self, module, tmp):
         """run(dry_run=True) must not call _send_telegram."""
-        _write_shadow_state(module.SHADOW_STATE_PATH, btc_cd=0, bnb_cd=0)
+        _write_live_state(module.LIVE_STATE_PATH, btc_cd=0, bnb_cd=0)
 
         KST = timezone(timedelta(hours=9))
         fake_now = datetime(2026, 4, 26, 9, 15, tzinfo=KST)

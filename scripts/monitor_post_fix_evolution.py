@@ -48,7 +48,12 @@ MODELS_DIR = ROOT_DIR / "models"
 LOGS_DIR = ROOT_DIR / "logs"
 DOCS_DIR = ROOT_DIR / "docs"
 
-SHADOW_STATE_PATH = MODELS_DIR / "pairwise_regime_shadow_state.json"
+# Read from the actively running pairwise live trader's state, not the
+# shadow-mode trader's separate state file. active_runtime_profile.json
+# determines which trader is "live"; for the pairwise variant the file is
+# pairwise_regime_live_state.json (same shadow_paper structure, different
+# file). Reading the wrong file silently reports stale or zero values.
+LIVE_STATE_PATH = MODELS_DIR / "pairwise_regime_live_state.json"
 DECISIONS_LOG_PATH = LOGS_DIR / "pairwise_regime_decisions.jsonl"
 SLIPPAGE_LOG_PATH = LOGS_DIR / "pairwise_slippage.jsonl"
 
@@ -82,8 +87,13 @@ def _read_json_safe(path: Path) -> dict:
 
 
 def collect_cooldown_snapshot() -> dict[str, int]:
-    """Return current cooldown_bars_left per pair from shadow_paper."""
-    state = _read_json_safe(SHADOW_STATE_PATH)
+    """Return current cooldown_bars_left per pair from the live trader state.
+
+    pairwise_regime_live writes its shadow-paper accounting (which is what
+    feeds final_decision_cooldown_override) into LIVE_STATE_PATH. Reading
+    the standalone shadow trader's file would report a different process.
+    """
+    state = _read_json_safe(LIVE_STATE_PATH)
     cd = state.get("shadow_paper", {}).get("cooldown_bars_left", {})
     return {pair: int(cd.get(pair, -1)) for pair in PAIRS}
 
@@ -148,7 +158,12 @@ def collect_trade_counts(date_str: str) -> dict[str, int]:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            at = entry.get("at") or entry.get("timestamp") or ""
+            # Slippage records written by _log_slippage use the "ts" key
+            # (iso_now() output). Fall back to "at"/"timestamp" for
+            # forward compatibility if the schema changes.
+            at = entry.get("ts") or entry.get("at") or entry.get("timestamp") or ""
+            if not at:
+                continue
             if date_str not in at and date_str not in _utc_to_kst_date(at):
                 continue
             sym = entry.get("symbol", "")

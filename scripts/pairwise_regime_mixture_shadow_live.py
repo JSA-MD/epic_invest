@@ -85,6 +85,23 @@ SLIPPAGE_LOG_PATH = Path(
         str(gp.MODELS_DIR.parent / "logs" / "pairwise_slippage.jsonl"),
     )
 )
+
+
+def _safe_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return default
+
+
+# Mirror the constant the live trader and rotation_target_050_live read.
+# launchd env can set REBALANCE_NOTIONAL_BAND_USD=0 to disable the per-order
+# minNotional skip (backtest-like operating mode). Hardcoding 25.0 here
+# silently overrides launchd config and breaks the operator-facing toggle.
+REBALANCE_NOTIONAL_BAND_USD = _safe_float_env("REBALANCE_NOTIONAL_BAND_USD", 25.0)
 DEFAULT_SUMMARY_PATH = Path(
     os.getenv(
         "PAIRWISE_SHADOW_SUMMARY_PATH",
@@ -655,7 +672,7 @@ def reconcile_pairwise_target_positions(
             "placed": False,
             "margin_action": ensure_symbol_margin_settings(exchange, symbol, leverage),
         }
-        if diff_notional < 25.0 or amount <= 0.0:
+        if diff_notional < REBALANCE_NOTIONAL_BAND_USD or amount <= 0.0:
             action["amount"] = 0.0
             actions.append(action)
             continue

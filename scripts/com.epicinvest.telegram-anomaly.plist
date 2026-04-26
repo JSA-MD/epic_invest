@@ -12,13 +12,11 @@
         <string>/Users/jsa/work/epic_invest/scripts/telegram_anomaly_alarm.py</string>
     </array>
 
-    <!-- launchd uses LOCAL time; 09:30 KST → Hour=9 on a KST host.
-         Also fixed the key name: CalendarInterval was wrong and silently
-         ignored by launchd; the correct key is StartCalendarInterval. -->
+    <!-- Host-TZ independent: fire at :30 every hour, let the Python script
+         self-gate to KST hour 9. Earlier Hour=9 only worked on a KST host;
+         this host runs UTC+8 so the literal-hour approach was off by one. -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>
-        <integer>9</integer>
         <key>Minute</key>
         <integer>30</integer>
     </dict>

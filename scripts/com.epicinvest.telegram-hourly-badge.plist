@@ -12,27 +12,16 @@
     </array>
 
     <!--
-        Fire at :00 each hour from 09:00 KST through 21:00 KST.
-        launchd StartCalendarInterval uses LOCAL time, not UTC, so on a KST
-        host the hour values are the literal KST hours. The previous 0..12
-        range fired during the user's sleep (midnight–noon KST) instead.
+        Fire at :00 every hour, host-TZ independent. The Python script
+        self-gates: it sends only when KST hour ∈ [9, 21]; outside that
+        window it exits 0 silently. This avoids re-encoding the host
+        timezone in the plist hour values.
     -->
     <key>StartCalendarInterval</key>
-    <array>
-        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
-    </array>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
 
     <key>WorkingDirectory</key>
     <string>/Users/jsa/work/epic_invest</string>

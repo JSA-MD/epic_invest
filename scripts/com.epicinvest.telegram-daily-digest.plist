@@ -11,12 +11,11 @@
         <string>/Users/jsa/work/epic_invest/scripts/telegram_daily_digest.py</string>
     </array>
 
-    <!-- launchd StartCalendarInterval uses LOCAL time, not UTC.
-         09:00 KST → Hour=9 on a KST host. Hour=0 fired at midnight KST. -->
+    <!-- launchd uses host LOCAL time which is not always KST. To stay
+         host-TZ independent, fire at :00 every hour and let
+         telegram_daily_digest.py self-gate to KST 09:00 internally. -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>
-        <integer>9</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>

@@ -275,11 +275,25 @@ def send_payload(payload: dict) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Epic Invest daily digest sender.")
     parser.add_argument("--dry-run", action="store_true", help="Print payload, do not send.")
+    parser.add_argument("--force", action="store_true", help="Bypass KST 09:00 self-gate (testing).")
+    parser.add_argument(
+        "--target-kst-hour",
+        type=int,
+        default=int(os.environ.get("DAILY_DIGEST_TARGET_KST_HOUR", "9")),
+        help="KST hour at which the digest is allowed to fire (default 9).",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    # Host-TZ-independent self-gate. The launchd plist now fires every hour at
+    # :00 because StartCalendarInterval reads host LOCAL time and our hosts are
+    # not always KST. Only the script knows the user-facing schedule.
+    if not args.force and not args.dry_run:
+        kst_hour = now_kst().hour
+        if kst_hour != args.target_kst_hour:
+            return
     payload = build_digest(dry_run=args.dry_run)
 
     if args.dry_run:

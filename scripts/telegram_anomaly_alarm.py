@@ -276,7 +276,20 @@ def run(dry_run: bool = False) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="전략 성과 이상 감지 알람")
     parser.add_argument("--dry-run", action="store_true", help="전송 없이 페이로드 출력")
+    parser.add_argument(
+        "--force", action="store_true", help="Bypass KST 09:30 self-gate (testing)."
+    )
+    parser.add_argument(
+        "--target-kst-hour",
+        type=int,
+        default=int(os.environ.get("ANOMALY_TARGET_KST_HOUR", "9")),
+        help="KST hour at which the alarm is allowed to fire (default 9).",
+    )
     args = parser.parse_args()
+    # Host-TZ-independent self-gate — the plist now fires at :30 every hour.
+    if not args.force and not args.dry_run:
+        if now_kst().hour != args.target_kst_hour:
+            sys.exit(0)
     detected = run(dry_run=args.dry_run)
     sys.exit(0 if not detected else 2)
 

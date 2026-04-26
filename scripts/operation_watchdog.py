@@ -820,57 +820,63 @@ def check_stuck_price() -> dict[str, Any] | None:
 
     # Collect per-pair price sequences. The actual decision-log schema produced
     # by pairwise_regime_live.py uses plan.latest_prices and plan.pair_plans.
-    # Earlier per_pair / top-level "pair" lookups returned 0 pairs; Codex 20th-
-    # round flagged the resulting silent skip as a ship-stopping defect.
-    price_by_pair: dict[str, list[float]] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        # Primary path: plan.latest_prices = {pair: price}
-        plan = entry.get("plan") or {}
-        latest_prices = plan.get("latest_prices") if isinstance(plan, dict) else None
+    # Each ENTRY contributes at most one price per pair (first match wins) so
+    # the trailing-N-identical check truly counts cycles, not lookup paths.
+    # Codex 21st-round fix: avoid double-counting when multiple schema paths
+    # carry the same price within a single decision-log line.
+    def _extract_first_price_per_pair(entry: dict) -> dict[str, float]:
+        out: dict[str, float] = {}
+        plan = entry.get("plan") if isinstance(entry, dict) else None
+        plan = plan if isinstance(plan, dict) else {}
+        latest_prices = plan.get("latest_prices")
         if isinstance(latest_prices, dict):
             for p, pv in latest_prices.items():
                 if pv is None:
                     continue
                 try:
-                    price_by_pair.setdefault(str(p), []).append(float(pv))
+                    out.setdefault(str(p), float(pv))
                 except (TypeError, ValueError):
                     pass
-        # Secondary path: plan.pair_plans.{pair}.price
-        pair_plans = plan.get("pair_plans") if isinstance(plan, dict) else None
+        pair_plans = plan.get("pair_plans")
         if isinstance(pair_plans, dict):
             for p, pdata in pair_plans.items():
-                if not isinstance(pdata, dict):
+                if str(p) in out or not isinstance(pdata, dict):
                     continue
                 pv = pdata.get("price")
                 if pv is None:
                     continue
                 try:
-                    price_by_pair.setdefault(str(p), []).append(float(pv))
+                    out[str(p)] = float(pv)
                 except (TypeError, ValueError):
                     pass
-        # Fallback: top-level pair / nested per_pair (older schemas)
+        # Legacy fallbacks (older schemas) — only fill pairs we have not seen yet.
         pair = str(entry.get("pair") or "")
         price_val = entry.get("last_price") or entry.get("price") or entry.get("close")
-        if pair and price_val is not None:
+        if pair and pair not in out and price_val is not None:
             try:
-                price_by_pair.setdefault(pair, []).append(float(price_val))
+                out[pair] = float(price_val)
             except (TypeError, ValueError):
                 pass
-        for nested_key in ("per_pair", "pair_plans"):
-            nested = entry.get(nested_key)
-            if not isinstance(nested, dict) or nested_key == "pair_plans":
-                continue  # pair_plans already handled above
-            for p, pdata in nested.items():
-                if not isinstance(pdata, dict):
+        nested_per_pair = entry.get("per_pair")
+        if isinstance(nested_per_pair, dict):
+            for p, pdata in nested_per_pair.items():
+                if str(p) in out or not isinstance(pdata, dict):
                     continue
                 pv = pdata.get("last_price") or pdata.get("price") or pdata.get("close")
-                if pv is not None:
-                    try:
-                        price_by_pair.setdefault(str(p), []).append(float(pv))
-                    except (TypeError, ValueError):
-                        pass
+                if pv is None:
+                    continue
+                try:
+                    out[str(p)] = float(pv)
+                except (TypeError, ValueError):
+                    pass
+        return out
+
+    price_by_pair: dict[str, list[float]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for p, pv in _extract_first_price_per_pair(entry).items():
+            price_by_pair.setdefault(p, []).append(pv)
 
     threshold = PAIRWISE_STUCK_PRICE_BARS
     stuck_pairs: list[dict[str, Any]] = []

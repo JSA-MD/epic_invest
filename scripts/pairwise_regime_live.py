@@ -144,16 +144,44 @@ def minutes_since(value: Any) -> float:
     return max(0.0, (utc_now() - parsed).total_seconds() / 60.0)
 
 
+def minutes_since_or_zero(value: Any) -> float:
+    """Like minutes_since but returns 0.0 on parse failure instead of inf.
+
+    Use where missing/unparseable input should be treated as 'just happened'
+    (safe default) rather than 'infinitely stale' (gate-fail default).
+    """
+    parsed = parse_utc_datetime(value)
+    if parsed is None:
+        return 0.0
+    return max(0.0, (utc_now() - parsed).total_seconds() / 60.0)
+
+
 # ---------------------------------------------------------------------------
 # D1 / R3 overlay helpers (unit-testable, no side effects)
 # ---------------------------------------------------------------------------
 
 def compute_position_age_seconds(open_since_ts: Any) -> float:
-    """Return how many seconds a position has been open; inf if not open."""
+    """Return how many seconds a position has been open; 0.0 if no valid open timestamp."""
     parsed = parse_utc_datetime(open_since_ts)
     if parsed is None:
-        return math.inf
+        return 0.0
     return max(0.0, (utc_now() - parsed).total_seconds())
+
+
+def _exchange_position_is_open(positions: Mapping[str, Any], pair: str) -> bool:
+    """True if the exchange reports a non-dust position for pair.
+
+    Threshold 1e-9: sub-satoshi dust left after a near-complete fill should not
+    keep the D1 timer alive; anything >= 1e-9 contracts is a real position.
+    """
+    pos = positions.get(pair)
+    if pos is None:
+        return False
+    qty = pos.get("qty", 0.0)
+    try:
+        return abs(float(qty)) > 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def load_tail_risk_thresholds(path: Path = DEFAULT_TAIL_RISK_PATH) -> Dict[str, float]:
@@ -1551,18 +1579,221 @@ def run_live_once(args: argparse.Namespace) -> int:
     exchange = None
     equity = None
     positions: Dict[str, Any] = {}
+    positions_fetched: bool = False
     if args.execute:
         bridge = load_execution_bridge()
         exchange = bridge.get_exchange(args.mode)
         equity = float(bridge.fetch_equity(exchange))
         positions = bridge.fetch_open_position_map(exchange)
+        positions_fetched = True
         sync_shadow_paper_from_live_positions(state, positions, equity)
+        # Persist a fresh exchange snapshot every cycle so consumers like
+        # position_reconciliation.py see current ground truth. Without this,
+        # latest_live_sync remained stale across restarts because only the
+        # explicit `sync-state` subcommand updated it, producing phantom
+        # mismatch alerts (recon 2026-04-26 found state=-0.12 / exchange=0).
+        state["latest_live_sync"] = {
+            "at": iso_now(),
+            "mode": args.mode,
+            "execute": True,
+            "equity": equity,
+            "positions": positions,
+            "source": "run_live_once",
+        }
+    else:
+        # Dry-run: fetch positions and equity so D2/D1/R3 overlays (moved below)
+        # can detect stale exchange state. No orders are placed regardless.
+        # Tolerate missing credentials gracefully.
+        try:
+            bridge = load_execution_bridge()
+            exchange = bridge.get_exchange(args.mode)
+            positions = bridge.fetch_open_position_map(exchange)
+            positions_fetched = True
+            try:
+                equity = float(bridge.fetch_equity(exchange))
+            except Exception as eq_exc:
+                print(f"[pairwise-live] dry-run equity fetch skipped: {eq_exc}")
+                equity = None
+        except Exception as exc:
+            print(f"[pairwise-live] dry-run position fetch skipped: {exc}")
+            bridge = None
+            exchange = None
+            positions = {}
+            # positions_fetched remains False — D1/R3 will skip position-dependent logic
+            equity = None
 
     plan = build_pairwise_plan(args.summary_path, args.model_path, args.promotion_report, args.refresh_live_data, state)
     persist_runtime_plan_state(state, plan)
     promotion_report_path = Path(plan.get("promotion_report_path") or args.promotion_report)
     promotion_gate = load_promotion_gate(promotion_report_path)
     state["promotion_gate"] = promotion_gate
+
+    # ------------------------------------------------------------------
+    # Safety overlays D2 / D1 / R3 — run unconditionally (execute AND dry-run).
+    # Order matters: D2 clips tw first, D1 reads tw that D2 may have reduced,
+    # R3 reads tw that D1 may have zeroed.  Mutations are auditable in dry-run
+    # via decision_journal and decision_log even when no orders are placed.
+    # ------------------------------------------------------------------
+
+    # D2: apply per-pair gross cap
+    if PAIRWISE_GROSS_CAP < 1.0:
+        plan["target_weights"] = {
+            pair: max(-PAIRWISE_GROSS_CAP, min(PAIRWISE_GROSS_CAP, float(w)))
+            for pair, w in plan["target_weights"].items()
+        }
+
+    # D1: max-hold-bars auto-flatten (24 h)
+    # Timer tracks the *current continuous* exchange position start time.
+    # When the exchange is flat the timer either resets (fresh tw signal) or
+    # clears (fully flat), so a new entry never inherits a dead position's age.
+    position_open_since: Dict[str, Any] = dict(state.get("position_open_since_ts") or {})
+    _now = utc_now()
+    if not positions_fetched:
+        # Position fetch unavailable — skip D1 entirely. Preserve existing timers
+        # so a later successful-fetch cycle can resume tracking. The dry-run fetch
+        # already printed a warning at fetch time; one line here is sufficient.
+        print("[pairwise-live] D1 skipped: positions unknown (fetch unavailable)")
+    else:
+        for _pair in list(PAIRS):
+            _tw = float(plan["target_weights"].get(_pair, 0.0))
+            _prev_since = position_open_since.get(_pair)
+            tw_active = abs(_tw) > TARGET_WEIGHT_EPS
+            exch_active = _exchange_position_is_open(positions, _pair)
+            if exch_active:
+                # Exchange has a real open position — track continuously from first appearance.
+                if _prev_since is None:
+                    # First cycle this position is visible — start the clock.
+                    position_open_since[_pair] = _now.isoformat()
+                else:
+                    age_secs = compute_position_age_seconds(_prev_since)
+                    if age_secs > _MAX_HOLD_SECONDS:
+                        _msg = (
+                            f"[pairwise-live] D1 max_hold override: {_pair} position "
+                            f"open {age_secs/3600:.1f}h >= {PAIRWISE_MAX_HOLD_BARS} bars — forcing flat"
+                        )
+                        print(_msg)
+                        _notif = load_notification_bridge()
+                        try:
+                            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                            if _ss(_AL.HIGH, f"d1-max-hold-{_pair}"):
+                                _payload = _fa(
+                                    _AL.HIGH,
+                                    title="D1 max_hold 자동 청산",
+                                    body=f"{_pair} 포지션 {age_secs/3600:.1f}h 경과 ({PAIRWISE_MAX_HOLD_BARS}바 한도) — 강제 플랫",
+                                    pair=_pair,
+                                )
+                                _notif.send_telegram_notification(_payload["text"])
+                        except Exception:
+                            _notif.send_telegram_notification(_msg)
+                        plan["target_weights"][_pair] = 0.0
+                        if _pair in plan.get("pair_plans", {}):
+                            plan["pair_plans"][_pair]["target_weight"] = 0.0
+                        # NOTE: do NOT clear position_open_since here. The timer must
+                        # persist until reconcile actually closes the exchange position.
+                        # D1 re-fires every cycle while exch_active=True AND age>24h
+                        # (nag-until-fixed). The else branch below handles clean-up.
+                        # Log to decision_journal
+                        state.setdefault("decision_journal", []).append(
+                            {
+                                "at": _now.isoformat(),
+                                "pair": _pair,
+                                "override_reason": "max_hold",
+                                "age_seconds": age_secs,
+                                "max_hold_seconds": _MAX_HOLD_SECONDS,
+                                "target_weight_forced": 0.0,
+                                "exchange_position_active": exch_active,
+                            }
+                        )
+            else:
+                # Exchange is flat — the previous position (if any) has closed.
+                if tw_active:
+                    # Fresh signal will open a new position; reset timer to now so
+                    # the new entry is not penalised by the dead position's age.
+                    position_open_since[_pair] = _now.isoformat()
+                else:
+                    # Fully flat — clear the timer.
+                    position_open_since[_pair] = None
+        state["position_open_since_ts"] = position_open_since
+
+    # R3: CVaR-99 cut overlay
+    if PAIRWISE_CVAR_CUT_ENABLED:
+        cvar_thresholds = load_tail_risk_thresholds()
+        cvar_cut_until: Dict[str, Any] = dict(state.get("cvar_cut_until_ts") or {})
+        for _pair in list(PAIRS):
+            _cut_until_raw = cvar_cut_until.get(_pair)
+            _cut_until_dt = parse_utc_datetime(_cut_until_raw)
+            # Check if an existing cut is still active
+            if _cut_until_dt is not None and _now < _cut_until_dt:
+                _tw = float(plan["target_weights"].get(_pair, 0.0))
+                _exch_active = (
+                    positions_fetched and _exchange_position_is_open(positions, _pair)
+                )
+                if abs(_tw) > TARGET_WEIGHT_EPS or _exch_active:
+                    plan["target_weights"][_pair] = 0.0
+                    if _pair in plan.get("pair_plans", {}):
+                        plan["pair_plans"][_pair]["target_weight"] = 0.0
+                    # Exchange position still open while cut active — keep forcing tw=0 to retry close
+                    if _exch_active and abs(_tw) <= TARGET_WEIGHT_EPS:
+                        print(f"[pairwise-live] R3 cut still active for {_pair}; exchange position not yet flat — forcing tw=0 to retry close")
+                        state.setdefault("decision_journal", []).append(
+                            {
+                                "at": _now.isoformat(),
+                                "pair": _pair,
+                                "override_reason": "cvar_cut_retry_close",
+                                "cvar_cut_until": _cut_until_dt.isoformat() if _cut_until_dt else None,
+                                "exchange_position_active": _exch_active,
+                                "target_weight_forced": 0.0,
+                            }
+                        )
+                continue
+            else:
+                # Cut expired — clear it
+                if _cut_until_dt is not None and _now >= _cut_until_dt:
+                    cvar_cut_until[_pair] = None
+            # Evaluate whether a new cut should trigger
+            if should_apply_cvar_cut(_pair, cvar_thresholds):
+                _resume_dt = _now + timedelta(hours=PAIRWISE_CVAR_CUT_HOLD_HOURS)
+                cvar_cut_until[_pair] = _resume_dt.isoformat()
+                _msg = (
+                    f"[pairwise-live] R3 CVaR-99 cut: {_pair} 30d return below "
+                    f"CVaR-99 threshold ({cvar_thresholds.get(_pair, 'N/A'):.4f}). "
+                    f"Forcing flat until {_resume_dt.strftime('%Y-%m-%dT%H:%MZ')}"
+                )
+                print(_msg)
+                _notif = load_notification_bridge()
+                try:
+                    from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss, format_kst as _fkst
+                    if _ss(_AL.HIGH, f"r3-cvar-cut-{_pair}"):
+                        _thresh_val = cvar_thresholds.get(_pair)
+                        _thresh_str = f"{_thresh_val:.4f}" if _thresh_val is not None else "N/A"
+                        _payload = _fa(
+                            _AL.HIGH,
+                            title="R3 CVaR-99 컷 발동",
+                            body=f"{_pair} 30일 수익률이 CVaR-99 임계({_thresh_str}) 미만 — 재개 {_fkst(_resume_dt)}",
+                            pair=_pair,
+                            buttons=[
+                                {"label": "📈 차트", "callback_data": "chart"},
+                                {"label": "🔓 재개", "callback_data": "resume"},
+                            ],
+                        )
+                        _notif.send_telegram_notification(_payload["text"])
+                except Exception:
+                    _notif.send_telegram_notification(_msg)
+                plan["target_weights"][_pair] = 0.0
+                if _pair in plan.get("pair_plans", {}):
+                    plan["pair_plans"][_pair]["target_weight"] = 0.0
+                state.setdefault("decision_journal", []).append(
+                    {
+                        "at": _now.isoformat(),
+                        "pair": _pair,
+                        "override_reason": "cvar_cut",
+                        "cvar_threshold": cvar_thresholds.get(_pair),
+                        "cvar_cut_until": _resume_dt.isoformat(),
+                        "target_weight_forced": 0.0,
+                    }
+                )
+        state["cvar_cut_until_ts"] = cvar_cut_until
+
     if args.execute:
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
@@ -1610,131 +1841,6 @@ def run_live_once(args: argparse.Namespace) -> int:
             )
             return 2
 
-        # D2: apply per-pair gross cap before order placement
-        if PAIRWISE_GROSS_CAP < 1.0:
-            plan["target_weights"] = {
-                pair: max(-PAIRWISE_GROSS_CAP, min(PAIRWISE_GROSS_CAP, float(w)))
-                for pair, w in plan["target_weights"].items()
-            }
-
-        # ------------------------------------------------------------------
-        # D1: max-hold-bars auto-flatten (24 h)
-        # ------------------------------------------------------------------
-        position_open_since: Dict[str, Any] = dict(state.get("position_open_since_ts") or {})
-        _now = utc_now()
-        for _pair in list(PAIRS):
-            _tw = float(plan["target_weights"].get(_pair, 0.0))
-            _prev_since = position_open_since.get(_pair)
-            if abs(_tw) > TARGET_WEIGHT_EPS:
-                if _prev_since is None:
-                    # Position just opened — record timestamp
-                    position_open_since[_pair] = _now.isoformat()
-                else:
-                    age_secs = compute_position_age_seconds(_prev_since)
-                    if age_secs > _MAX_HOLD_SECONDS:
-                        _msg = (
-                            f"[pairwise-live] D1 max_hold override: {_pair} position "
-                            f"open {age_secs/3600:.1f}h >= {PAIRWISE_MAX_HOLD_BARS} bars — forcing flat"
-                        )
-                        print(_msg)
-                        _notif = load_notification_bridge()
-                        try:
-                            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
-                            if _ss(_AL.HIGH, f"d1-max-hold-{_pair}"):
-                                _payload = _fa(
-                                    _AL.HIGH,
-                                    title="D1 max_hold 자동 청산",
-                                    body=f"{_pair} 포지션 {age_secs/3600:.1f}h 경과 ({PAIRWISE_MAX_HOLD_BARS}바 한도) — 강제 플랫",
-                                    pair=_pair,
-                                )
-                                _notif.send_telegram_notification(_payload["text"])
-                        except Exception:
-                            _notif.send_telegram_notification(_msg)
-                        plan["target_weights"][_pair] = 0.0
-                        if _pair in plan.get("pair_plans", {}):
-                            plan["pair_plans"][_pair]["target_weight"] = 0.0
-                        position_open_since[_pair] = None
-                        # Log to decision_journal
-                        state.setdefault("decision_journal", []).append(
-                            {
-                                "at": _now.isoformat(),
-                                "pair": _pair,
-                                "override_reason": "max_hold",
-                                "age_seconds": age_secs,
-                                "max_hold_seconds": _MAX_HOLD_SECONDS,
-                                "target_weight_forced": 0.0,
-                            }
-                        )
-            else:
-                # Position closed / flat — clear open-since
-                position_open_since[_pair] = None
-        state["position_open_since_ts"] = position_open_since
-
-        # ------------------------------------------------------------------
-        # R3: CVaR-99 cut overlay
-        # ------------------------------------------------------------------
-        if PAIRWISE_CVAR_CUT_ENABLED:
-            cvar_thresholds = load_tail_risk_thresholds()
-            cvar_cut_until: Dict[str, Any] = dict(state.get("cvar_cut_until_ts") or {})
-            for _pair in list(PAIRS):
-                _cut_until_raw = cvar_cut_until.get(_pair)
-                _cut_until_dt = parse_utc_datetime(_cut_until_raw)
-                # Check if an existing cut is still active
-                if _cut_until_dt is not None and _now < _cut_until_dt:
-                    _tw = float(plan["target_weights"].get(_pair, 0.0))
-                    if abs(_tw) > TARGET_WEIGHT_EPS:
-                        plan["target_weights"][_pair] = 0.0
-                        if _pair in plan.get("pair_plans", {}):
-                            plan["pair_plans"][_pair]["target_weight"] = 0.0
-                    continue
-                else:
-                    # Cut expired — clear it
-                    if _cut_until_dt is not None and _now >= _cut_until_dt:
-                        cvar_cut_until[_pair] = None
-                # Evaluate whether a new cut should trigger
-                if should_apply_cvar_cut(_pair, cvar_thresholds):
-                    _resume_dt = _now + timedelta(hours=PAIRWISE_CVAR_CUT_HOLD_HOURS)
-                    cvar_cut_until[_pair] = _resume_dt.isoformat()
-                    _msg = (
-                        f"[pairwise-live] R3 CVaR-99 cut: {_pair} 30d return below "
-                        f"CVaR-99 threshold ({cvar_thresholds.get(_pair, 'N/A'):.4f}). "
-                        f"Forcing flat until {_resume_dt.strftime('%Y-%m-%dT%H:%MZ')}"
-                    )
-                    print(_msg)
-                    _notif = load_notification_bridge()
-                    try:
-                        from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss, format_kst as _fkst
-                        if _ss(_AL.HIGH, f"r3-cvar-cut-{_pair}"):
-                            _thresh_val = cvar_thresholds.get(_pair)
-                            _thresh_str = f"{_thresh_val:.4f}" if _thresh_val is not None else "N/A"
-                            _payload = _fa(
-                                _AL.HIGH,
-                                title="R3 CVaR-99 컷 발동",
-                                body=f"{_pair} 30일 수익률이 CVaR-99 임계({_thresh_str}) 미만 — 재개 {_fkst(_resume_dt)}",
-                                pair=_pair,
-                                buttons=[
-                                    {"label": "📈 차트", "callback_data": "chart"},
-                                    {"label": "🔓 재개", "callback_data": "resume"},
-                                ],
-                            )
-                            _notif.send_telegram_notification(_payload["text"])
-                    except Exception:
-                        _notif.send_telegram_notification(_msg)
-                    plan["target_weights"][_pair] = 0.0
-                    if _pair in plan.get("pair_plans", {}):
-                        plan["pair_plans"][_pair]["target_weight"] = 0.0
-                    state.setdefault("decision_journal", []).append(
-                        {
-                            "at": _now.isoformat(),
-                            "pair": _pair,
-                            "override_reason": "cvar_cut",
-                            "cvar_threshold": cvar_thresholds.get(_pair),
-                            "cvar_cut_until": _resume_dt.isoformat(),
-                            "target_weight_forced": 0.0,
-                        }
-                    )
-            state["cvar_cut_until_ts"] = cvar_cut_until
-
         actions = bridge.reconcile_target_positions(
             exchange,
             equity,
@@ -1745,6 +1851,17 @@ def run_live_once(args: argparse.Namespace) -> int:
         protection_report = bridge.install_shutdown_protection(exchange, state, execute=True)
         positions = bridge.fetch_open_position_map(exchange)
         sync_shadow_paper_from_live_positions(state, positions, equity)
+        # Post-trade snapshot overwrites the pre-trade one so consumers like
+        # position_reconciliation.py see the settled exchange state, not the
+        # pre-reconcile view that would generate phantom mismatch alerts.
+        state["latest_live_sync"] = {
+            "at": iso_now(),
+            "mode": args.mode,
+            "execute": True,
+            "equity": equity,
+            "positions": positions,
+            "source": "run_live_once_post_trade",
+        }
         execution_mode = f"{args.mode}-executed"
         execution_override: Dict[str, Any] | None = None
         if force_execute and not gate_ready:

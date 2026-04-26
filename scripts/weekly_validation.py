@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -110,6 +111,27 @@ def run_reconciliation(days: int) -> int:
             "--report-out", str(RECON_REPORT),
         ],
         "live_vs_backtest_reconciliation",
+    )
+    return rc
+
+
+LIVE_PNL_REPORT = ROOT / "models" / "live_actual_pnl_30d.json"
+LIVE_PNL_MAX_AGE_SECONDS = 7200  # 2 hours; weekly run produces fresh data each invocation
+
+
+def run_live_pnl_refresh(days: int = 30) -> int:
+    """Regenerate models/live_actual_pnl_30d.json so the win-rate gate is current.
+
+    Codex flagged that reading a stale snapshot makes the win-rate check
+    a constant; we now invoke live_actual_pnl_30d.py freshly each run.
+    """
+    script = SCRIPTS / "live_actual_pnl_30d.py"
+    if not script.exists():
+        print(f"[weekly_validation] live_actual_pnl_30d.py missing", file=sys.stderr)
+        return 127
+    rc, _ = _run(
+        [str(PYTHON), str(script), "--days", str(days), "--report-out", str(LIVE_PNL_REPORT)],
+        "live_actual_pnl_30d",
     )
     return rc
 
@@ -283,9 +305,22 @@ def compute_live_win_rate(days: int = 30) -> dict:
 
     n_evaluated = daily_wins + daily_losses
     if n_evaluated == 0:
-        # pnl_pct not in log schema — try the live_actual_pnl_30d report as fallback.
-        live_pnl_path = ROOT / "models" / "live_actual_pnl_30d.json"
+        # pnl_pct not in decision log — fall back to the freshly-regenerated
+        # live_actual_pnl_30d report. main() invokes run_live_pnl_refresh()
+        # before this function so the file should be < LIVE_PNL_MAX_AGE_SECONDS old.
+        live_pnl_path = LIVE_PNL_REPORT
         if live_pnl_path.exists():
+            age_seconds = time.time() - live_pnl_path.stat().st_mtime
+            if age_seconds > LIVE_PNL_MAX_AGE_SECONDS:
+                return {
+                    "win_rate": None,
+                    "n_trades": len(records),
+                    "n_days_evaluated": 0,
+                    "flag": False,
+                    "unevaluated": True,
+                    "note": f"live_actual_pnl_30d.json stale ({age_seconds/3600:.1f}h old)",
+                    "error": f"win-rate fallback report is stale ({age_seconds/3600:.1f}h > {LIVE_PNL_MAX_AGE_SECONDS/3600:.1f}h max)",
+                }
             try:
                 live_pnl = json.loads(live_pnl_path.read_text())
                 daily_rows = live_pnl.get("daily_pnl_live") or []
@@ -299,10 +334,18 @@ def compute_live_win_rate(days: int = 30) -> dict:
                         "n_trades": len(records),
                         "n_days_evaluated": fallback_evaluated,
                         "flag": fb_win_rate < WIN_RATE_WARN,
-                        "note": f"pnl_pct missing in decisions; fallback to live_actual_pnl_30d ({fallback_evaluated} days)",
+                        "note": f"pnl_pct missing in decisions; live_actual_pnl_30d fallback ({fallback_evaluated} days, age={age_seconds/60:.0f}min)",
                     }
-            except (json.JSONDecodeError, OSError, KeyError, ValueError):
-                pass
+            except (json.JSONDecodeError, OSError, KeyError, ValueError) as exc:
+                return {
+                    "win_rate": None,
+                    "n_trades": len(records),
+                    "n_days_evaluated": 0,
+                    "flag": False,
+                    "unevaluated": True,
+                    "note": f"fallback parse error: {exc}",
+                    "error": f"win-rate fallback parse error: {exc}",
+                }
         # No usable pnl source -> mark unevaluated so the verdict gate flags it.
         return {
             "win_rate": None,
@@ -310,8 +353,8 @@ def compute_live_win_rate(days: int = 30) -> dict:
             "n_days_evaluated": 0,
             "flag": False,
             "unevaluated": True,
-            "note": "pnl_pct not in log AND no fallback available",
-            "error": "win_rate could not be computed: pnl_pct absent from decision log",
+            "note": "pnl_pct not in log AND fallback report not present",
+            "error": "win_rate could not be computed: pnl_pct absent and live_actual_pnl_30d.json missing",
         }
 
     win_rate = daily_wins / n_evaluated * 100.0
@@ -522,8 +565,14 @@ def main() -> None:
     recon_report = _load_json(RECON_REPORT) or {}
     recon = analyse_reconciliation(recon_report)
 
+    # --- Live actual P&L refresh (must precede win-rate compute) ---
+    live_pnl_rc = run_live_pnl_refresh(args.win_rate_days)
+
     # --- Live win-rate ---
     wr = compute_live_win_rate(args.win_rate_days)
+    if live_pnl_rc != 0 and wr.get("error") is None:
+        # Surface refresh failure even if win-rate happens to be parseable from the stale file.
+        wr = {**wr, "error": f"live_actual_pnl_30d refresh failed (exit={live_pnl_rc}); win-rate may be stale"}
 
     # --- Verdict ---
     verdict, flags = determine_verdict(wf, recon, wr, wf_rc=wf_rc, recon_rc=recon_rc)

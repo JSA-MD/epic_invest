@@ -139,9 +139,18 @@ def main() -> None:
             funding_df=funding_df,
             route_state_mode=route_state_mode,
         )
-        # use_equity_corr_risk also flips on for equity_corr mode so the
-        # equity-correlation risk overlay matches what the live system applies.
-        use_equity_corr_risk = (route_state_mode == "equity_corr")
+        # Match the live router's actual setting: PAIRWISE_EQUITY_CORR_RISK env
+        # var (default "0" = disabled). route_state_mode='equity_corr' selects
+        # the 12-bucket regime layout but does NOT automatically enable the
+        # equity-corr risk overlay; the two are independent in the live code.
+        # Codex 19th-round fix.
+        import os as _os
+        use_equity_corr_risk = _os.getenv("PAIRWISE_EQUITY_CORR_RISK", "0").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         result = realistic_overlay_replay_from_context(
             context,
             library_lookup,

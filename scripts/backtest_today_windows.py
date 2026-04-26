@@ -94,7 +94,16 @@ def main() -> None:
             funding_df = filter_funding_window(funding_cache[pair], ws_str, we_str)
             pair_cfg = config[pair]
             route_state_mode = str(pair_cfg.get("route_state_mode") or "base")
-            use_equity_corr_risk = (route_state_mode == "equity_corr")
+            # Match the live router env (PAIRWISE_EQUITY_CORR_RISK, default "0"
+            # = disabled). The risk overlay is independent of route_state_mode.
+            # Codex 19th-round fix.
+            import os as _os
+            use_equity_corr_risk = _os.getenv("PAIRWISE_EQUITY_CORR_RISK", "0").strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+            }
             result = realistic_overlay_replay(
                 df_window,
                 pair,

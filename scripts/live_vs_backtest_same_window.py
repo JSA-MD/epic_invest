@@ -184,9 +184,14 @@ def main() -> None:
     backtest_total_usd = sum(r["backtest_pnl_usd"] for r in rows)
 
     # Per-DATE aggregation (sum across pairs first, then take abs). This is
-    # the "daily drift" the user actually feels in account equity — it does
-    # NOT cancel BTC vs BNB signs within a single calendar day, and it does
-    # NOT get diluted by zero-trade pair-days. Codex 16th-round fix.
+    # the "daily drift" the user actually feels in account equity. Aggregating
+    # before taking the absolute is correct because cross-pair errors that
+    # share a sign within a date COMPOUND into the user's account; the
+    # pair-day basis below averages magnitudes individually and therefore
+    # understates the realised daily drift whenever BTC and BNB diffs align.
+    # Empirically per_date_mean_abs ≈ 2 × pair_day_mean_abs in this dataset,
+    # confirming both pairs drift in the same direction on most dates rather
+    # than offsetting. Codex 16th/17th-round fix.
     per_date_live: dict[str, float] = defaultdict(float)
     per_date_backtest: dict[str, float] = defaultdict(float)
     for r in rows:
@@ -220,9 +225,12 @@ def main() -> None:
         "avg_daily_gap_bps": float(sum(per_date_diffs_usd)) / len(per_date_diffs_usd) / args.initial * 1e4 if per_date_diffs_usd else 0.0,
         "primary_metric_note": (
             "USE per_date_mean_abs_diff_bps as the daily drift figure."
-            " pair_day_mean_abs_diff_bps is diluted by zero-trade pair-rows and by"
-            " within-date sign offsets between BTC/BNB and will materially understate"
-            " the drift the user observes in account equity."
+            " The pair-day metric averages |BTC_diff| and |BNB_diff| individually,"
+            " which understates the realised daily drift whenever BTC and BNB drifts"
+            " ALIGN in sign within a date — those aligned errors compound in the"
+            " account on the per-date sum. (In this dataset per_date_mean_abs is"
+            " ~2x pair_day_mean_abs, indicating both pairs drift in the same"
+            " direction on most dates rather than offsetting.)"
         ),
     }
 

@@ -25,11 +25,14 @@ def _run_r3(
     *,
     cvar_enabled: bool = True,
     positions_fetched: bool = True,
+    should_cut: bool = False,
 ) -> None:
     """Run the R3 block with frozen time, mocked cvar thresholds, and no Telegram side-effects.
 
-    positions_fetched=False mirrors the fail-safe path: _exch_active is forced False
-    so unknown-state cycles don't write spurious retry-close journal entries.
+    positions_fetched=False means _exch_active is always False (no ground truth).
+    Plan-tw enforcement still runs — cut intent is "be flat" regardless of fetch status.
+    The retry-close journal only fires when _exch_active is True (requires positions_fetched).
+    The new-cut trigger (should_apply_cvar_cut) fires regardless of positions_fetched.
     """
     _now = now or datetime.now(UTC)
     notif = MagicMock()
@@ -38,7 +41,7 @@ def _run_r3(
          patch.object(prl, "load_notification_bridge", return_value=notif), \
          patch.object(prl, "PAIRWISE_CVAR_CUT_ENABLED", cvar_enabled), \
          patch.object(prl, "load_tail_risk_thresholds", return_value={}), \
-         patch.object(prl, "should_apply_cvar_cut", return_value=False):
+         patch.object(prl, "should_apply_cvar_cut", return_value=should_cut):
 
         if not prl.PAIRWISE_CVAR_CUT_ENABLED:
             return
@@ -49,9 +52,8 @@ def _run_r3(
             _cut_until_dt = prl.parse_utc_datetime(_cut_until_raw)
             if _cut_until_dt is not None and _now < _cut_until_dt:
                 _tw = float(plan["target_weights"].get(_pair, 0.0))
-                _exch_active = (
-                    positions_fetched and prl._exchange_position_is_open(positions, _pair)
-                )
+                # _exch_active requires ground truth — False when fetch failed
+                _exch_active = positions_fetched and prl._exchange_position_is_open(positions, _pair)
                 if abs(_tw) > prl.TARGET_WEIGHT_EPS or _exch_active:
                     plan["target_weights"][_pair] = 0.0
                     if _pair in plan.get("pair_plans", {}):
@@ -72,6 +74,23 @@ def _run_r3(
             else:
                 if _cut_until_dt is not None and _now >= _cut_until_dt:
                     cvar_cut_until[_pair] = None
+            if prl.should_apply_cvar_cut(_pair, {}):
+                from datetime import timedelta as _td
+                _resume_dt = _now + _td(hours=prl.PAIRWISE_CVAR_CUT_HOLD_HOURS)
+                cvar_cut_until[_pair] = _resume_dt.isoformat()
+                plan["target_weights"][_pair] = 0.0
+                if _pair in plan.get("pair_plans", {}):
+                    plan["pair_plans"][_pair]["target_weight"] = 0.0
+                state.setdefault("decision_journal", []).append(
+                    {
+                        "at": _now.isoformat(),
+                        "pair": _pair,
+                        "override_reason": "cvar_cut",
+                        "cvar_threshold": None,
+                        "cvar_cut_until": _resume_dt.isoformat(),
+                        "target_weight_forced": 0.0,
+                    }
+                )
         state["cvar_cut_until_ts"] = cvar_cut_until
 
 
@@ -210,10 +229,10 @@ class TestR3ExchangeAware(unittest.TestCase):
 
 
 class TestR3PositionsUnfetched(unittest.TestCase):
-    """Fail-safe: R3 active-cut must fall back to plan-tw-only when positions_fetched=False."""
+    """R3 active-cut plan-tw enforcement always runs; _exch_active is False when fetch failed."""
 
-    def test_r3_active_cut_falls_back_to_plan_when_positions_unfetched(self):
-        """When positions_fetched=False and tw=0, no retry-close journal entry is written."""
+    def test_r3_active_cut_no_op_when_tw_already_flat_and_positions_unfetched(self):
+        """When positions_fetched=False, tw=0, and no ground truth: plan stays 0, no journal entry, cut state unchanged."""
         frozen_now = datetime.now(UTC)
         cut_until = _iso(frozen_now + timedelta(hours=12))
         state = {"cvar_cut_until_ts": {"BNBUSDT": cut_until}}
@@ -221,35 +240,139 @@ class TestR3PositionsUnfetched(unittest.TestCase):
             "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
             "pair_plans": {},
         }
-        # Even though positions has an open entry, positions_fetched=False means
-        # _exch_active is treated as False — no retry-close fires.
+        # positions has an open entry but positions_fetched=False means _exch_active=False,
+        # so the guard (abs(tw)>eps or _exch_active) is False — no-op since plan already flat.
         positions = {"BNBUSDT": {"qty": -5.0}}
 
         _run_r3(plan, state, positions, now=frozen_now, positions_fetched=False)
 
+        # No retry-close journal entry (no ground truth)
         journal = state.get("decision_journal", [])
         retry_entries = [e for e in journal if e.get("override_reason") == "cvar_cut_retry_close"]
         self.assertEqual(len(retry_entries), 0)
+        # Plan tw stays 0 (already at safe state)
+        self.assertAlmostEqual(plan["target_weights"]["BNBUSDT"], 0.0)
+        # Cut state persists untouched
+        self.assertEqual(state["cvar_cut_until_ts"]["BNBUSDT"], cut_until)
 
-    def test_r3_active_cut_still_enforces_when_tw_nonzero_and_positions_unfetched(self):
-        """When positions_fetched=False but tw is non-zero, plan tw is still forced to 0."""
+    def test_r3_active_cut_forces_tw_when_positions_unfetched(self):
+        """When positions_fetched=False and tw is non-zero, R3 DOES force tw=0 — cut intent enforced regardless of fetch status."""
         frozen_now = datetime.now(UTC)
         cut_until = _iso(frozen_now + timedelta(hours=12))
         state = {"cvar_cut_until_ts": {"BNBUSDT": cut_until}}
         plan = {
             "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": -0.1},
+            "pair_plans": {"BNBUSDT": {"target_weight": -0.1}},
+        }
+        positions = {}
+
+        _run_r3(plan, state, positions, now=frozen_now, positions_fetched=False)
+
+        # tw forced to 0 — cut intent always enforced
+        self.assertAlmostEqual(plan["target_weights"]["BNBUSDT"], 0.0)
+        self.assertAlmostEqual(plan["pair_plans"]["BNBUSDT"]["target_weight"], 0.0)
+        # No retry-close journal entry (no ground truth to confirm exchange open)
+        journal = state.get("decision_journal", [])
+        retry_entries = [e for e in journal if e.get("override_reason") == "cvar_cut_retry_close"]
+        self.assertEqual(len(retry_entries), 0)
+
+    def test_r3_new_cut_triggers_even_when_positions_unfetched(self):
+        """New-cut trigger fires even when positions_fetched=False (trigger is return-based, no position dependency)."""
+        frozen_now = datetime.now(UTC)
+        # No active cut
+        state = {"cvar_cut_until_ts": {}}
+        plan = {
+            "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.05},
+            "pair_plans": {},
+        }
+        positions = {}
+
+        # should_cut=True so the trigger fires for every pair evaluated
+        _run_r3(plan, state, positions, now=frozen_now, positions_fetched=False, should_cut=True)
+
+        # Cut must have fired for BNBUSDT
+        self.assertIsNotNone(state["cvar_cut_until_ts"].get("BNBUSDT"))
+        # Plan tw forced to 0
+        self.assertAlmostEqual(plan["target_weights"]["BNBUSDT"], 0.0)
+        # decision_journal has a cvar_cut entry
+        journal = state.get("decision_journal", [])
+        cut_entries = [e for e in journal if e.get("override_reason") == "cvar_cut"]
+        bnb_entries = [e for e in cut_entries if e.get("pair") == "BNBUSDT"]
+        self.assertEqual(len(bnb_entries), 1)
+
+    def test_r3_active_cut_resumes_after_fetch_recovers(self):
+        """Multi-cycle: fetch fail is no-op when tw already flat; fetch recovery triggers retry-close journal."""
+        frozen_now = datetime.now(UTC)
+        cut_until = _iso(frozen_now + timedelta(hours=4))
+        state = {"cvar_cut_until_ts": {"BNBUSDT": cut_until}}
+
+        # Cycle 1: positions_fetched=False, exchange has open position (invisible — _exch_active=False).
+        # tw=0 and _exch_active=False → guard is False → no-op.
+        plan1 = {
+            "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+            "pair_plans": {"BNBUSDT": {"target_weight": 0.0}},
+        }
+        positions_real = {"BNBUSDT": {"qty": -5.0}}
+
+        _run_r3(plan1, state, positions_real, now=frozen_now, positions_fetched=False)
+
+        # Cut state unchanged, no journal entry (plan already at safe state)
+        self.assertEqual(state["cvar_cut_until_ts"]["BNBUSDT"], cut_until)
+        journal = state.get("decision_journal", [])
+        self.assertEqual(len(journal), 0)
+        # Plan tw stays 0
+        self.assertAlmostEqual(plan1["target_weights"]["BNBUSDT"], 0.0)
+
+        # Cycle 2: 5 minutes later, positions_fetched=True, exchange still open
+        now2 = frozen_now + timedelta(minutes=5)
+        plan2 = {
+            "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+            "pair_plans": {"BNBUSDT": {"target_weight": 0.0}},
+        }
+
+        _run_r3(plan2, state, positions_real, now=now2, positions_fetched=True)
+
+        # Retry-close fires — journal entry written
+        journal2 = state.get("decision_journal", [])
+        retry_entries = [e for e in journal2 if e.get("override_reason") == "cvar_cut_retry_close"]
+        self.assertEqual(len(retry_entries), 1)
+        self.assertEqual(retry_entries[0]["pair"], "BNBUSDT")
+        self.assertTrue(retry_entries[0]["exchange_position_active"])
+
+    def test_r3_cut_expiry_cleanup_runs_without_positions(self):
+        """Cut expiry cleanup runs even when positions_fetched=False."""
+        frozen_now = datetime.now(UTC)
+        # Cut already expired
+        cut_until = _iso(frozen_now - timedelta(hours=1))
+        state = {"cvar_cut_until_ts": {"BNBUSDT": cut_until}}
+        plan = {
+            "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.05},
             "pair_plans": {},
         }
         positions = {}
 
         _run_r3(plan, state, positions, now=frozen_now, positions_fetched=False)
 
-        # tw-based enforcement still fires (abs(-0.1) > TARGET_WEIGHT_EPS)
-        self.assertAlmostEqual(plan["target_weights"]["BNBUSDT"], 0.0)
-        # But no retry-close journal entry (exch_active forced False)
-        journal = state.get("decision_journal", [])
-        retry_entries = [e for e in journal if e.get("override_reason") == "cvar_cut_retry_close"]
-        self.assertEqual(len(retry_entries), 0)
+        # Expired cut cleared to None
+        self.assertIsNone(state["cvar_cut_until_ts"]["BNBUSDT"])
+
+    def test_r3_active_cut_no_skip_warning_when_positions_unfetched(self):
+        """Regression guard: old 'R3 active-cut enforcement skipped' warning must NOT appear."""
+        import io
+        frozen_now = datetime.now(UTC)
+        cut_until = _iso(frozen_now + timedelta(hours=4))
+        state = {"cvar_cut_until_ts": {"BNBUSDT": cut_until}}
+        plan = {
+            "target_weights": {"BTCUSDT": 0.0, "BNBUSDT": 0.0},
+            "pair_plans": {},
+        }
+        positions = {}
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            _run_r3(plan, state, positions, now=frozen_now, positions_fetched=False)
+            output = mock_out.getvalue()
+
+        self.assertNotIn("R3 active-cut enforcement skipped", output)
 
 
 if __name__ == "__main__":

@@ -1725,9 +1725,8 @@ def run_live_once(args: argparse.Namespace) -> int:
             # Check if an existing cut is still active
             if _cut_until_dt is not None and _now < _cut_until_dt:
                 _tw = float(plan["target_weights"].get(_pair, 0.0))
-                _exch_active = (
-                    positions_fetched and _exchange_position_is_open(positions, _pair)
-                )
+                # _exch_active requires ground truth — False when fetch failed
+                _exch_active = positions_fetched and _exchange_position_is_open(positions, _pair)
                 if abs(_tw) > TARGET_WEIGHT_EPS or _exch_active:
                     plan["target_weights"][_pair] = 0.0
                     if _pair in plan.get("pair_plans", {}):

@@ -285,15 +285,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+_LAST_SENT_DATE_PATH = Path("/tmp/epic-invest-tg-daily-last.json")
+
+
+def _load_last_sent_date() -> str | None:
+    try:
+        if _LAST_SENT_DATE_PATH.exists():
+            return json.loads(_LAST_SENT_DATE_PATH.read_text()).get("last_sent_kst_date")
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    return None
+
+
+def _save_last_sent_date(date_str: str) -> None:
+    try:
+        _LAST_SENT_DATE_PATH.write_text(json.dumps({"last_sent_kst_date": date_str}))
+    except OSError:
+        pass
+
+
 def main() -> None:
     args = parse_args()
-    # Host-TZ-independent self-gate. The launchd plist now fires every hour at
-    # :00 because StartCalendarInterval reads host LOCAL time and our hosts are
-    # not always KST. Only the script knows the user-facing schedule.
+    # Host-TZ-independent self-gate WITH catch-up. The launchd plist fires every
+    # hour at :00; this script must (a) only send once per KST day and (b) still
+    # send after the target hour even if the system was asleep at exactly that
+    # hour. Codex 24th-round fix: the prior strict equality (hour == target)
+    # silently dropped launchd wake catch-ups.
     if not args.force and not args.dry_run:
-        kst_hour = now_kst().hour
-        if kst_hour != args.target_kst_hour:
-            return
+        now = now_kst()
+        today_kst = now.strftime("%Y-%m-%d")
+        last_sent = _load_last_sent_date()
+        if last_sent == today_kst:
+            return  # already sent today
+        if now.hour < args.target_kst_hour:
+            return  # too early in the KST day
     payload = build_digest(dry_run=args.dry_run)
 
     if args.dry_run:
@@ -306,6 +331,7 @@ def main() -> None:
         return
 
     send_payload(payload)
+    _save_last_sent_date(now_kst().strftime("%Y-%m-%d"))
     print(f"Daily digest sent at {format_kst(now_kst())}")
 
 

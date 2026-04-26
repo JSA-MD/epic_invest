@@ -273,6 +273,25 @@ def run(dry_run: bool = False) -> bool:
     return True
 
 
+_ANOMALY_LAST_RUN_PATH = Path("/tmp/epic-invest-tg-anomaly-last.json")
+
+
+def _load_last_run_date() -> str | None:
+    try:
+        if _ANOMALY_LAST_RUN_PATH.exists():
+            return json.loads(_ANOMALY_LAST_RUN_PATH.read_text()).get("last_run_kst_date")
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    return None
+
+
+def _save_last_run_date(date_str: str) -> None:
+    try:
+        _ANOMALY_LAST_RUN_PATH.write_text(json.dumps({"last_run_kst_date": date_str}))
+    except OSError:
+        pass
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="전략 성과 이상 감지 알람")
     parser.add_argument("--dry-run", action="store_true", help="전송 없이 페이로드 출력")
@@ -286,11 +305,19 @@ def main() -> None:
         help="KST hour at which the alarm is allowed to fire (default 9).",
     )
     args = parser.parse_args()
-    # Host-TZ-independent self-gate — the plist now fires at :30 every hour.
+    # Host-TZ-independent self-gate WITH catch-up. plist fires at :30 every
+    # hour; this script must run at most once per KST day BUT must still run
+    # when launchd catches up after a wake/sleep cycle. Codex 24th-round fix.
     if not args.force and not args.dry_run:
-        if now_kst().hour != args.target_kst_hour:
+        now = now_kst()
+        today_kst = now.strftime("%Y-%m-%d")
+        if _load_last_run_date() == today_kst:
+            sys.exit(0)
+        if now.hour < args.target_kst_hour:
             sys.exit(0)
     detected = run(dry_run=args.dry_run)
+    if not args.dry_run:
+        _save_last_run_date(now_kst().strftime("%Y-%m-%d"))
     sys.exit(0 if not detected else 2)
 
 

@@ -1,0 +1,206 @@
+{
+  "generated_at": "2026-04-26T00:34:59.905550+00:00",
+  "window": "full_4y",
+  "window_start": "2022-04-06",
+  "window_end": "2026-04-06",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "per_pair": {
+    "BTCUSDT": {
+      "kelly_scenarios": {
+        "quarter_kelly": {
+          "scale": 0.25,
+          "avg_daily_return": 0.0012662883676874096,
+          "std_daily_return": 0.004594608309897532,
+          "p_daily_1pct": 0.05673758865248227,
+          "p_tail_neg3pct": 0.0,
+          "mdd": -0.03105754591862353,
+          "sharpe": 5.267193047966106,
+          "ruin_prob": 0.0
+        },
+        "half_kelly": {
+          "scale": 0.5,
+          "avg_daily_return": 0.002534088121807235,
+          "std_daily_return": 0.009234834146374948,
+          "p_daily_1pct": 0.12234042553191489,
+          "p_tail_neg3pct": 0.0008865248226950354,
+          "mdd": -0.06135253893974957,
+          "sharpe": 5.244302389480671,
+          "ruin_prob": 0.0
+        },
+        "full_kelly": {
+          "scale": 1.0,
+          "avg_daily_return": 0.0050739755534397624,
+          "std_daily_return": 0.018653529759597966,
+          "p_daily_1pct": 0.16312056737588654,
+          "p_tail_neg3pct": 0.007978723404255319,
+          "mdd": -0.1197001494088813,
+          "sharpe": 5.1985527889998915,
+          "ruin_prob": 0.0
+        },
+        "two_x_kelly": {
+          "scale": 2.0,
+          "avg_daily_return": 0.0101690963374062,
+          "std_daily_return": 0.03805316625330337,
+          "p_daily_1pct": 0.19060283687943264,
+          "p_tail_neg3pct": 0.03546099290780142,
+          "mdd": -0.2277481133617799,
+          "sharpe": 5.107244806030391,
+          "ruin_prob": 0.0
+        }
+      },
+      "vol_target_scenarios": {
+        "vol_30pct": {
+          "scale": 0.8579492365231943,
+          "avg_daily_return": 0.004351828954889565,
+          "std_daily_return": 0.015958806761887066,
+          "p_daily_1pct": 0.15602836879432624,
+          "p_tail_neg3pct": 0.005319148936170213,
+          "mdd": -0.10342378943248898,
+          "sharpe": 5.211545258533809,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 0.3,
+          "realized_scale": 0.8579492365231943
+        },
+        "vol_50pct": {
+          "scale": 1.429915394205324,
+          "avg_daily_return": 0.007262100077857913,
+          "std_daily_return": 0.02690108641577658,
+          "p_daily_1pct": 0.1773049645390071,
+          "p_tail_neg3pct": 0.01950354609929078,
+          "mdd": -0.16753631931286406,
+          "sharpe": 5.159261278943544,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 0.5,
+          "realized_scale": 1.429915394205324
+        },
+        "vol_100pct": {
+          "scale": 2.859830788410648,
+          "avg_daily_return": 0.014563642684557806,
+          "std_daily_return": 0.05534531331951777,
+          "p_daily_1pct": 0.1950354609929078,
+          "p_tail_neg3pct": 0.04521276595744681,
+          "mdd": -0.3119024782591242,
+          "sharpe": 5.029030586236337,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 1.0,
+          "realized_scale": 2.859830788410648
+        }
+      },
+      "base_stats": {
+        "bars": 324939,
+        "avg_daily_return": 0.005069481332400397,
+        "max_drawdown": -0.11953896073500303,
+        "sharpe": 5.286360610412705
+      }
+    },
+    "BNBUSDT": {
+      "kelly_scenarios": {
+        "quarter_kelly": {
+          "scale": 0.25,
+          "avg_daily_return": 0.001271331047400419,
+          "std_daily_return": 0.004670098239809586,
+          "p_daily_1pct": 0.06294326241134751,
+          "p_tail_neg3pct": 0.0,
+          "mdd": -0.02878641010829308,
+          "sharpe": 5.202687598547703,
+          "ruin_prob": 0.0
+        },
+        "half_kelly": {
+          "scale": 0.5,
+          "avg_daily_return": 0.0025439407675399285,
+          "std_daily_return": 0.009385346641643273,
+          "p_daily_1pct": 0.13031914893617022,
+          "p_tail_neg3pct": 0.0008865248226950354,
+          "mdd": -0.056872015872443726,
+          "sharpe": 5.180262767262802,
+          "ruin_prob": 0.0
+        },
+        "full_kelly": {
+          "scale": 1.0,
+          "avg_daily_return": 0.005092951129528617,
+          "std_daily_return": 0.018954385647235204,
+          "p_daily_1pct": 0.17907801418439717,
+          "p_tail_neg3pct": 0.010638297872340425,
+          "mdd": -0.11099201032317096,
+          "sharpe": 5.135170982179855,
+          "ruin_prob": 0.0
+        },
+        "two_x_kelly": {
+          "scale": 2.0,
+          "avg_daily_return": 0.010205861533627573,
+          "std_daily_return": 0.03866939878532441,
+          "p_daily_1pct": 0.21719858156028368,
+          "p_tail_neg3pct": 0.041666666666666664,
+          "mdd": -0.21137967180900918,
+          "sharpe": 5.044026553831491,
+          "ruin_prob": 0.0
+        }
+      },
+      "vol_target_scenarios": {
+        "vol_30pct": {
+          "scale": 0.8382920067596658,
+          "avg_daily_return": 0.004268011074552842,
+          "std_daily_return": 0.015839124115322754,
+          "p_daily_1pct": 0.1702127659574468,
+          "p_tail_neg3pct": 0.0070921985815602835,
+          "mdd": -0.09378360325444446,
+          "sharpe": 5.149789625539138,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 0.3,
+          "realized_scale": 0.8382920067596658
+        },
+        "vol_50pct": {
+          "scale": 1.3971533445994428,
+          "avg_daily_return": 0.00712120439583766,
+          "std_daily_return": 0.026690264479313726,
+          "p_daily_1pct": 0.1976950354609929,
+          "p_tail_neg3pct": 0.03102836879432624,
+          "mdd": -0.15208609177424148,
+          "sharpe": 5.099125326846113,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 0.5,
+          "realized_scale": 1.3971533445994428
+        },
+        "vol_100pct": {
+          "scale": 2.7943066891988857,
+          "avg_daily_return": 0.01428095597598502,
+          "std_daily_return": 0.054907574356478916,
+          "p_daily_1pct": 0.23049645390070922,
+          "p_tail_neg3pct": 0.05939716312056738,
+          "mdd": -0.284086589474146,
+          "sharpe": 4.970729547929384,
+          "ruin_prob": 0.0,
+          "target_vol_ann": 1.0,
+          "realized_scale": 2.7943066891988857
+        }
+      },
+      "base_stats": {
+        "bars": 324939,
+        "avg_daily_return": 0.005088440100767491,
+        "max_drawdown": -0.11099201032317019,
+        "sharpe": 5.18636245927837
+      }
+    }
+  },
+  "recommended_sizing": [
+    {
+      "pair": "BTCUSDT",
+      "multiplier": "quarter_kelly",
+      "sharpe": 5.267193047966106,
+      "p_daily_1pct": 0.05673758865248227,
+      "mdd": -0.03105754591862353,
+      "ruin_prob": 0.0,
+      "why": "Highest Sharpe (5.27) among scenarios with MDD > -60% and ruin < 5%.  P(daily>=1%) = 5.7%."
+    },
+    {
+      "pair": "BNBUSDT",
+      "multiplier": "quarter_kelly",
+      "sharpe": 5.202687598547703,
+      "p_daily_1pct": 0.06294326241134751,
+      "mdd": -0.02878641010829308,
+      "ruin_prob": 0.0,
+      "why": "Highest Sharpe (5.20) among scenarios with MDD > -60% and ruin < 5%.  P(daily>=1%) = 6.3%."
+    }
+  ]
+}

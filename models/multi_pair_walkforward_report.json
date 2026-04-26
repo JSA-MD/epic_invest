@@ -1,0 +1,4952 @@
+{
+  "generated_at": "2026-04-26T00:44:06.498921+00:00",
+  "strategy_class": "multi_pair_walkforward_oos",
+  "params": {
+    "start": "2023-04-01",
+    "end": "2026-04-06",
+    "train_days": 90,
+    "test_days": 30,
+    "step_days": 30,
+    "pairs_requested": [
+      "BTCUSDT",
+      "BNBUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "pairs_available": [
+      "BTCUSDT",
+      "BNBUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "pairs_skipped_at_load": [],
+    "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+    "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill"
+  },
+  "per_pair_summary": {
+    "BTCUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.08316790547710858,
+      "oos_mean_sharpe": 2.782757214031085,
+      "oos_mean_win_rate": 0.5813254520317889,
+      "oos_daily_mean": 0.002578299010451444,
+      "oos_daily_std": 0.015321768454973128
+    },
+    "BNBUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.10738603810818692,
+      "oos_mean_sharpe": 2.8524345723486393,
+      "oos_mean_win_rate": 0.526353891488758,
+      "oos_daily_mean": 0.0034272022521652534,
+      "oos_daily_std": 0.018718576331402895
+    },
+    "ETHUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.07010070599403029,
+      "oos_mean_sharpe": 3.5084689612931688,
+      "oos_mean_win_rate": 0.5885998241341278,
+      "oos_daily_mean": 0.0022921683390627655,
+      "oos_daily_std": 0.012206892089486563
+    },
+    "SOLUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.17769626140858025,
+      "oos_mean_sharpe": 5.030526289200722,
+      "oos_mean_win_rate": 0.715685706306695,
+      "oos_daily_mean": 0.005516733410233215,
+      "oos_daily_std": 0.01946211356326379
+    },
+    "XRPUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.1390745684484378,
+      "oos_mean_sharpe": 4.0688264418357285,
+      "oos_mean_win_rate": 0.6824568891329603,
+      "oos_daily_mean": 0.004515443660144977,
+      "oos_daily_std": 0.02441092699687465
+    },
+    "DOGEUSDT": {
+      "oos_folds": 36,
+      "oos_mean_return": 0.1807792968773249,
+      "oos_mean_sharpe": 4.193472929131052,
+      "oos_mean_win_rate": 0.6952154135077204,
+      "oos_daily_mean": 0.005377976993947626,
+      "oos_daily_std": 0.02263443840259828
+    }
+  },
+  "diversification": {
+    "active_pairs": [
+      "BTCUSDT",
+      "BNBUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "correlation_matrix": {
+      "BTCUSDT": {
+        "BTCUSDT": 1.0,
+        "BNBUSDT": 0.4377657836751097,
+        "ETHUSDT": 0.09742219405855108,
+        "SOLUSDT": -0.051206084579784684,
+        "XRPUSDT": -0.032057079315548125,
+        "DOGEUSDT": -0.042659799305163296
+      },
+      "BNBUSDT": {
+        "BTCUSDT": 0.43776578367510977,
+        "BNBUSDT": 0.9999999999999998,
+        "ETHUSDT": 0.055746818373462105,
+        "SOLUSDT": -0.05346954712932501,
+        "XRPUSDT": -0.03197278824942518,
+        "DOGEUSDT": -0.04416132998157072
+      },
+      "ETHUSDT": {
+        "BTCUSDT": 0.09742219405855108,
+        "BNBUSDT": 0.0557468183734621,
+        "ETHUSDT": 1.0,
+        "SOLUSDT": 0.46273599649809793,
+        "XRPUSDT": 0.3075357416695768,
+        "DOGEUSDT": 0.4675230668320935
+      },
+      "SOLUSDT": {
+        "BTCUSDT": -0.05120608457978469,
+        "BNBUSDT": -0.05346954712932501,
+        "ETHUSDT": 0.4627359964980979,
+        "SOLUSDT": 1.0,
+        "XRPUSDT": 0.40232459365677964,
+        "DOGEUSDT": 0.4819251379596324
+      },
+      "XRPUSDT": {
+        "BTCUSDT": -0.032057079315548125,
+        "BNBUSDT": -0.03197278824942518,
+        "ETHUSDT": 0.30753574166957687,
+        "SOLUSDT": 0.40232459365677964,
+        "XRPUSDT": 1.0,
+        "DOGEUSDT": 0.36384610771338743
+      },
+      "DOGEUSDT": {
+        "BTCUSDT": -0.0426597993051633,
+        "BNBUSDT": -0.04416132998157071,
+        "ETHUSDT": 0.4675230668320935,
+        "SOLUSDT": 0.48192513795963243,
+        "XRPUSDT": 0.36384610771338743,
+        "DOGEUSDT": 1.0
+      }
+    },
+    "individual_sharpe": {
+      "BTCUSDT": 3.2160256161104894,
+      "BNBUSDT": 3.4991457463952793,
+      "ETHUSDT": 3.5886947257211173,
+      "SOLUSDT": 5.417352651365004,
+      "XRPUSDT": 3.535177856726922,
+      "DOGEUSDT": 4.540924999952227
+    },
+    "individual_daily_std": {
+      "BTCUSDT": 0.015321768454973128,
+      "BNBUSDT": 0.018718576331402895,
+      "ETHUSDT": 0.012206892089486563,
+      "SOLUSDT": 0.01946211356326379,
+      "XRPUSDT": 0.02441092699687465,
+      "DOGEUSDT": 0.02263443840259828
+    },
+    "portfolio_sharpe": 6.979011312055986,
+    "portfolio_calmar": 28.95694629729026,
+    "portfolio_daily_std": 0.010820358450035216,
+    "diversification_ratio": 1.7367680309801001,
+    "common_oos_days": 1039,
+    "n_pairs_in_portfolio": 6
+  },
+  "folds": [
+    {
+      "fold": "fold_001",
+      "fold_idx": 1,
+      "train_start": "2023-01-01T00:00:00+00:00",
+      "train_end": "2023-04-01T00:00:00+00:00",
+      "test_start": "2023-04-01T00:00:00+00:00",
+      "test_end": "2023-05-01T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": -0.0014159527169221864,
+          "sharpe": -0.7834277327279803,
+          "max_drawdown": -0.008611340888272978,
+          "avg_daily_return": -5.0492487541766084e-05,
+          "n_wins": 5,
+          "n_losses": 13,
+          "n_trades": 21,
+          "roundtrip_win_rate": 0.2777777777777778
+        },
+        "BNBUSDT": {
+          "total_return": 0.12025736283421318,
+          "sharpe": 5.31296129689008,
+          "max_drawdown": -0.03932109777502901,
+          "avg_daily_return": 0.004179387446638856,
+          "n_wins": 819,
+          "n_losses": 685,
+          "n_trades": 1505,
+          "roundtrip_win_rate": 0.5445478723404256
+        },
+        "ETHUSDT": {
+          "total_return": 0.22673742417350273,
+          "sharpe": 8.438016166166197,
+          "max_drawdown": -0.041047080724039064,
+          "avg_daily_return": 0.0074444344453443445,
+          "n_wins": 478,
+          "n_losses": 184,
+          "n_trades": 681,
+          "roundtrip_win_rate": 0.7220543806646526
+        },
+        "SOLUSDT": {
+          "total_return": 0.271796212970735,
+          "sharpe": 5.98880890676752,
+          "max_drawdown": -0.058994779495977534,
+          "avg_daily_return": 0.00889028981915794,
+          "n_wins": 1320,
+          "n_losses": 461,
+          "n_trades": 2022,
+          "roundtrip_win_rate": 0.7411566535654127
+        },
+        "XRPUSDT": {
+          "total_return": 0.3955978117972645,
+          "sharpe": 8.234986490115316,
+          "max_drawdown": -0.07434989071409714,
+          "avg_daily_return": 0.012586429445620035,
+          "n_wins": 1153,
+          "n_losses": 279,
+          "n_trades": 1667,
+          "roundtrip_win_rate": 0.8051675977653632
+        },
+        "DOGEUSDT": {
+          "total_return": 0.25156109066554055,
+          "sharpe": 6.95547115782076,
+          "max_drawdown": -0.05817688078500305,
+          "avg_daily_return": 0.008219612206268252,
+          "n_wins": 1158,
+          "n_losses": 362,
+          "n_trades": 1716,
+          "roundtrip_win_rate": 0.7618421052631579
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.10143687262021839,
+          "sharpe": 4.861864828302004,
+          "max_drawdown": -0.057741052656011704,
+          "avg_daily_return": 0.0033606190102790424,
+          "n_wins": 57,
+          "n_losses": 13,
+          "n_trades": 72,
+          "roundtrip_win_rate": 0.8142857142857143
+        },
+        "BNBUSDT": {
+          "total_return": 0.08103967442860815,
+          "sharpe": 3.268211705172976,
+          "max_drawdown": -0.07062008071389347,
+          "avg_daily_return": 0.0027522527428442524,
+          "n_wins": 851,
+          "n_losses": 382,
+          "n_trades": 1236,
+          "roundtrip_win_rate": 0.6901865369018654
+        },
+        "ETHUSDT": {
+          "total_return": 0.025576598569691633,
+          "sharpe": 1.77166411040506,
+          "max_drawdown": -0.026433137054098665,
+          "avg_daily_return": 0.0008593615806021397,
+          "n_wins": 387,
+          "n_losses": 495,
+          "n_trades": 901,
+          "roundtrip_win_rate": 0.4387755102040816
+        },
+        "SOLUSDT": {
+          "total_return": 0.21162688555702203,
+          "sharpe": 6.080073383534969,
+          "max_drawdown": -0.051192554976640325,
+          "avg_daily_return": 0.006598516161868987,
+          "n_wins": 1421,
+          "n_losses": 612,
+          "n_trades": 2034,
+          "roundtrip_win_rate": 0.6989670437776685
+        },
+        "XRPUSDT": {
+          "total_return": 0.05994324880495561,
+          "sharpe": 3.2786264177171023,
+          "max_drawdown": -0.04488491874259204,
+          "avg_daily_return": 0.0019798382065052615,
+          "n_wins": 978,
+          "n_losses": 428,
+          "n_trades": 1407,
+          "roundtrip_win_rate": 0.6955903271692745
+        },
+        "DOGEUSDT": {
+          "total_return": -0.09182196681269283,
+          "sharpe": -4.332080902786756,
+          "max_drawdown": -0.12089350994029224,
+          "avg_daily_return": -0.003133005930265494,
+          "n_wins": 137,
+          "n_losses": 421,
+          "n_trades": 559,
+          "roundtrip_win_rate": 0.24551971326164876
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_002",
+      "fold_idx": 2,
+      "train_start": "2023-01-31T00:00:00+00:00",
+      "train_end": "2023-05-01T00:00:00+00:00",
+      "test_start": "2023-05-01T00:00:00+00:00",
+      "test_end": "2023-05-31T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.10531130869205363,
+          "sharpe": 2.946887669641042,
+          "max_drawdown": -0.0579127286093456,
+          "avg_daily_return": 0.0018077489902901505,
+          "n_wins": 68,
+          "n_losses": 35,
+          "n_trades": 109,
+          "roundtrip_win_rate": 0.6601941747572816
+        },
+        "BNBUSDT": {
+          "total_return": 0.2033234365726011,
+          "sharpe": 4.025169780927961,
+          "max_drawdown": -0.07062021895951254,
+          "avg_daily_return": 0.0033308703104768943,
+          "n_wins": 1493,
+          "n_losses": 1231,
+          "n_trades": 2727,
+          "roundtrip_win_rate": 0.5480910425844346
+        },
+        "ETHUSDT": {
+          "total_return": 0.25813932441867027,
+          "sharpe": 5.69895679284758,
+          "max_drawdown": -0.041047080724039064,
+          "avg_daily_return": 0.004038722243514441,
+          "n_wins": 873,
+          "n_losses": 687,
+          "n_trades": 1584,
+          "roundtrip_win_rate": 0.5596153846153846
+        },
+        "SOLUSDT": {
+          "total_return": 0.5625236313060471,
+          "sharpe": 6.161327210772695,
+          "max_drawdown": -0.058994779495977534,
+          "avg_daily_return": 0.007943632115328324,
+          "n_wins": 2976,
+          "n_losses": 922,
+          "n_trades": 3899,
+          "roundtrip_win_rate": 0.7634684453565931
+        },
+        "XRPUSDT": {
+          "total_return": 0.41043163150426487,
+          "sharpe": 5.455824664294116,
+          "max_drawdown": -0.10756367386667842,
+          "avg_daily_return": 0.006284831328777785,
+          "n_wins": 1733,
+          "n_losses": 1077,
+          "n_trades": 2811,
+          "roundtrip_win_rate": 0.6167259786476869
+        },
+        "DOGEUSDT": {
+          "total_return": 0.4000619986325302,
+          "sharpe": 5.714457713085803,
+          "max_drawdown": -0.07108536960431133,
+          "avg_daily_return": 0.005944822627202597,
+          "n_wins": 2495,
+          "n_losses": 602,
+          "n_trades": 3098,
+          "roundtrip_win_rate": 0.805618340329351
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.05695323424400556,
+          "sharpe": 3.116971161684163,
+          "max_drawdown": -0.05273432594938199,
+          "avg_daily_return": 0.0021926348374335766,
+          "n_wins": 36,
+          "n_losses": 8,
+          "n_trades": 57,
+          "roundtrip_win_rate": 0.8181818181818182
+        },
+        "BNBUSDT": {
+          "total_return": 0.1685453993751722,
+          "sharpe": 6.8292127956547795,
+          "max_drawdown": -0.03956695287545975,
+          "avg_daily_return": 0.006186400487729423,
+          "n_wins": 1601,
+          "n_losses": 1098,
+          "n_trades": 2848,
+          "roundtrip_win_rate": 0.593182660244535
+        },
+        "ETHUSDT": {
+          "total_return": 0.007673292432108347,
+          "sharpe": 0.7907596737614159,
+          "max_drawdown": -0.03022659502084246,
+          "avg_daily_return": 0.00032486442855251987,
+          "n_wins": 123,
+          "n_losses": 169,
+          "n_trades": 296,
+          "roundtrip_win_rate": 0.4212328767123288
+        },
+        "SOLUSDT": {
+          "total_return": 0.04122831268972971,
+          "sharpe": 5.042794726930531,
+          "max_drawdown": -0.01279502135787236,
+          "avg_daily_return": 0.001581866864716478,
+          "n_wins": 248,
+          "n_losses": 74,
+          "n_trades": 323,
+          "roundtrip_win_rate": 0.7701863354037267
+        },
+        "XRPUSDT": {
+          "total_return": 0.04336127024777858,
+          "sharpe": 3.834405160225114,
+          "max_drawdown": -0.03578019095318785,
+          "avg_daily_return": 0.001645275688322358,
+          "n_wins": 409,
+          "n_losses": 204,
+          "n_trades": 614,
+          "roundtrip_win_rate": 0.66721044045677
+        },
+        "DOGEUSDT": {
+          "total_return": 0.017339602148198185,
+          "sharpe": 2.7472400984374494,
+          "max_drawdown": -0.017332007499027635,
+          "avg_daily_return": 0.0006660923268634322,
+          "n_wins": 231,
+          "n_losses": 68,
+          "n_trades": 300,
+          "roundtrip_win_rate": 0.7725752508361204
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_003",
+      "fold_idx": 3,
+      "train_start": "2023-03-02T00:00:00+00:00",
+      "train_end": "2023-05-31T00:00:00+00:00",
+      "test_start": "2023-05-31T00:00:00+00:00",
+      "test_end": "2023-06-30T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3209612271248934,
+          "sharpe": 4.036004907252324,
+          "max_drawdown": -0.059340282057124716,
+          "avg_daily_return": 0.0034332983978154537,
+          "n_wins": 185,
+          "n_losses": 81,
+          "n_trades": 282,
+          "roundtrip_win_rate": 0.6954887218045113
+        },
+        "BNBUSDT": {
+          "total_return": 0.42670603076216884,
+          "sharpe": 4.980257730555497,
+          "max_drawdown": -0.07062021895951254,
+          "avg_daily_return": 0.004403925660444641,
+          "n_wins": 3214,
+          "n_losses": 2152,
+          "n_trades": 5514,
+          "roundtrip_win_rate": 0.5989563920983973
+        },
+        "ETHUSDT": {
+          "total_return": 0.2602166710168268,
+          "sharpe": 4.408042450337584,
+          "max_drawdown": -0.041047080724039064,
+          "avg_daily_return": 0.0028190608539452773,
+          "n_wins": 1111,
+          "n_losses": 923,
+          "n_trades": 2055,
+          "roundtrip_win_rate": 0.5462143559488692
+        },
+        "SOLUSDT": {
+          "total_return": 0.6218651881634194,
+          "sharpe": 5.491353063622375,
+          "max_drawdown": -0.058994779495977534,
+          "avg_daily_return": 0.005937216918063322,
+          "n_wins": 3126,
+          "n_losses": 940,
+          "n_trades": 4067,
+          "roundtrip_win_rate": 0.7688145597638957
+        },
+        "XRPUSDT": {
+          "total_return": 0.46905739602846697,
+          "sharpe": 4.917502261796991,
+          "max_drawdown": -0.10756367386667842,
+          "avg_daily_return": 0.004828245487051971,
+          "n_wins": 2060,
+          "n_losses": 1203,
+          "n_trades": 3264,
+          "roundtrip_win_rate": 0.6313208703646951
+        },
+        "DOGEUSDT": {
+          "total_return": 0.42161962231184735,
+          "sharpe": 4.9207525915262575,
+          "max_drawdown": -0.07108536960431133,
+          "avg_daily_return": 0.004288148976506156,
+          "n_wins": 2643,
+          "n_losses": 605,
+          "n_trades": 3249,
+          "roundtrip_win_rate": 0.8137315270935961
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.026405286879736645,
+          "sharpe": -3.2492697787363802,
+          "max_drawdown": -0.04662859770684635,
+          "avg_daily_return": -0.0009194444099855045,
+          "n_wins": 0,
+          "n_losses": 8,
+          "n_trades": 9,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.1684987327987042,
+          "sharpe": 6.4205458362647585,
+          "max_drawdown": -0.035944973786696144,
+          "avg_daily_return": 0.0055409384618460965,
+          "n_wins": 855,
+          "n_losses": 723,
+          "n_trades": 1669,
+          "roundtrip_win_rate": 0.5418250950570342
+        },
+        "ETHUSDT": {
+          "total_return": 0.04921861968972463,
+          "sharpe": 4.9451819213693184,
+          "max_drawdown": -0.026708035020903687,
+          "avg_daily_return": 0.0016897769322985249,
+          "n_wins": 151,
+          "n_losses": 54,
+          "n_trades": 213,
+          "roundtrip_win_rate": 0.7365853658536585
+        },
+        "SOLUSDT": {
+          "total_return": 0.08463386246281823,
+          "sharpe": 3.8834248121339177,
+          "max_drawdown": -0.05053941502185022,
+          "avg_daily_return": 0.0028366673901110712,
+          "n_wins": 656,
+          "n_losses": 288,
+          "n_trades": 945,
+          "roundtrip_win_rate": 0.6949152542372882
+        },
+        "XRPUSDT": {
+          "total_return": 0.0455309894623559,
+          "sharpe": 2.704965662171215,
+          "max_drawdown": -0.07278751149305995,
+          "avg_daily_return": 0.0015535923477309457,
+          "n_wins": 546,
+          "n_losses": 175,
+          "n_trades": 722,
+          "roundtrip_win_rate": 0.7572815533980582
+        },
+        "DOGEUSDT": {
+          "total_return": 0.0576343830898467,
+          "sharpe": 3.1638647697262465,
+          "max_drawdown": -0.04454798116514258,
+          "avg_daily_return": 0.0019603607798027874,
+          "n_wins": 609,
+          "n_losses": 363,
+          "n_trades": 973,
+          "roundtrip_win_rate": 0.6265432098765432
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_004",
+      "fold_idx": 4,
+      "train_start": "2023-04-01T00:00:00+00:00",
+      "train_end": "2023-06-30T00:00:00+00:00",
+      "test_start": "2023-06-30T00:00:00+00:00",
+      "test_end": "2023-07-30T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4989745428301888,
+          "sharpe": 5.116772999420115,
+          "max_drawdown": -0.07532591514714648,
+          "avg_daily_return": 0.004920016308125361,
+          "n_wins": 225,
+          "n_losses": 116,
+          "n_trades": 342,
+          "roundtrip_win_rate": 0.6598240469208211
+        },
+        "BNBUSDT": {
+          "total_return": 0.5488763594882615,
+          "sharpe": 5.905182334491425,
+          "max_drawdown": -0.07062008071389347,
+          "avg_daily_return": 0.005328161782640217,
+          "n_wins": 3352,
+          "n_losses": 1887,
+          "n_trades": 5327,
+          "roundtrip_win_rate": 0.6398167589234587
+        },
+        "ETHUSDT": {
+          "total_return": 0.10080066671409238,
+          "sharpe": 2.5612521997123903,
+          "max_drawdown": -0.03892852275969272,
+          "avg_daily_return": 0.0011621124878217477,
+          "n_wins": 879,
+          "n_losses": 884,
+          "n_trades": 1788,
+          "roundtrip_win_rate": 0.4985819625638117
+        },
+        "SOLUSDT": {
+          "total_return": 0.36600913115721334,
+          "sharpe": 4.989298882385628,
+          "max_drawdown": -0.051192554976640325,
+          "avg_daily_return": 0.0037569481423492053,
+          "n_wins": 2378,
+          "n_losses": 891,
+          "n_trades": 3270,
+          "roundtrip_win_rate": 0.7274395839706332
+        },
+        "XRPUSDT": {
+          "total_return": 0.18198118095498206,
+          "sharpe": 3.5113931825331433,
+          "max_drawdown": -0.07291597141583317,
+          "avg_daily_return": 0.001995268845625524,
+          "n_wins": 2199,
+          "n_losses": 768,
+          "n_trades": 2969,
+          "roundtrip_win_rate": 0.7411526794742164
+        },
+        "DOGEUSDT": {
+          "total_return": -0.09182196697599287,
+          "sharpe": -2.5770386407793664,
+          "max_drawdown": -0.12089351011133598,
+          "avg_daily_return": -0.0011057668010347537,
+          "n_wins": 137,
+          "n_losses": 421,
+          "n_trades": 559,
+          "roundtrip_win_rate": 0.24551971326164876
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.05889482137795876,
+          "sharpe": 3.3218785101093604,
+          "max_drawdown": -0.0352372593951803,
+          "avg_daily_return": 0.0018782032905711899,
+          "n_wins": 13,
+          "n_losses": 10,
+          "n_trades": 26,
+          "roundtrip_win_rate": 0.5652173913043478
+        },
+        "BNBUSDT": {
+          "total_return": 0.015163685907771063,
+          "sharpe": 1.0474026851353,
+          "max_drawdown": -0.06755747794300693,
+          "avg_daily_return": 0.0006886056842548024,
+          "n_wins": 625,
+          "n_losses": 1084,
+          "n_trades": 1714,
+          "roundtrip_win_rate": 0.36571094207138677
+        },
+        "ETHUSDT": {
+          "total_return": 0.04347987610927939,
+          "sharpe": 2.9942767249310127,
+          "max_drawdown": -0.04131629267785353,
+          "avg_daily_return": 0.0014650716093178437,
+          "n_wins": 136,
+          "n_losses": 130,
+          "n_trades": 274,
+          "roundtrip_win_rate": 0.5112781954887218
+        },
+        "SOLUSDT": {
+          "total_return": 0.1289342399543869,
+          "sharpe": 2.981954947748542,
+          "max_drawdown": -0.12110275705382201,
+          "avg_daily_return": 0.004351970410090397,
+          "n_wins": 711,
+          "n_losses": 525,
+          "n_trades": 1237,
+          "roundtrip_win_rate": 0.5752427184466019
+        },
+        "XRPUSDT": {
+          "total_return": 0.46522008891302513,
+          "sharpe": 6.998908799505299,
+          "max_drawdown": -0.142281287001774,
+          "avg_daily_return": 0.015463737121242153,
+          "n_wins": 707,
+          "n_losses": 250,
+          "n_trades": 958,
+          "roundtrip_win_rate": 0.7387669801462905
+        },
+        "DOGEUSDT": {
+          "total_return": 0.10770318344259455,
+          "sharpe": 3.946033523809792,
+          "max_drawdown": -0.05998632188851882,
+          "avg_daily_return": 0.0035304416849187576,
+          "n_wins": 934,
+          "n_losses": 473,
+          "n_trades": 1596,
+          "roundtrip_win_rate": 0.6638237384506042
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_005",
+      "fold_idx": 5,
+      "train_start": "2023-05-01T00:00:00+00:00",
+      "train_end": "2023-07-30T00:00:00+00:00",
+      "test_start": "2023-07-30T00:00:00+00:00",
+      "test_end": "2023-08-29T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.27060912911750257,
+          "sharpe": 3.6637806076304935,
+          "max_drawdown": -0.08252194300356064,
+          "avg_daily_return": 0.002866168596161271,
+          "n_wins": 415,
+          "n_losses": 96,
+          "n_trades": 520,
+          "roundtrip_win_rate": 0.812133072407045
+        },
+        "BNBUSDT": {
+          "total_return": 0.5503252283547473,
+          "sharpe": 6.436767650878103,
+          "max_drawdown": -0.03956695287545975,
+          "avg_daily_return": 0.0053317097200294775,
+          "n_wins": 3057,
+          "n_losses": 2566,
+          "n_trades": 5627,
+          "roundtrip_win_rate": 0.5436599679886182
+        },
+        "ETHUSDT": {
+          "total_return": 0.14462266883241282,
+          "sharpe": 3.420918753944976,
+          "max_drawdown": -0.04244528349745469,
+          "avg_daily_return": 0.0016374082696220726,
+          "n_wins": 645,
+          "n_losses": 685,
+          "n_trades": 1362,
+          "roundtrip_win_rate": 0.4849624060150376
+        },
+        "SOLUSDT": {
+          "total_return": 0.3359043985428458,
+          "sharpe": 3.2918060635703785,
+          "max_drawdown": -0.12096629048188612,
+          "avg_daily_return": 0.0037947326203073995,
+          "n_wins": 2213,
+          "n_losses": 872,
+          "n_trades": 3086,
+          "roundtrip_win_rate": 0.7173419773095624
+        },
+        "XRPUSDT": {
+          "total_return": 0.7002267414712211,
+          "sharpe": 5.316066353773486,
+          "max_drawdown": -0.14149309446062186,
+          "avg_daily_return": 0.0071945785442043605,
+          "n_wins": 2016,
+          "n_losses": 632,
+          "n_trades": 2649,
+          "roundtrip_win_rate": 0.7613293051359517
+        },
+        "DOGEUSDT": {
+          "total_return": 0.28750501956751395,
+          "sharpe": 4.090489679518125,
+          "max_drawdown": -0.059897379502849124,
+          "avg_daily_return": 0.0030493951326889196,
+          "n_wins": 2355,
+          "n_losses": 569,
+          "n_trades": 3112,
+          "roundtrip_win_rate": 0.8054035567715458
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.2412904084157932,
+          "sharpe": 5.058761014289651,
+          "max_drawdown": -0.06641035962595998,
+          "avg_daily_return": 0.007766600906841592,
+          "n_wins": 31,
+          "n_losses": 7,
+          "n_trades": 42,
+          "roundtrip_win_rate": 0.8157894736842105
+        },
+        "BNBUSDT": {
+          "total_return": 0.21293310355061834,
+          "sharpe": 6.2972564018029304,
+          "max_drawdown": -0.050075229545367694,
+          "avg_daily_return": 0.006991650894986508,
+          "n_wins": 1550,
+          "n_losses": 1252,
+          "n_trades": 2803,
+          "roundtrip_win_rate": 0.5531763026409707
+        },
+        "ETHUSDT": {
+          "total_return": 0.07421332467931374,
+          "sharpe": 5.98428462632162,
+          "max_drawdown": -0.016189945874734102,
+          "avg_daily_return": 0.002410107800309221,
+          "n_wins": 170,
+          "n_losses": 54,
+          "n_trades": 230,
+          "roundtrip_win_rate": 0.7589285714285714
+        },
+        "SOLUSDT": {
+          "total_return": 0.07711019134788355,
+          "sharpe": 5.351862951746748,
+          "max_drawdown": -0.03362659397244783,
+          "avg_daily_return": 0.0025164068566714158,
+          "n_wins": 658,
+          "n_losses": 93,
+          "n_trades": 752,
+          "roundtrip_win_rate": 0.8761651131824234
+        },
+        "XRPUSDT": {
+          "total_return": 0.00839496557224928,
+          "sharpe": 0.6795139618301193,
+          "max_drawdown": -0.04372048978456511,
+          "avg_daily_return": 0.00028904852741782336,
+          "n_wins": 298,
+          "n_losses": 225,
+          "n_trades": 524,
+          "roundtrip_win_rate": 0.5697896749521989
+        },
+        "DOGEUSDT": {
+          "total_return": 0.01348253868109972,
+          "sharpe": 1.406741797398559,
+          "max_drawdown": -0.030803112915333886,
+          "avg_daily_return": 0.0004529232058427701,
+          "n_wins": 413,
+          "n_losses": 116,
+          "n_trades": 530,
+          "roundtrip_win_rate": 0.780718336483932
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_006",
+      "fold_idx": 6,
+      "train_start": "2023-05-31T00:00:00+00:00",
+      "train_end": "2023-08-29T00:00:00+00:00",
+      "test_start": "2023-08-29T00:00:00+00:00",
+      "test_end": "2023-09-28T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3228352764374809,
+          "sharpe": 3.2465002964554186,
+          "max_drawdown": -0.084313280901681,
+          "avg_daily_return": 0.0033031937326177545,
+          "n_wins": 52,
+          "n_losses": 46,
+          "n_trades": 101,
+          "roundtrip_win_rate": 0.5306122448979592
+        },
+        "BNBUSDT": {
+          "total_return": 0.6221944186736368,
+          "sharpe": 6.385059155425416,
+          "max_drawdown": -0.04714991162302784,
+          "avg_daily_return": 0.005747423971714761,
+          "n_wins": 3013,
+          "n_losses": 2534,
+          "n_trades": 5563,
+          "roundtrip_win_rate": 0.5431764917973679
+        },
+        "ETHUSDT": {
+          "total_return": 0.2199936914566103,
+          "sharpe": 4.5800045287576,
+          "max_drawdown": -0.041308733877660986,
+          "avg_daily_return": 0.0022779896049732427,
+          "n_wins": 675,
+          "n_losses": 510,
+          "n_trades": 1216,
+          "roundtrip_win_rate": 0.569620253164557
+        },
+        "SOLUSDT": {
+          "total_return": 0.2995225474002716,
+          "sharpe": 2.883860857263302,
+          "max_drawdown": -0.12111221468490985,
+          "avg_daily_return": 0.003073503911440603,
+          "n_wins": 1877,
+          "n_losses": 770,
+          "n_trades": 2648,
+          "roundtrip_win_rate": 0.7091046467699282
+        },
+        "XRPUSDT": {
+          "total_return": 0.5675007184314507,
+          "sharpe": 4.548283565316548,
+          "max_drawdown": -0.14140051539036436,
+          "avg_daily_return": 0.005961976473503392,
+          "n_wins": 1196,
+          "n_losses": 469,
+          "n_trades": 1666,
+          "roundtrip_win_rate": 0.7183183183183183
+        },
+        "DOGEUSDT": {
+          "total_return": 0.21365668709096175,
+          "sharpe": 3.036080737792204,
+          "max_drawdown": -0.05989955319612317,
+          "avg_daily_return": 0.00223897842249732,
+          "n_wins": 2061,
+          "n_losses": 916,
+          "n_trades": 2978,
+          "roundtrip_win_rate": 0.6923076923076923
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.019479306802109964,
+          "sharpe": -1.2942050973560557,
+          "max_drawdown": -0.0741898885887895,
+          "avg_daily_return": -0.0006408215727783421,
+          "n_wins": 5,
+          "n_losses": 10,
+          "n_trades": 18,
+          "roundtrip_win_rate": 0.3333333333333333
+        },
+        "BNBUSDT": {
+          "total_return": 0.017955620145821527,
+          "sharpe": 0.8863039867935167,
+          "max_drawdown": -0.0785807226032933,
+          "avg_daily_return": 0.0007214390284244791,
+          "n_wins": 1136,
+          "n_losses": 768,
+          "n_trades": 1907,
+          "roundtrip_win_rate": 0.5966386554621849
+        },
+        "ETHUSDT": {
+          "total_return": -0.027239670566835295,
+          "sharpe": -2.558647726971437,
+          "max_drawdown": -0.04720115348986342,
+          "avg_daily_return": -0.0008916669804170275,
+          "n_wins": 65,
+          "n_losses": 74,
+          "n_trades": 142,
+          "roundtrip_win_rate": 0.4676258992805755
+        },
+        "SOLUSDT": {
+          "total_return": 0.12256689094380313,
+          "sharpe": 5.365110093539709,
+          "max_drawdown": -0.03159232130868017,
+          "avg_daily_return": 0.0039036076939340638,
+          "n_wins": 1064,
+          "n_losses": 244,
+          "n_trades": 1309,
+          "roundtrip_win_rate": 0.8134556574923547
+        },
+        "XRPUSDT": {
+          "total_return": 0.049050642083877216,
+          "sharpe": 3.802560337646339,
+          "max_drawdown": -0.02501813398326369,
+          "avg_daily_return": 0.0016073682770428755,
+          "n_wins": 660,
+          "n_losses": 375,
+          "n_trades": 1036,
+          "roundtrip_win_rate": 0.6376811594202898
+        },
+        "DOGEUSDT": {
+          "total_return": 0.01418081948166372,
+          "sharpe": 1.4871726122592874,
+          "max_drawdown": -0.021984426684680147,
+          "avg_daily_return": 0.0004738677617545983,
+          "n_wins": 531,
+          "n_losses": 390,
+          "n_trades": 923,
+          "roundtrip_win_rate": 0.5765472312703583
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_007",
+      "fold_idx": 7,
+      "train_start": "2023-06-30T00:00:00+00:00",
+      "train_end": "2023-09-28T00:00:00+00:00",
+      "test_start": "2023-09-28T00:00:00+00:00",
+      "test_end": "2023-10-28T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4626181486763141,
+          "sharpe": 4.1843000435715085,
+          "max_drawdown": -0.08162351179423533,
+          "avg_daily_return": 0.004398576229089007,
+          "n_wins": 83,
+          "n_losses": 35,
+          "n_trades": 130,
+          "roundtrip_win_rate": 0.7033898305084746
+        },
+        "BNBUSDT": {
+          "total_return": 0.42736027128221554,
+          "sharpe": 5.039535153730916,
+          "max_drawdown": -0.06755747794300693,
+          "avg_daily_return": 0.004235570257717887,
+          "n_wins": 3012,
+          "n_losses": 2708,
+          "n_trades": 5725,
+          "roundtrip_win_rate": 0.5265734265734265
+        },
+        "ETHUSDT": {
+          "total_return": 0.15709715084649623,
+          "sharpe": 3.267664418962773,
+          "max_drawdown": -0.047244714935280485,
+          "avg_daily_return": 0.0016610502777398247,
+          "n_wins": 544,
+          "n_losses": 406,
+          "n_trades": 967,
+          "roundtrip_win_rate": 0.5726315789473684
+        },
+        "SOLUSDT": {
+          "total_return": 0.12893417950438724,
+          "sharpe": 1.7214504329120592,
+          "max_drawdown": -0.12110279913279798,
+          "avg_daily_return": 0.0014506562084032003,
+          "n_wins": 711,
+          "n_losses": 525,
+          "n_trades": 1237,
+          "roundtrip_win_rate": 0.5752427184466019
+        },
+        "XRPUSDT": {
+          "total_return": 0.46522008678402527,
+          "sharpe": 4.039882953522,
+          "max_drawdown": -0.14228128849158028,
+          "avg_daily_return": 0.0051545790242671355,
+          "n_wins": 707,
+          "n_losses": 250,
+          "n_trades": 958,
+          "roundtrip_win_rate": 0.7387669801462905
+        },
+        "DOGEUSDT": {
+          "total_return": 0.13126423134363874,
+          "sharpe": 2.366293045433461,
+          "max_drawdown": -0.05998632188851882,
+          "avg_daily_return": 0.00142108182848319,
+          "n_wins": 1846,
+          "n_losses": 1086,
+          "n_trades": 2933,
+          "roundtrip_win_rate": 0.6296043656207367
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.0034558869469367703,
+          "sharpe": -0.38652820788548214,
+          "max_drawdown": -0.026478486052002093,
+          "avg_daily_return": -0.00012236078345888578,
+          "n_wins": 0,
+          "n_losses": 3,
+          "n_trades": 5,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.0005467617330341401,
+          "sharpe": 0.14804394447855418,
+          "max_drawdown": -0.04682973483159736,
+          "avg_daily_return": 8.072067626510026e-05,
+          "n_wins": 890,
+          "n_losses": 1180,
+          "n_trades": 2197,
+          "roundtrip_win_rate": 0.42995169082125606
+        },
+        "ETHUSDT": {
+          "total_return": -0.02544066606915263,
+          "sharpe": -1.4843614627101174,
+          "max_drawdown": -0.0684084748073649,
+          "avg_daily_return": -0.0008157953002275916,
+          "n_wins": 152,
+          "n_losses": 232,
+          "n_trades": 396,
+          "roundtrip_win_rate": 0.3958333333333333
+        },
+        "SOLUSDT": {
+          "total_return": 0.39780493211793355,
+          "sharpe": 7.5639346627674815,
+          "max_drawdown": -0.0712431887446624,
+          "avg_daily_return": 0.011653188011871696,
+          "n_wins": 1616,
+          "n_losses": 325,
+          "n_trades": 1942,
+          "roundtrip_win_rate": 0.8325605358062854
+        },
+        "XRPUSDT": {
+          "total_return": 0.05687106759538696,
+          "sharpe": 2.3416422330002056,
+          "max_drawdown": -0.059065021215747415,
+          "avg_daily_return": 0.001884405342679211,
+          "n_wins": 820,
+          "n_losses": 481,
+          "n_trades": 1302,
+          "roundtrip_win_rate": 0.6302843966179862
+        },
+        "DOGEUSDT": {
+          "total_return": 0.161856944618056,
+          "sharpe": 5.308936365767613,
+          "max_drawdown": -0.062152280561366346,
+          "avg_daily_return": 0.005139128225127124,
+          "n_wins": 1004,
+          "n_losses": 244,
+          "n_trades": 1249,
+          "roundtrip_win_rate": 0.8044871794871795
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_008",
+      "fold_idx": 8,
+      "train_start": "2023-07-30T00:00:00+00:00",
+      "train_end": "2023-10-28T00:00:00+00:00",
+      "test_start": "2023-10-28T00:00:00+00:00",
+      "test_end": "2023-11-27T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3658731208034014,
+          "sharpe": 3.6714025170752214,
+          "max_drawdown": -0.08162315816991605,
+          "avg_daily_return": 0.0036685515158873354,
+          "n_wins": 71,
+          "n_losses": 30,
+          "n_trades": 112,
+          "roundtrip_win_rate": 0.7029702970297029
+        },
+        "BNBUSDT": {
+          "total_return": 0.44188571811777444,
+          "sharpe": 4.99773904970886,
+          "max_drawdown": -0.06589041259128381,
+          "avg_daily_return": 0.004303566588360449,
+          "n_wins": 3506,
+          "n_losses": 2435,
+          "n_trades": 6068,
+          "roundtrip_win_rate": 0.5901363406833866
+        },
+        "ETHUSDT": {
+          "total_return": 0.08597039055851008,
+          "sharpe": 1.8396385679929506,
+          "max_drawdown": -0.06840961517480637,
+          "avg_daily_return": 0.0009558007587066214,
+          "n_wins": 591,
+          "n_losses": 480,
+          "n_trades": 1098,
+          "roundtrip_win_rate": 0.5518207282913166
+        },
+        "SOLUSDT": {
+          "total_return": 0.9126521062212163,
+          "sharpe": 7.0500268178711165,
+          "max_drawdown": -0.07123340370113418,
+          "avg_daily_return": 0.007426190246736072,
+          "n_wins": 3662,
+          "n_losses": 608,
+          "n_trades": 4271,
+          "roundtrip_win_rate": 0.8576112412177986
+        },
+        "XRPUSDT": {
+          "total_return": 0.1464539562180469,
+          "sharpe": 2.457729341044616,
+          "max_drawdown": -0.059065014546770156,
+          "avg_daily_return": 0.0015423225928298812,
+          "n_wins": 2013,
+          "n_losses": 965,
+          "n_trades": 2979,
+          "roundtrip_win_rate": 0.6759570181329752
+        },
+        "DOGEUSDT": {
+          "total_return": 0.249910479280137,
+          "sharpe": 3.8523213539420462,
+          "max_drawdown": -0.06215230046125564,
+          "avg_daily_return": 0.0025353478497516036,
+          "n_wins": 2430,
+          "n_losses": 768,
+          "n_trades": 3199,
+          "roundtrip_win_rate": 0.7598499061913696
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.10739149467652087,
+          "sharpe": 6.565374516965978,
+          "max_drawdown": -0.027948307097648173,
+          "avg_daily_return": 0.0034603670147018003,
+          "n_wins": 19,
+          "n_losses": 6,
+          "n_trades": 28,
+          "roundtrip_win_rate": 0.76
+        },
+        "BNBUSDT": {
+          "total_return": 0.040423919380844886,
+          "sharpe": 2.136332642447855,
+          "max_drawdown": -0.045053193642815015,
+          "avg_daily_return": 0.001297846495418135,
+          "n_wins": 410,
+          "n_losses": 578,
+          "n_trades": 1012,
+          "roundtrip_win_rate": 0.4149797570850202
+        },
+        "ETHUSDT": {
+          "total_return": 0.008979278542185165,
+          "sharpe": 0.7804005206736823,
+          "max_drawdown": -0.025580702775061526,
+          "avg_daily_return": 0.00031088788917369066,
+          "n_wins": 187,
+          "n_losses": 224,
+          "n_trades": 428,
+          "roundtrip_win_rate": 0.45498783454987834
+        },
+        "SOLUSDT": {
+          "total_return": 0.09195854616602639,
+          "sharpe": 2.953069296654917,
+          "max_drawdown": -0.12195092454133705,
+          "avg_daily_return": 0.0031190212809103944,
+          "n_wins": 397,
+          "n_losses": 116,
+          "n_trades": 514,
+          "roundtrip_win_rate": 0.7738791423001949
+        },
+        "XRPUSDT": {
+          "total_return": 0.15489144169312863,
+          "sharpe": 4.546910618053774,
+          "max_drawdown": -0.08133045955484697,
+          "avg_daily_return": 0.004938310496060805,
+          "n_wins": 1300,
+          "n_losses": 429,
+          "n_trades": 1730,
+          "roundtrip_win_rate": 0.7518796992481203
+        },
+        "DOGEUSDT": {
+          "total_return": 0.2513364245950187,
+          "sharpe": 6.397853067173889,
+          "max_drawdown": -0.06611126251641275,
+          "avg_daily_return": 0.007652500517872229,
+          "n_wins": 1621,
+          "n_losses": 542,
+          "n_trades": 2164,
+          "roundtrip_win_rate": 0.749422098936662
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_009",
+      "fold_idx": 9,
+      "train_start": "2023-08-29T00:00:00+00:00",
+      "train_end": "2023-11-27T00:00:00+00:00",
+      "test_start": "2023-11-27T00:00:00+00:00",
+      "test_end": "2023-12-27T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.11347575609622629,
+          "sharpe": 2.578966272643971,
+          "max_drawdown": -0.0741898885887895,
+          "avg_daily_return": 0.0012173707730092557,
+          "n_wins": 27,
+          "n_losses": 23,
+          "n_trades": 58,
+          "roundtrip_win_rate": 0.54
+        },
+        "BNBUSDT": {
+          "total_return": 0.1665869332341361,
+          "sharpe": 2.5916125592977965,
+          "max_drawdown": -0.0785807226032933,
+          "avg_daily_return": 0.0017850244521398161,
+          "n_wins": 3214,
+          "n_losses": 1625,
+          "n_trades": 4874,
+          "roundtrip_win_rate": 0.6641868154577392
+        },
+        "ETHUSDT": {
+          "total_return": -0.027456081362594142,
+          "sharpe": -0.5444425345719237,
+          "max_drawdown": -0.06840803358788494,
+          "avg_daily_return": -0.00027896934471431564,
+          "n_wins": 586,
+          "n_losses": 643,
+          "n_trades": 1266,
+          "roundtrip_win_rate": 0.47681041497152155
+        },
+        "SOLUSDT": {
+          "total_return": 1.0298562327427039,
+          "sharpe": 6.73097860757618,
+          "max_drawdown": -0.12075283089681521,
+          "avg_daily_return": 0.008144445257539875,
+          "n_wins": 3861,
+          "n_losses": 674,
+          "n_trades": 4536,
+          "roundtrip_win_rate": 0.8513781697905182
+        },
+        "XRPUSDT": {
+          "total_return": 0.3707690504276844,
+          "sharpe": 4.087155976712145,
+          "max_drawdown": -0.08227001783573828,
+          "avg_daily_return": 0.0035774908394519936,
+          "n_wins": 3381,
+          "n_losses": 1321,
+          "n_trades": 4703,
+          "roundtrip_win_rate": 0.7190557209698001
+        },
+        "DOGEUSDT": {
+          "total_return": 0.5153017460180944,
+          "sharpe": 5.086867291842031,
+          "max_drawdown": -0.06644124897830195,
+          "avg_daily_return": 0.004726692551415048,
+          "n_wins": 3810,
+          "n_losses": 1151,
+          "n_trades": 4963,
+          "roundtrip_win_rate": 0.7679903245313445
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.06171466618103083,
+          "sharpe": 3.9408602737226235,
+          "max_drawdown": -0.032091037507987696,
+          "avg_daily_return": 0.00196365592687634,
+          "n_wins": 68,
+          "n_losses": 78,
+          "n_trades": 149,
+          "roundtrip_win_rate": 0.4657534246575342
+        },
+        "BNBUSDT": {
+          "total_return": 0.06096143341487359,
+          "sharpe": 3.978972763676066,
+          "max_drawdown": -0.03494402614104131,
+          "avg_daily_return": 0.0019369879966437576,
+          "n_wins": 475,
+          "n_losses": 287,
+          "n_trades": 763,
+          "roundtrip_win_rate": 0.6233595800524935
+        },
+        "ETHUSDT": {
+          "total_return": 0.07492394396840751,
+          "sharpe": 4.82332917730045,
+          "max_drawdown": -0.029909285358544202,
+          "avg_daily_return": 0.00243285414835663,
+          "n_wins": 444,
+          "n_losses": 268,
+          "n_trades": 729,
+          "roundtrip_win_rate": 0.6235955056179775
+        },
+        "SOLUSDT": {
+          "total_return": 0.7003971731282226,
+          "sharpe": 10.535992596641643,
+          "max_drawdown": -0.07182949339684708,
+          "avg_daily_return": 0.018457120459066324,
+          "n_wins": 2738,
+          "n_losses": 104,
+          "n_trades": 2843,
+          "roundtrip_win_rate": 0.9634060520760028
+        },
+        "XRPUSDT": {
+          "total_return": 0.0709369418591621,
+          "sharpe": 2.94627659067687,
+          "max_drawdown": -0.05640935105108347,
+          "avg_daily_return": 0.0023156396052847915,
+          "n_wins": 1393,
+          "n_losses": 255,
+          "n_trades": 1649,
+          "roundtrip_win_rate": 0.8452669902912622
+        },
+        "DOGEUSDT": {
+          "total_return": 0.25157876156045433,
+          "sharpe": 6.040028186323419,
+          "max_drawdown": -0.09802033688121337,
+          "avg_daily_return": 0.007634786474043494,
+          "n_wins": 1757,
+          "n_losses": 140,
+          "n_trades": 1898,
+          "roundtrip_win_rate": 0.9261992619926199
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_010",
+      "fold_idx": 10,
+      "train_start": "2023-09-28T00:00:00+00:00",
+      "train_end": "2023-12-27T00:00:00+00:00",
+      "test_start": "2023-12-27T00:00:00+00:00",
+      "test_end": "2024-01-26T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.1725877880503357,
+          "sharpe": 3.9396369882768973,
+          "max_drawdown": -0.03213523601669677,
+          "avg_daily_return": 0.0017757929981676752,
+          "n_wins": 69,
+          "n_losses": 48,
+          "n_trades": 125,
+          "roundtrip_win_rate": 0.5897435897435898
+        },
+        "BNBUSDT": {
+          "total_return": 0.1310286013446742,
+          "sharpe": 2.263510737561221,
+          "max_drawdown": -0.05384088176570434,
+          "avg_daily_return": 0.0013857489356658302,
+          "n_wins": 3021,
+          "n_losses": 1953,
+          "n_trades": 4979,
+          "roundtrip_win_rate": 0.6073582629674307
+        },
+        "ETHUSDT": {
+          "total_return": 0.0712990110585745,
+          "sharpe": 1.6199400051098396,
+          "max_drawdown": -0.0684084748073649,
+          "avg_daily_return": 0.0007931400070008797,
+          "n_wins": 843,
+          "n_losses": 755,
+          "n_trades": 1632,
+          "roundtrip_win_rate": 0.5275344180225282
+        },
+        "SOLUSDT": {
+          "total_return": 0.6610600089702279,
+          "sharpe": 5.287883605518144,
+          "max_drawdown": -0.1207711660730657,
+          "avg_daily_return": 0.005882706896723413,
+          "n_wins": 2367,
+          "n_losses": 441,
+          "n_trades": 2809,
+          "roundtrip_win_rate": 0.842948717948718
+        },
+        "XRPUSDT": {
+          "total_return": 0.37291445616877117,
+          "sharpe": 3.8952901107506377,
+          "max_drawdown": -0.08227002843153808,
+          "avg_daily_return": 0.0035983183064661295,
+          "n_wins": 3743,
+          "n_losses": 1070,
+          "n_trades": 4814,
+          "roundtrip_win_rate": 0.7776854352794514
+        },
+        "DOGEUSDT": {
+          "total_return": 0.8328264146039519,
+          "sharpe": 5.9302639874850565,
+          "max_drawdown": -0.09802031837783198,
+          "avg_daily_return": 0.0068892919018295,
+          "n_wins": 4667,
+          "n_losses": 916,
+          "n_trades": 5585,
+          "roundtrip_win_rate": 0.8359305033136306
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.17956339308332825,
+          "sharpe": 5.829188375033806,
+          "max_drawdown": -0.0692550999093795,
+          "avg_daily_return": 0.005569268720545143,
+          "n_wins": 62,
+          "n_losses": 0,
+          "n_trades": 73,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.062477562512806006,
+          "sharpe": 2.572311439123443,
+          "max_drawdown": -0.06949427180438694,
+          "avg_daily_return": 0.002562107916309897,
+          "n_wins": 1414,
+          "n_losses": 1216,
+          "n_trades": 2666,
+          "roundtrip_win_rate": 0.5376425855513308
+        },
+        "ETHUSDT": {
+          "total_return": 0.08034809510818763,
+          "sharpe": 4.928192328226039,
+          "max_drawdown": -0.029367707352334738,
+          "avg_daily_return": 0.0026520838594220053,
+          "n_wins": 142,
+          "n_losses": 71,
+          "n_trades": 228,
+          "roundtrip_win_rate": 0.6666666666666666
+        },
+        "SOLUSDT": {
+          "total_return": 0.07663081276246908,
+          "sharpe": 2.612362359398993,
+          "max_drawdown": -0.11253769027631533,
+          "avg_daily_return": 0.0025358842561236106,
+          "n_wins": 691,
+          "n_losses": 319,
+          "n_trades": 1012,
+          "roundtrip_win_rate": 0.6841584158415842
+        },
+        "XRPUSDT": {
+          "total_return": 0.05455471791365296,
+          "sharpe": 3.5058739676711475,
+          "max_drawdown": -0.03520346092857374,
+          "avg_daily_return": 0.0018041381495001489,
+          "n_wins": 388,
+          "n_losses": 179,
+          "n_trades": 568,
+          "roundtrip_win_rate": 0.6843033509700176
+        },
+        "DOGEUSDT": {
+          "total_return": 0.011014987041483737,
+          "sharpe": 1.4643540986047312,
+          "max_drawdown": -0.029256386248739608,
+          "avg_daily_return": 0.0003710579116949645,
+          "n_wins": 156,
+          "n_losses": 122,
+          "n_trades": 279,
+          "roundtrip_win_rate": 0.5611510791366906
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_011",
+      "fold_idx": 11,
+      "train_start": "2023-10-28T00:00:00+00:00",
+      "train_end": "2024-01-26T00:00:00+00:00",
+      "test_start": "2024-01-26T00:00:00+00:00",
+      "test_end": "2024-02-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.5581943820318169,
+          "sharpe": 6.096142164083419,
+          "max_drawdown": -0.0692689678312699,
+          "avg_daily_return": 0.004972563134446316,
+          "n_wins": 79,
+          "n_losses": 18,
+          "n_trades": 110,
+          "roundtrip_win_rate": 0.8144329896907216
+        },
+        "BNBUSDT": {
+          "total_return": 0.2156759241677657,
+          "sharpe": 3.1548568028531787,
+          "max_drawdown": -0.06821750943386751,
+          "avg_daily_return": 0.0022477051477165057,
+          "n_wins": 1865,
+          "n_losses": 1577,
+          "n_trades": 3466,
+          "roundtrip_win_rate": 0.5418361417780361
+        },
+        "ETHUSDT": {
+          "total_return": 0.24734672897309773,
+          "sharpe": 4.748801073986086,
+          "max_drawdown": -0.029918280697183164,
+          "avg_daily_return": 0.00249921944090799,
+          "n_wins": 917,
+          "n_losses": 683,
+          "n_trades": 1647,
+          "roundtrip_win_rate": 0.573125
+        },
+        "SOLUSDT": {
+          "total_return": 0.091958839306026,
+          "sharpe": 1.7047815310802616,
+          "max_drawdown": -0.12195092454133705,
+          "avg_daily_return": 0.001039676743117066,
+          "n_wins": 397,
+          "n_losses": 116,
+          "n_trades": 514,
+          "roundtrip_win_rate": 0.7738791423001949
+        },
+        "XRPUSDT": {
+          "total_return": 0.3274657166300976,
+          "sharpe": 3.851635327528275,
+          "max_drawdown": -0.08133045955484697,
+          "avg_daily_return": 0.00321617281377831,
+          "n_wins": 3114,
+          "n_losses": 828,
+          "n_trades": 3943,
+          "roundtrip_win_rate": 0.7899543378995434
+        },
+        "DOGEUSDT": {
+          "total_return": 0.6129884158027821,
+          "sharpe": 5.303669901758634,
+          "max_drawdown": -0.09802027038594752,
+          "avg_daily_return": 0.00542719385616598,
+          "n_wins": 3659,
+          "n_losses": 838,
+          "n_trades": 4498,
+          "roundtrip_win_rate": 0.8136535468089837
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "avg_daily_return": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.10743106421133908,
+          "sharpe": -11.230045352017529,
+          "max_drawdown": -0.11769118448831117,
+          "avg_daily_return": -0.0037299997809871624,
+          "n_wins": 29,
+          "n_losses": 228,
+          "n_trades": 262,
+          "roundtrip_win_rate": 0.11284046692607004
+        },
+        "ETHUSDT": {
+          "total_return": 0.044381379245000074,
+          "sharpe": 3.6337435393263333,
+          "max_drawdown": -0.02902819242485155,
+          "avg_daily_return": 0.001466924449053538,
+          "n_wins": 37,
+          "n_losses": 29,
+          "n_trades": 73,
+          "roundtrip_win_rate": 0.5606060606060606
+        },
+        "SOLUSDT": {
+          "total_return": 0.10002593818377314,
+          "sharpe": 3.2083046965063784,
+          "max_drawdown": -0.10158689053457537,
+          "avg_daily_return": 0.0033234875564712605,
+          "n_wins": 1614,
+          "n_losses": 787,
+          "n_trades": 2402,
+          "roundtrip_win_rate": 0.6722199083715119
+        },
+        "XRPUSDT": {
+          "total_return": 0.07726311083231696,
+          "sharpe": 3.6592205076361246,
+          "max_drawdown": -0.04633389741983274,
+          "avg_daily_return": 0.0025405292815643484,
+          "n_wins": 1482,
+          "n_losses": 418,
+          "n_trades": 1901,
+          "roundtrip_win_rate": 0.78
+        },
+        "DOGEUSDT": {
+          "total_return": 0.04283987766454955,
+          "sharpe": 1.8857441810609392,
+          "max_drawdown": -0.07250054047850674,
+          "avg_daily_return": 0.0014713854704961153,
+          "n_wins": 1493,
+          "n_losses": 446,
+          "n_trades": 1940,
+          "roundtrip_win_rate": 0.7699845281072718
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_012",
+      "fold_idx": 12,
+      "train_start": "2023-11-27T00:00:00+00:00",
+      "train_end": "2024-02-25T00:00:00+00:00",
+      "test_start": "2024-02-25T00:00:00+00:00",
+      "test_end": "2024-03-26T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.39752664159142004,
+          "sharpe": 4.958047082555855,
+          "max_drawdown": -0.0692669742020191,
+          "avg_daily_return": 0.003742865819863952,
+          "n_wins": 820,
+          "n_losses": 219,
+          "n_trades": 1050,
+          "roundtrip_win_rate": 0.7892204042348412
+        },
+        "BNBUSDT": {
+          "total_return": 0.14794325182761048,
+          "sharpe": 2.391093978328281,
+          "max_drawdown": -0.06822568240122251,
+          "avg_daily_return": 0.0016246873802137813,
+          "n_wins": 1806,
+          "n_losses": 1303,
+          "n_trades": 3110,
+          "roundtrip_win_rate": 0.5808941781923448
+        },
+        "ETHUSDT": {
+          "total_return": 0.24354409556053147,
+          "sharpe": 4.525994735505004,
+          "max_drawdown": -0.03569898306232833,
+          "avg_daily_return": 0.002470449211553136,
+          "n_wins": 1089,
+          "n_losses": 1024,
+          "n_trades": 2153,
+          "roundtrip_win_rate": 0.5153809749171794
+        },
+        "SOLUSDT": {
+          "total_return": 1.0808466511801536,
+          "sharpe": 6.199728290648623,
+          "max_drawdown": -0.11253648781044001,
+          "avg_daily_return": 0.008492541099510746,
+          "n_wins": 5576,
+          "n_losses": 1412,
+          "n_trades": 6989,
+          "roundtrip_win_rate": 0.7979393245563824
+        },
+        "XRPUSDT": {
+          "total_return": 0.2427769802209232,
+          "sharpe": 3.715476282225091,
+          "max_drawdown": -0.05640935105108347,
+          "avg_daily_return": 0.0024490878068935905,
+          "n_wins": 3174,
+          "n_losses": 673,
+          "n_trades": 3848,
+          "roundtrip_win_rate": 0.8250584871328308
+        },
+        "DOGEUSDT": {
+          "total_return": 0.3793812880305114,
+          "sharpe": 4.127732098993145,
+          "max_drawdown": -0.09802033688121337,
+          "avg_daily_return": 0.003656171866576435,
+          "n_wins": 3823,
+          "n_losses": 556,
+          "n_trades": 4380,
+          "roundtrip_win_rate": 0.873030372231103
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.15141846995814912,
+          "sharpe": 7.050515871710431,
+          "max_drawdown": -0.04103532050171177,
+          "avg_daily_return": 0.0047755389150781445,
+          "n_wins": 293,
+          "n_losses": 101,
+          "n_trades": 399,
+          "roundtrip_win_rate": 0.7436548223350253
+        },
+        "BNBUSDT": {
+          "total_return": -0.042811385353392795,
+          "sharpe": -2.1227297401534053,
+          "max_drawdown": -0.06320231104143259,
+          "avg_daily_return": -0.00129510202574743,
+          "n_wins": 347,
+          "n_losses": 357,
+          "n_trades": 714,
+          "roundtrip_win_rate": 0.4928977272727273
+        },
+        "ETHUSDT": {
+          "total_return": 0.13037796129647128,
+          "sharpe": 5.6521880978486445,
+          "max_drawdown": -0.05198507511436379,
+          "avg_daily_return": 0.004135811290389483,
+          "n_wins": 400,
+          "n_losses": 117,
+          "n_trades": 529,
+          "roundtrip_win_rate": 0.7736943907156673
+        },
+        "SOLUSDT": {
+          "total_return": 0.37844161938065546,
+          "sharpe": 6.4912096816649,
+          "max_drawdown": -0.07159688209616333,
+          "avg_daily_return": 0.010964102903705015,
+          "n_wins": 2456,
+          "n_losses": 395,
+          "n_trades": 3029,
+          "roundtrip_win_rate": 0.8614521220624343
+        },
+        "XRPUSDT": {
+          "total_return": 0.1431020392639777,
+          "sharpe": 3.3017565059301006,
+          "max_drawdown": -0.10302819236176997,
+          "avg_daily_return": 0.004868299633829506,
+          "n_wins": 1389,
+          "n_losses": 705,
+          "n_trades": 2095,
+          "roundtrip_win_rate": 0.663323782234957
+        },
+        "DOGEUSDT": {
+          "total_return": 0.9156304593677802,
+          "sharpe": 7.714718178914077,
+          "max_drawdown": -0.11729450780873285,
+          "avg_daily_return": 0.023136371003373304,
+          "n_wins": 1939,
+          "n_losses": 456,
+          "n_trades": 2518,
+          "roundtrip_win_rate": 0.8096033402922755
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_013",
+      "fold_idx": 13,
+      "train_start": "2023-12-27T00:00:00+00:00",
+      "train_end": "2024-03-26T00:00:00+00:00",
+      "test_start": "2024-03-26T00:00:00+00:00",
+      "test_end": "2024-04-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3459508958431534,
+          "sharpe": 4.922288232824507,
+          "max_drawdown": -0.0692550999093795,
+          "avg_daily_return": 0.0033430675426795575,
+          "n_wins": 77,
+          "n_losses": 10,
+          "n_trades": 95,
+          "roundtrip_win_rate": 0.8850574712643678
+        },
+        "BNBUSDT": {
+          "total_return": 0.03010199737369912,
+          "sharpe": 0.7587564357640694,
+          "max_drawdown": -0.08762411364625333,
+          "avg_daily_return": 0.000540577323328902,
+          "n_wins": 2012,
+          "n_losses": 1877,
+          "n_trades": 3925,
+          "roundtrip_win_rate": 0.5173566469529443
+        },
+        "ETHUSDT": {
+          "total_return": 0.27417091766689006,
+          "sharpe": 4.4843471746401,
+          "max_drawdown": -0.05198430486734962,
+          "avg_daily_return": 0.0027481957212492753,
+          "n_wins": 453,
+          "n_losses": 254,
+          "n_trades": 742,
+          "roundtrip_win_rate": 0.6407355021216408
+        },
+        "SOLUSDT": {
+          "total_return": 0.8265026317060553,
+          "sharpe": 5.116643033788794,
+          "max_drawdown": -0.11253769027631533,
+          "avg_daily_return": 0.00688560742074831,
+          "n_wins": 5606,
+          "n_losses": 1522,
+          "n_trades": 7309,
+          "roundtrip_win_rate": 0.7864758698092031
+        },
+        "XRPUSDT": {
+          "total_return": 0.3921752306002897,
+          "sharpe": 3.8594605504644304,
+          "max_drawdown": -0.10302829135926794,
+          "avg_daily_return": 0.0038531873038739825,
+          "n_wins": 3493,
+          "n_losses": 1062,
+          "n_trades": 4556,
+          "roundtrip_win_rate": 0.7668496158068057
+        },
+        "DOGEUSDT": {
+          "total_return": 1.2721665680825374,
+          "sharpe": 5.273425800171656,
+          "max_drawdown": -0.11913115780495265,
+          "avg_daily_return": 0.009664059906168414,
+          "n_wins": 4233,
+          "n_losses": 921,
+          "n_trades": 5277,
+          "roundtrip_win_rate": 0.8213038416763678
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.22226336724948847,
+          "sharpe": 6.8135991684827575,
+          "max_drawdown": -0.04796922845780194,
+          "avg_daily_return": 0.00687415188036428,
+          "n_wins": 495,
+          "n_losses": 211,
+          "n_trades": 715,
+          "roundtrip_win_rate": 0.7011331444759207
+        },
+        "BNBUSDT": {
+          "total_return": 0.0579467959388027,
+          "sharpe": 2.237833130444331,
+          "max_drawdown": -0.059372384658231914,
+          "avg_daily_return": 0.0019128558418351111,
+          "n_wins": 823,
+          "n_losses": 873,
+          "n_trades": 1698,
+          "roundtrip_win_rate": 0.4852594339622642
+        },
+        "ETHUSDT": {
+          "total_return": 0.032169091451925036,
+          "sharpe": 2.8719643641698718,
+          "max_drawdown": -0.028181328009178164,
+          "avg_daily_return": 0.0010758086764444453,
+          "n_wins": 94,
+          "n_losses": 62,
+          "n_trades": 166,
+          "roundtrip_win_rate": 0.6025641025641025
+        },
+        "SOLUSDT": {
+          "total_return": 0.109926647522949,
+          "sharpe": 4.4203916854365275,
+          "max_drawdown": -0.06611582710596708,
+          "avg_daily_return": 0.0035744455082656447,
+          "n_wins": 877,
+          "n_losses": 555,
+          "n_trades": 1433,
+          "roundtrip_win_rate": 0.6124301675977654
+        },
+        "XRPUSDT": {
+          "total_return": 0.07458431958305423,
+          "sharpe": 3.750889023917911,
+          "max_drawdown": -0.0563070410902643,
+          "avg_daily_return": 0.0024507229995075525,
+          "n_wins": 761,
+          "n_losses": 423,
+          "n_trades": 1185,
+          "roundtrip_win_rate": 0.6427364864864865
+        },
+        "DOGEUSDT": {
+          "total_return": 0.1326168368468199,
+          "sharpe": 3.8310200366397913,
+          "max_drawdown": -0.10494303357320811,
+          "avg_daily_return": 0.004414197905655814,
+          "n_wins": 947,
+          "n_losses": 397,
+          "n_trades": 1346,
+          "roundtrip_win_rate": 0.7046130952380952
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_014",
+      "fold_idx": 14,
+      "train_start": "2024-01-26T00:00:00+00:00",
+      "train_end": "2024-04-25T00:00:00+00:00",
+      "test_start": "2024-04-25T00:00:00+00:00",
+      "test_end": "2024-05-25T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.5089112108764873,
+          "sharpe": 5.919148154898866,
+          "max_drawdown": -0.048192024693072155,
+          "avg_daily_return": 0.004689639666242666,
+          "n_wins": 931,
+          "n_losses": 333,
+          "n_trades": 1276,
+          "roundtrip_win_rate": 0.7365506329113924
+        },
+        "BNBUSDT": {
+          "total_return": -0.11867240791540667,
+          "sharpe": -6.885476003612736,
+          "max_drawdown": -0.12140865391380617,
+          "avg_daily_return": -0.0013830391050990796,
+          "n_wins": 41,
+          "n_losses": 253,
+          "n_trades": 300,
+          "roundtrip_win_rate": 0.13945578231292516
+        },
+        "ETHUSDT": {
+          "total_return": 0.2937948332557012,
+          "sharpe": 5.074266342636839,
+          "max_drawdown": -0.05198416044079468,
+          "avg_daily_return": 0.0029041692373344137,
+          "n_wins": 602,
+          "n_losses": 362,
+          "n_trades": 997,
+          "roundtrip_win_rate": 0.6244813278008299
+        },
+        "SOLUSDT": {
+          "total_return": 0.7586278728528548,
+          "sharpe": 5.10211126607193,
+          "max_drawdown": -0.10158689053457537,
+          "avg_daily_return": 0.006449801983312356,
+          "n_wins": 5512,
+          "n_losses": 1535,
+          "n_trades": 7049,
+          "roundtrip_win_rate": 0.7821768128281539
+        },
+        "XRPUSDT": {
+          "total_return": 0.41598600980463063,
+          "sharpe": 3.9247648751856112,
+          "max_drawdown": -0.10302825966543006,
+          "avg_daily_return": 0.0040561130157938385,
+          "n_wins": 3905,
+          "n_losses": 1398,
+          "n_trades": 5304,
+          "roundtrip_win_rate": 0.7363756364322082
+        },
+        "DOGEUSDT": {
+          "total_return": 1.6467357038198949,
+          "sharpe": 5.769906835431384,
+          "max_drawdown": -0.11913126139634977,
+          "avg_daily_return": 0.011455295175124065,
+          "n_wins": 5164,
+          "n_losses": 1384,
+          "n_trades": 6549,
+          "roundtrip_win_rate": 0.788637751985339
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.014019239302329844,
+          "sharpe": -0.8631258523572812,
+          "max_drawdown": -0.06300925432700522,
+          "avg_daily_return": -0.00043149255739111103,
+          "n_wins": 5,
+          "n_losses": 10,
+          "n_trades": 16,
+          "roundtrip_win_rate": 0.3333333333333333
+        },
+        "BNBUSDT": {
+          "total_return": 0.07501089121121507,
+          "sharpe": 2.8394439384429613,
+          "max_drawdown": -0.05927312641155058,
+          "avg_daily_return": 0.00286763625674001,
+          "n_wins": 1026,
+          "n_losses": 997,
+          "n_trades": 2093,
+          "roundtrip_win_rate": 0.5071675729115176
+        },
+        "ETHUSDT": {
+          "total_return": 0.0739031006355475,
+          "sharpe": 4.214047596120306,
+          "max_drawdown": -0.03540775246295147,
+          "avg_daily_return": 0.0024388207512226518,
+          "n_wins": 134,
+          "n_losses": 224,
+          "n_trades": 363,
+          "roundtrip_win_rate": 0.3743016759776536
+        },
+        "SOLUSDT": {
+          "total_return": 0.30463631051671936,
+          "sharpe": 7.987695714533711,
+          "max_drawdown": -0.05797024784601923,
+          "avg_daily_return": 0.009168656456094593,
+          "n_wins": 1951,
+          "n_losses": 343,
+          "n_trades": 2295,
+          "roundtrip_win_rate": 0.8504795117698344
+        },
+        "XRPUSDT": {
+          "total_return": 0.09037035406293814,
+          "sharpe": 4.56672781744978,
+          "max_drawdown": -0.04545874837370567,
+          "avg_daily_return": 0.0029341112168128737,
+          "n_wins": 1017,
+          "n_losses": 221,
+          "n_trades": 1239,
+          "roundtrip_win_rate": 0.821486268174475
+        },
+        "DOGEUSDT": {
+          "total_return": 0.3390452222922715,
+          "sharpe": 7.63602570939794,
+          "max_drawdown": -0.08418756857590504,
+          "avg_daily_return": 0.010127132532351016,
+          "n_wins": 1206,
+          "n_losses": 353,
+          "n_trades": 1560,
+          "roundtrip_win_rate": 0.7735728030788968
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_015",
+      "fold_idx": 15,
+      "train_start": "2024-02-25T00:00:00+00:00",
+      "train_end": "2024-05-25T00:00:00+00:00",
+      "test_start": "2024-05-25T00:00:00+00:00",
+      "test_end": "2024-06-24T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7832579857181536,
+          "sharpe": 6.322273524154105,
+          "max_drawdown": -0.06822566276329045,
+          "avg_daily_return": 0.0065917716766006745,
+          "n_wins": 1722,
+          "n_losses": 517,
+          "n_trades": 2251,
+          "roundtrip_win_rate": 0.7690933452434122
+        },
+        "BNBUSDT": {
+          "total_return": 0.1796014250727358,
+          "sharpe": 2.270697118840723,
+          "max_drawdown": -0.07932899303060315,
+          "avg_daily_return": 0.0020492325409894973,
+          "n_wins": 1668,
+          "n_losses": 1678,
+          "n_trades": 3426,
+          "roundtrip_win_rate": 0.4985056784219964
+        },
+        "ETHUSDT": {
+          "total_return": 0.41073513038372833,
+          "sharpe": 6.188730492239092,
+          "max_drawdown": -0.05198507511436379,
+          "avg_daily_return": 0.0038793201865265185,
+          "n_wins": 1097,
+          "n_losses": 736,
+          "n_trades": 1869,
+          "roundtrip_win_rate": 0.5984724495362793
+        },
+        "SOLUSDT": {
+          "total_return": 1.0054372143982833,
+          "sharpe": 6.283567372501491,
+          "max_drawdown": -0.07159688209616333,
+          "avg_daily_return": 0.007946108656919589,
+          "n_wins": 5518,
+          "n_losses": 1075,
+          "n_trades": 6594,
+          "roundtrip_win_rate": 0.8369482784771728
+        },
+        "XRPUSDT": {
+          "total_return": 0.3272518064115979,
+          "sharpe": 3.4369441334297677,
+          "max_drawdown": -0.10302819236176997,
+          "avg_daily_return": 0.003315060769129463,
+          "n_wins": 2838,
+          "n_losses": 1279,
+          "n_trades": 4118,
+          "roundtrip_win_rate": 0.6893368957979111
+        },
+        "DOGEUSDT": {
+          "total_return": 2.099875651127912,
+          "sharpe": 6.474482605834008,
+          "max_drawdown": -0.11729450780873285,
+          "avg_daily_return": 0.013292098363584002,
+          "n_wins": 4530,
+          "n_losses": 1209,
+          "n_trades": 5740,
+          "roundtrip_win_rate": 0.7893361212754836
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.13817610819042714,
+          "sharpe": 4.404335190307954,
+          "max_drawdown": -0.08455582109190862,
+          "avg_daily_return": 0.004263462289036505,
+          "n_wins": 795,
+          "n_losses": 105,
+          "n_trades": 910,
+          "roundtrip_win_rate": 0.8833333333333333
+        },
+        "BNBUSDT": {
+          "total_return": 0.28517627464757833,
+          "sharpe": 6.626057435085936,
+          "max_drawdown": -0.08454991146276314,
+          "avg_daily_return": 0.008588258026891223,
+          "n_wins": 1465,
+          "n_losses": 976,
+          "n_trades": 2863,
+          "roundtrip_win_rate": 0.6001638672675134
+        },
+        "ETHUSDT": {
+          "total_return": 0.028751533554407294,
+          "sharpe": 2.0513037525371245,
+          "max_drawdown": -0.05322497851597008,
+          "avg_daily_return": 0.000989424990955956,
+          "n_wins": 191,
+          "n_losses": 145,
+          "n_trades": 345,
+          "roundtrip_win_rate": 0.5684523809523809
+        },
+        "SOLUSDT": {
+          "total_return": 0.03156804776026556,
+          "sharpe": 2.855430719344861,
+          "max_drawdown": -0.030696642035976884,
+          "avg_daily_return": 0.001057092578132146,
+          "n_wins": 522,
+          "n_losses": 150,
+          "n_trades": 673,
+          "roundtrip_win_rate": 0.7767857142857143
+        },
+        "XRPUSDT": {
+          "total_return": 0.034087422388547006,
+          "sharpe": 2.5004530759053045,
+          "max_drawdown": -0.030209074229448962,
+          "avg_daily_return": 0.0011305413119953108,
+          "n_wins": 456,
+          "n_losses": 179,
+          "n_trades": 636,
+          "roundtrip_win_rate": 0.7181102362204724
+        },
+        "DOGEUSDT": {
+          "total_return": 0.014067886505949367,
+          "sharpe": 1.3272724639829419,
+          "max_drawdown": -0.028702408982773653,
+          "avg_daily_return": 0.00047449856924153635,
+          "n_wins": 312,
+          "n_losses": 179,
+          "n_trades": 492,
+          "roundtrip_win_rate": 0.6354378818737271
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_016",
+      "fold_idx": 16,
+      "train_start": "2024-03-26T00:00:00+00:00",
+      "train_end": "2024-06-24T00:00:00+00:00",
+      "test_start": "2024-06-24T00:00:00+00:00",
+      "test_end": "2024-07-24T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7160201438832057,
+          "sharpe": 5.575999423884001,
+          "max_drawdown": -0.08488863694009274,
+          "avg_daily_return": 0.006086349797714429,
+          "n_wins": 2228,
+          "n_losses": 484,
+          "n_trades": 2730,
+          "roundtrip_win_rate": 0.8215339233038348
+        },
+        "BNBUSDT": {
+          "total_return": 0.39267570079705716,
+          "sharpe": 3.7850969000693797,
+          "max_drawdown": -0.08454433904197989,
+          "avg_daily_return": 0.003886510057495997,
+          "n_wins": 2308,
+          "n_losses": 2029,
+          "n_trades": 4755,
+          "roundtrip_win_rate": 0.5321650910767812
+        },
+        "ETHUSDT": {
+          "total_return": 0.22407013498927175,
+          "sharpe": 4.373438592451957,
+          "max_drawdown": -0.05322076201353376,
+          "avg_daily_return": 0.002291950416905074,
+          "n_wins": 1183,
+          "n_losses": 683,
+          "n_trades": 1893,
+          "roundtrip_win_rate": 0.6339764201500536
+        },
+        "SOLUSDT": {
+          "total_return": 0.495426394092533,
+          "sharpe": 5.371844524877352,
+          "max_drawdown": -0.07442466965685979,
+          "avg_daily_return": 0.0046189973706007945,
+          "n_wins": 3508,
+          "n_losses": 1242,
+          "n_trades": 4754,
+          "roundtrip_win_rate": 0.7385263157894737
+        },
+        "XRPUSDT": {
+          "total_return": 0.1800547830241237,
+          "sharpe": 3.418472078513497,
+          "max_drawdown": -0.05709669105429782,
+          "avg_daily_return": 0.0018790697442817004,
+          "n_wins": 1902,
+          "n_losses": 1038,
+          "n_trades": 2941,
+          "roundtrip_win_rate": 0.6469387755102041
+        },
+        "DOGEUSDT": {
+          "total_return": 0.5405672629117431,
+          "sharpe": 4.75117947265372,
+          "max_drawdown": -0.10494303357320811,
+          "avg_daily_return": 0.005040926391038537,
+          "n_wins": 2591,
+          "n_losses": 993,
+          "n_trades": 3586,
+          "roundtrip_win_rate": 0.7229352678571429
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.026821819776567835,
+          "sharpe": -2.7249792714478818,
+          "max_drawdown": -0.03491091292172466,
+          "avg_daily_return": -0.0009021777094600872,
+          "n_wins": 0,
+          "n_losses": 4,
+          "n_trades": 5,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.21520397103956124,
+          "sharpe": 7.632976765347496,
+          "max_drawdown": -0.064628035299364,
+          "avg_daily_return": 0.006892026305236369,
+          "n_wins": 737,
+          "n_losses": 755,
+          "n_trades": 1493,
+          "roundtrip_win_rate": 0.49396782841823056
+        },
+        "ETHUSDT": {
+          "total_return": 0.020691891329587486,
+          "sharpe": 3.1824307445396873,
+          "max_drawdown": -0.020674654023554395,
+          "avg_daily_return": 0.0006890481746638274,
+          "n_wins": 54,
+          "n_losses": 75,
+          "n_trades": 144,
+          "roundtrip_win_rate": 0.4186046511627907
+        },
+        "SOLUSDT": {
+          "total_return": 0.37205269960310106,
+          "sharpe": 9.212766191616002,
+          "max_drawdown": -0.04889453678454625,
+          "avg_daily_return": 0.010846620335206992,
+          "n_wins": 2215,
+          "n_losses": 610,
+          "n_trades": 2826,
+          "roundtrip_win_rate": 0.784070796460177
+        },
+        "XRPUSDT": {
+          "total_return": 0.4366023537494321,
+          "sharpe": 10.316494300958812,
+          "max_drawdown": -0.06530947840063561,
+          "avg_daily_return": 0.012400782132202486,
+          "n_wins": 1824,
+          "n_losses": 222,
+          "n_trades": 2047,
+          "roundtrip_win_rate": 0.8914956011730205
+        },
+        "DOGEUSDT": {
+          "total_return": 0.2134299897469929,
+          "sharpe": 6.551359639213465,
+          "max_drawdown": -0.05058620497229083,
+          "avg_daily_return": 0.006649501143688555,
+          "n_wins": 1207,
+          "n_losses": 443,
+          "n_trades": 1651,
+          "roundtrip_win_rate": 0.7315151515151516
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_017",
+      "fold_idx": 17,
+      "train_start": "2024-04-25T00:00:00+00:00",
+      "train_end": "2024-07-24T00:00:00+00:00",
+      "test_start": "2024-07-24T00:00:00+00:00",
+      "test_end": "2024-08-23T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4109533205243652,
+          "sharpe": 4.098256380778068,
+          "max_drawdown": -0.08172150861365146,
+          "avg_daily_return": 0.003903552939847584,
+          "n_wins": 1334,
+          "n_losses": 220,
+          "n_trades": 1564,
+          "roundtrip_win_rate": 0.8584298584298584
+        },
+        "BNBUSDT": {
+          "total_return": 0.5721235127755577,
+          "sharpe": 4.854168184648144,
+          "max_drawdown": -0.11098740364993276,
+          "avg_daily_return": 0.00551213230033711,
+          "n_wins": 3330,
+          "n_losses": 2156,
+          "n_trades": 5487,
+          "roundtrip_win_rate": 0.6069996354356544
+        },
+        "ETHUSDT": {
+          "total_return": 0.17414160381697297,
+          "sharpe": 3.560798843868357,
+          "max_drawdown": -0.05322039046033977,
+          "avg_daily_return": 0.0018367767254059309,
+          "n_wins": 1211,
+          "n_losses": 1145,
+          "n_trades": 2379,
+          "roundtrip_win_rate": 0.5140067911714771
+        },
+        "SOLUSDT": {
+          "total_return": 0.848725177181527,
+          "sharpe": 7.104408645592451,
+          "max_drawdown": -0.07445778643469059,
+          "avg_daily_return": 0.00704392411387066,
+          "n_wins": 4842,
+          "n_losses": 1298,
+          "n_trades": 6143,
+          "roundtrip_win_rate": 0.788599348534202
+        },
+        "XRPUSDT": {
+          "total_return": 0.5968629312820357,
+          "sharpe": 6.434931560859014,
+          "max_drawdown": -0.06530958538278886,
+          "avg_daily_return": 0.005331593076218458,
+          "n_wins": 2977,
+          "n_losses": 716,
+          "n_trades": 3694,
+          "roundtrip_win_rate": 0.8061196858922285
+        },
+        "DOGEUSDT": {
+          "total_return": 0.6732486555353978,
+          "sharpe": 5.908938760321562,
+          "max_drawdown": -0.08418756857590504,
+          "avg_daily_return": 0.005937595555946138,
+          "n_wins": 2747,
+          "n_losses": 893,
+          "n_trades": 3641,
+          "roundtrip_win_rate": 0.7546703296703297
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.022637072734668306,
+          "sharpe": 1.2086030898601698,
+          "max_drawdown": -0.05894199069260486,
+          "avg_daily_return": 0.0008147603913674491,
+          "n_wins": 297,
+          "n_losses": 151,
+          "n_trades": 451,
+          "roundtrip_win_rate": 0.6629464285714286
+        },
+        "BNBUSDT": {
+          "total_return": 0.006287581577349766,
+          "sharpe": 0.39483705651188317,
+          "max_drawdown": -0.10484951241295759,
+          "avg_daily_return": 0.0003159571277186764,
+          "n_wins": 554,
+          "n_losses": 869,
+          "n_trades": 1425,
+          "roundtrip_win_rate": 0.3893183415319747
+        },
+        "ETHUSDT": {
+          "total_return": 0.040044195156773155,
+          "sharpe": 3.4421922972383765,
+          "max_drawdown": -0.033578013758329917,
+          "avg_daily_return": 0.0013494153910090605,
+          "n_wins": 82,
+          "n_losses": 113,
+          "n_trades": 207,
+          "roundtrip_win_rate": 0.4205128205128205
+        },
+        "SOLUSDT": {
+          "total_return": 0.10872589504498675,
+          "sharpe": 4.78921105550872,
+          "max_drawdown": -0.03718506495961216,
+          "avg_daily_return": 0.00356500899771736,
+          "n_wins": 657,
+          "n_losses": 246,
+          "n_trades": 904,
+          "roundtrip_win_rate": 0.7275747508305648
+        },
+        "XRPUSDT": {
+          "total_return": 0.01601784351304203,
+          "sharpe": 0.7933806037317996,
+          "max_drawdown": -0.08228567160035694,
+          "avg_daily_return": 0.0006114355848819364,
+          "n_wins": 585,
+          "n_losses": 406,
+          "n_trades": 992,
+          "roundtrip_win_rate": 0.5903128153380424
+        },
+        "DOGEUSDT": {
+          "total_return": 0.11461624020289696,
+          "sharpe": 4.825745883934303,
+          "max_drawdown": -0.06522549962239188,
+          "avg_daily_return": 0.003761069430207627,
+          "n_wins": 545,
+          "n_losses": 251,
+          "n_trades": 797,
+          "roundtrip_win_rate": 0.6846733668341709
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_018",
+      "fold_idx": 18,
+      "train_start": "2024-05-25T00:00:00+00:00",
+      "train_end": "2024-08-23T00:00:00+00:00",
+      "test_start": "2024-08-23T00:00:00+00:00",
+      "test_end": "2024-09-22T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7544856162412075,
+          "sharpe": 5.878504027654455,
+          "max_drawdown": -0.08455582109190862,
+          "avg_daily_return": 0.006418849370196784,
+          "n_wins": 2122,
+          "n_losses": 630,
+          "n_trades": 2767,
+          "roundtrip_win_rate": 0.7710755813953488
+        },
+        "BNBUSDT": {
+          "total_return": 1.2062228753266901,
+          "sharpe": 7.321706255834333,
+          "max_drawdown": -0.11099400761590483,
+          "avg_daily_return": 0.009264142939881658,
+          "n_wins": 4112,
+          "n_losses": 2390,
+          "n_trades": 6508,
+          "roundtrip_win_rate": 0.6324207936019687
+        },
+        "ETHUSDT": {
+          "total_return": 0.15849147951996456,
+          "sharpe": 3.593691137908159,
+          "max_drawdown": -0.05322497851597008,
+          "avg_daily_return": 0.0016838866434730993,
+          "n_wins": 738,
+          "n_losses": 611,
+          "n_trades": 1387,
+          "roundtrip_win_rate": 0.5470719051148999
+        },
+        "SOLUSDT": {
+          "total_return": 0.6417787692901447,
+          "sharpe": 6.712241161641546,
+          "max_drawdown": -0.04889360293876199,
+          "avg_daily_return": 0.005669483530272527,
+          "n_wins": 3623,
+          "n_losses": 967,
+          "n_trades": 4591,
+          "roundtrip_win_rate": 0.7893246187363835
+        },
+        "XRPUSDT": {
+          "total_return": 0.5098470797573971,
+          "sharpe": 5.33463360916366,
+          "max_drawdown": -0.08228566978150476,
+          "avg_daily_return": 0.004717677832987319,
+          "n_wins": 2765,
+          "n_losses": 780,
+          "n_trades": 3546,
+          "roundtrip_win_rate": 0.7799717912552891
+        },
+        "DOGEUSDT": {
+          "total_return": 0.4573776525134823,
+          "sharpe": 5.557965065782775,
+          "max_drawdown": -0.06594843115005222,
+          "avg_daily_return": 0.004314667788856781,
+          "n_wins": 2148,
+          "n_losses": 671,
+          "n_trades": 2821,
+          "roundtrip_win_rate": 0.7619723306136928
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.030997091527451115,
+          "sharpe": 1.8403998108498685,
+          "max_drawdown": -0.05112848951790072,
+          "avg_daily_return": 0.0010578671365239563,
+          "n_wins": 172,
+          "n_losses": 11,
+          "n_trades": 185,
+          "roundtrip_win_rate": 0.9398907103825137
+        },
+        "BNBUSDT": {
+          "total_return": 0.23521085515818685,
+          "sharpe": 6.176687962222537,
+          "max_drawdown": -0.06760279167581507,
+          "avg_daily_return": 0.00734194104927152,
+          "n_wins": 1446,
+          "n_losses": 771,
+          "n_trades": 2218,
+          "roundtrip_win_rate": 0.652232746955345
+        },
+        "ETHUSDT": {
+          "total_return": 0.015189380534871288,
+          "sharpe": 1.2927379832484565,
+          "max_drawdown": -0.05160794305474847,
+          "avg_daily_return": 0.0005243517649805906,
+          "n_wins": 165,
+          "n_losses": 135,
+          "n_trades": 312,
+          "roundtrip_win_rate": 0.55
+        },
+        "SOLUSDT": {
+          "total_return": 0.135914577840758,
+          "sharpe": 5.533721336847449,
+          "max_drawdown": -0.046610901715982145,
+          "avg_daily_return": 0.004323963154325328,
+          "n_wins": 780,
+          "n_losses": 468,
+          "n_trades": 1565,
+          "roundtrip_win_rate": 0.625
+        },
+        "XRPUSDT": {
+          "total_return": 0.07517757078698639,
+          "sharpe": 3.277613389698455,
+          "max_drawdown": -0.06315774946832065,
+          "avg_daily_return": 0.002479433584638198,
+          "n_wins": 612,
+          "n_losses": 372,
+          "n_trades": 1223,
+          "roundtrip_win_rate": 0.6219512195121951
+        },
+        "DOGEUSDT": {
+          "total_return": 0.14440936218155298,
+          "sharpe": 5.261031778079437,
+          "max_drawdown": -0.04819008850629747,
+          "avg_daily_return": 0.004611766628078688,
+          "n_wins": 974,
+          "n_losses": 319,
+          "n_trades": 1528,
+          "roundtrip_win_rate": 0.7532869296210364
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_019",
+      "fold_idx": 19,
+      "train_start": "2024-06-24T00:00:00+00:00",
+      "train_end": "2024-09-22T00:00:00+00:00",
+      "test_start": "2024-09-22T00:00:00+00:00",
+      "test_end": "2024-10-22T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.5773608195894979,
+          "sharpe": 5.523560176446038,
+          "max_drawdown": -0.06310673616580476,
+          "avg_daily_return": 0.005248600791628919,
+          "n_wins": 673,
+          "n_losses": 146,
+          "n_trades": 828,
+          "roundtrip_win_rate": 0.8217338217338217
+        },
+        "BNBUSDT": {
+          "total_return": 1.083432807410445,
+          "sharpe": 7.275011863718475,
+          "max_drawdown": -0.07352640998387905,
+          "avg_daily_return": 0.008533930072576782,
+          "n_wins": 3028,
+          "n_losses": 2199,
+          "n_trades": 5228,
+          "roundtrip_win_rate": 0.5792997895542377
+        },
+        "ETHUSDT": {
+          "total_return": 0.1916145674618348,
+          "sharpe": 4.520832750867694,
+          "max_drawdown": -0.04983894764991548,
+          "avg_daily_return": 0.0019981667234125386,
+          "n_wins": 791,
+          "n_losses": 637,
+          "n_trades": 1471,
+          "roundtrip_win_rate": 0.553921568627451
+        },
+        "SOLUSDT": {
+          "total_return": 0.9213234338028171,
+          "sharpe": 8.05429878688802,
+          "max_drawdown": -0.04889453678454625,
+          "avg_daily_return": 0.007449857346571627,
+          "n_wins": 4149,
+          "n_losses": 1149,
+          "n_trades": 5615,
+          "roundtrip_win_rate": 0.7831257078142695
+        },
+        "XRPUSDT": {
+          "total_return": 0.5817121202751279,
+          "sharpe": 5.479337823901442,
+          "max_drawdown": -0.08228559406710112,
+          "avg_daily_return": 0.005253520907548433,
+          "n_wins": 3263,
+          "n_losses": 1096,
+          "n_trades": 4597,
+          "roundtrip_win_rate": 0.7485661849047947
+        },
+        "DOGEUSDT": {
+          "total_return": 0.6628585093208603,
+          "sharpe": 6.289427782340232,
+          "max_drawdown": -0.06594844112921006,
+          "avg_daily_return": 0.0058341413260542575,
+          "n_wins": 3065,
+          "n_losses": 1028,
+          "n_trades": 4328,
+          "roundtrip_win_rate": 0.7488394820425116
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.04486106090103936,
+          "sharpe": 3.6551204325300644,
+          "max_drawdown": -0.031847495482950405,
+          "avg_daily_return": 0.0014711420119763044,
+          "n_wins": 16,
+          "n_losses": 3,
+          "n_trades": 20,
+          "roundtrip_win_rate": 0.8421052631578947
+        },
+        "BNBUSDT": {
+          "total_return": 0.13562502070389248,
+          "sharpe": 5.075380925190167,
+          "max_drawdown": -0.06807703059894432,
+          "avg_daily_return": 0.004410084808095819,
+          "n_wins": 963,
+          "n_losses": 510,
+          "n_trades": 1474,
+          "roundtrip_win_rate": 0.6537678207739308
+        },
+        "ETHUSDT": {
+          "total_return": 0.0205899804618761,
+          "sharpe": 2.051783967567265,
+          "max_drawdown": -0.031987799235993264,
+          "avg_daily_return": 0.0006838155871960128,
+          "n_wins": 42,
+          "n_losses": 45,
+          "n_trades": 97,
+          "roundtrip_win_rate": 0.4827586206896552
+        },
+        "SOLUSDT": {
+          "total_return": 0.19527919299406027,
+          "sharpe": 7.492213586230561,
+          "max_drawdown": -0.045090666515547606,
+          "avg_daily_return": 0.006064363017350479,
+          "n_wins": 1896,
+          "n_losses": 453,
+          "n_trades": 2350,
+          "roundtrip_win_rate": 0.8071519795657727
+        },
+        "XRPUSDT": {
+          "total_return": 0.08197830572929798,
+          "sharpe": 4.914831512858359,
+          "max_drawdown": -0.03784945490971747,
+          "avg_daily_return": 0.0026682981958204696,
+          "n_wins": 773,
+          "n_losses": 302,
+          "n_trades": 1076,
+          "roundtrip_win_rate": 0.7190697674418605
+        },
+        "DOGEUSDT": {
+          "total_return": 0.3164489297214934,
+          "sharpe": 7.959013780225839,
+          "max_drawdown": -0.05848913412502166,
+          "avg_daily_return": 0.009416519996165796,
+          "n_wins": 1273,
+          "n_losses": 334,
+          "n_trades": 1608,
+          "roundtrip_win_rate": 0.7921593030491599
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_020",
+      "fold_idx": 20,
+      "train_start": "2024-07-24T00:00:00+00:00",
+      "train_end": "2024-10-22T00:00:00+00:00",
+      "test_start": "2024-10-22T00:00:00+00:00",
+      "test_end": "2024-11-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4250164497267068,
+          "sharpe": 4.665800159865368,
+          "max_drawdown": -0.06118132699719514,
+          "avg_daily_return": 0.004046290927534098,
+          "n_wins": 1315,
+          "n_losses": 368,
+          "n_trades": 1693,
+          "roundtrip_win_rate": 0.7813428401663696
+        },
+        "BNBUSDT": {
+          "total_return": 0.39468454513712126,
+          "sharpe": 3.6578256601763894,
+          "max_drawdown": -0.10484951241295759,
+          "avg_daily_return": 0.0038751089614591553,
+          "n_wins": 2237,
+          "n_losses": 1778,
+          "n_trades": 4017,
+          "roundtrip_win_rate": 0.5571606475716064
+        },
+        "ETHUSDT": {
+          "total_return": 0.21275184386317902,
+          "sharpe": 4.809840951675721,
+          "max_drawdown": -0.050940511078352624,
+          "avg_daily_return": 0.002193115138020701,
+          "n_wins": 574,
+          "n_losses": 430,
+          "n_trades": 1042,
+          "roundtrip_win_rate": 0.5717131474103586
+        },
+        "SOLUSDT": {
+          "total_return": 0.6336734117277074,
+          "sharpe": 6.919413945355603,
+          "max_drawdown": -0.0553599525376367,
+          "avg_daily_return": 0.005588063763513431,
+          "n_wins": 4352,
+          "n_losses": 932,
+          "n_trades": 5285,
+          "roundtrip_win_rate": 0.8236184708554126
+        },
+        "XRPUSDT": {
+          "total_return": 0.18601229350412574,
+          "sharpe": 2.700984896999998,
+          "max_drawdown": -0.08228567160035694,
+          "avg_daily_return": 0.001960636772933118,
+          "n_wins": 2605,
+          "n_losses": 1118,
+          "n_trades": 3724,
+          "roundtrip_win_rate": 0.6997045393499866
+        },
+        "DOGEUSDT": {
+          "total_return": 0.7158689637019697,
+          "sharpe": 6.171169184454556,
+          "max_drawdown": -0.06522549962239188,
+          "avg_daily_return": 0.006191613912355725,
+          "n_wins": 3554,
+          "n_losses": 986,
+          "n_trades": 4541,
+          "roundtrip_win_rate": 0.7828193832599118
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "avg_daily_return": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.1284094703115617,
+          "sharpe": 4.337794704247349,
+          "max_drawdown": -0.07105747182588518,
+          "avg_daily_return": 0.004179079470513584,
+          "n_wins": 1104,
+          "n_losses": 738,
+          "n_trades": 1853,
+          "roundtrip_win_rate": 0.5993485342019544
+        },
+        "ETHUSDT": {
+          "total_return": 0.1551851378737663,
+          "sharpe": 5.307325393868378,
+          "max_drawdown": -0.083886711399482,
+          "avg_daily_return": 0.004992348866782503,
+          "n_wins": 91,
+          "n_losses": 55,
+          "n_trades": 157,
+          "roundtrip_win_rate": 0.6232876712328768
+        },
+        "SOLUSDT": {
+          "total_return": 0.31854796066595514,
+          "sharpe": 6.541392663080077,
+          "max_drawdown": -0.08413315358071038,
+          "avg_daily_return": 0.009550362445008597,
+          "n_wins": 1606,
+          "n_losses": 433,
+          "n_trades": 2040,
+          "roundtrip_win_rate": 0.7876410004904365
+        },
+        "XRPUSDT": {
+          "total_return": 0.5593385660505921,
+          "sharpe": 7.142561091754356,
+          "max_drawdown": -0.1335727549329193,
+          "avg_daily_return": 0.0161081789828304,
+          "n_wins": 1498,
+          "n_losses": 253,
+          "n_trades": 1752,
+          "roundtrip_win_rate": 0.8555111364934324
+        },
+        "DOGEUSDT": {
+          "total_return": 1.0595771371593337,
+          "sharpe": 10.010032698892598,
+          "max_drawdown": -0.13672174540922788,
+          "avg_daily_return": 0.02582757798536496,
+          "n_wins": 1366,
+          "n_losses": 120,
+          "n_trades": 1487,
+          "roundtrip_win_rate": 0.9192462987886945
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_021",
+      "fold_idx": 21,
+      "train_start": "2024-08-23T00:00:00+00:00",
+      "train_end": "2024-11-21T00:00:00+00:00",
+      "test_start": "2024-11-21T00:00:00+00:00",
+      "test_end": "2024-12-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.19677918598369115,
+          "sharpe": 3.1002144882177722,
+          "max_drawdown": -0.05573553383456997,
+          "avg_daily_return": 0.002005704614717823,
+          "n_wins": 777,
+          "n_losses": 107,
+          "n_trades": 889,
+          "roundtrip_win_rate": 0.8789592760180995
+        },
+        "BNBUSDT": {
+          "total_return": 0.6626608922232136,
+          "sharpe": 5.789046877301175,
+          "max_drawdown": -0.07218123490029249,
+          "avg_daily_return": 0.005843585759554226,
+          "n_wins": 2974,
+          "n_losses": 1390,
+          "n_trades": 4365,
+          "roundtrip_win_rate": 0.6814848762603116
+        },
+        "ETHUSDT": {
+          "total_return": 0.3044317056245609,
+          "sharpe": 4.568532989825112,
+          "max_drawdown": -0.08388776706996692,
+          "avg_daily_return": 0.0030330266866820167,
+          "n_wins": 767,
+          "n_losses": 523,
+          "n_trades": 1324,
+          "roundtrip_win_rate": 0.5945736434108527
+        },
+        "SOLUSDT": {
+          "total_return": 0.828276269494262,
+          "sharpe": 6.302083190009815,
+          "max_drawdown": -0.0842470487947059,
+          "avg_daily_return": 0.00689294876143363,
+          "n_wins": 5032,
+          "n_losses": 1254,
+          "n_trades": 6287,
+          "roundtrip_win_rate": 0.8005090677696468
+        },
+        "XRPUSDT": {
+          "total_return": 0.8167153311654671,
+          "sharpe": 5.0501851909368805,
+          "max_drawdown": -0.13357299011168355,
+          "avg_daily_return": 0.007101888330149209,
+          "n_wins": 3244,
+          "n_losses": 784,
+          "n_trades": 4030,
+          "roundtrip_win_rate": 0.8053624627606752
+        },
+        "DOGEUSDT": {
+          "total_return": 2.093285881441629,
+          "sharpe": 7.67869256928306,
+          "max_drawdown": -0.13672175702927436,
+          "avg_daily_return": 0.013255169616624313,
+          "n_wins": 4216,
+          "n_losses": 781,
+          "n_trades": 4998,
+          "roundtrip_win_rate": 0.8437062237342405
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.10931659771492597,
+          "sharpe": 5.007996022124993,
+          "max_drawdown": -0.04553401386231237,
+          "avg_daily_return": 0.0035333852774379836,
+          "n_wins": 217,
+          "n_losses": 4,
+          "n_trades": 231,
+          "roundtrip_win_rate": 0.9819004524886877
+        },
+        "BNBUSDT": {
+          "total_return": 0.2591981843016036,
+          "sharpe": 7.7301254676770785,
+          "max_drawdown": -0.09354538021338998,
+          "avg_daily_return": 0.008101660278536028,
+          "n_wins": 642,
+          "n_losses": 647,
+          "n_trades": 1316,
+          "roundtrip_win_rate": 0.49806051202482543
+        },
+        "ETHUSDT": {
+          "total_return": 0.03553752226394291,
+          "sharpe": 2.064270075171589,
+          "max_drawdown": -0.037370411351241084,
+          "avg_daily_return": 0.001197931124114123,
+          "n_wins": 339,
+          "n_losses": 102,
+          "n_trades": 451,
+          "roundtrip_win_rate": 0.7687074829931972
+        },
+        "SOLUSDT": {
+          "total_return": -0.055376280931640376,
+          "sharpe": -2.5493367690029305,
+          "max_drawdown": -0.0789503532675877,
+          "avg_daily_return": -0.0018769639661783799,
+          "n_wins": 308,
+          "n_losses": 837,
+          "n_trades": 1147,
+          "roundtrip_win_rate": 0.2689956331877729
+        },
+        "XRPUSDT": {
+          "total_return": 0.23686384122142345,
+          "sharpe": 4.613896970861148,
+          "max_drawdown": -0.13609158966384116,
+          "avg_daily_return": 0.007936643296367863,
+          "n_wins": 624,
+          "n_losses": 303,
+          "n_trades": 928,
+          "roundtrip_win_rate": 0.6731391585760518
+        },
+        "DOGEUSDT": {
+          "total_return": 0.1692357633989925,
+          "sharpe": 3.917196203640056,
+          "max_drawdown": -0.08400540336954732,
+          "avg_daily_return": 0.005312503476649433,
+          "n_wins": 1419,
+          "n_losses": 263,
+          "n_trades": 1683,
+          "roundtrip_win_rate": 0.8436385255648038
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_022",
+      "fold_idx": 22,
+      "train_start": "2024-09-22T00:00:00+00:00",
+      "train_end": "2024-12-21T00:00:00+00:00",
+      "test_start": "2024-12-21T00:00:00+00:00",
+      "test_end": "2025-01-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.32473549978083427,
+          "sharpe": 4.597343587602284,
+          "max_drawdown": -0.055022775079338726,
+          "avg_daily_return": 0.003143279245502306,
+          "n_wins": 638,
+          "n_losses": 45,
+          "n_trades": 696,
+          "roundtrip_win_rate": 0.9341142020497804
+        },
+        "BNBUSDT": {
+          "total_return": 0.7705614588846852,
+          "sharpe": 6.70613799374774,
+          "max_drawdown": -0.1040726576259956,
+          "avg_daily_return": 0.006604777069349004,
+          "n_wins": 2636,
+          "n_losses": 1228,
+          "n_trades": 3887,
+          "roundtrip_win_rate": 0.6821946169772257
+        },
+        "ETHUSDT": {
+          "total_return": 0.3051524942856467,
+          "sharpe": 4.188309160345587,
+          "max_drawdown": -0.08388806612749466,
+          "avg_daily_return": 0.0030424720007630117,
+          "n_wins": 738,
+          "n_losses": 376,
+          "n_trades": 1147,
+          "roundtrip_win_rate": 0.6624775583482945
+        },
+        "SOLUSDT": {
+          "total_return": 0.6235218222234642,
+          "sharpe": 5.129321603342639,
+          "max_drawdown": -0.08424457179119116,
+          "avg_daily_return": 0.0055631974337467215,
+          "n_wins": 4080,
+          "n_losses": 1610,
+          "n_trades": 5691,
+          "roundtrip_win_rate": 0.7170474516695958
+        },
+        "XRPUSDT": {
+          "total_return": 0.6933787759803567,
+          "sharpe": 4.730830017157635,
+          "max_drawdown": -0.13357289978007802,
+          "avg_daily_return": 0.006299264924474948,
+          "n_wins": 2161,
+          "n_losses": 435,
+          "n_trades": 2597,
+          "roundtrip_win_rate": 0.8324345146379045
+        },
+        "DOGEUSDT": {
+          "total_return": 1.7113287078459147,
+          "sharpe": 7.182000506899719,
+          "max_drawdown": -0.13672176371516032,
+          "avg_daily_return": 0.011748035538105737,
+          "n_wins": 2644,
+          "n_losses": 452,
+          "n_trades": 3097,
+          "roundtrip_win_rate": 0.8540051679586563
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.11480284801864538,
+          "sharpe": 4.778169507948672,
+          "max_drawdown": -0.05414575287358203,
+          "avg_daily_return": 0.0037233929005301833,
+          "n_wins": 357,
+          "n_losses": 13,
+          "n_trades": 371,
+          "roundtrip_win_rate": 0.9648648648648649
+        },
+        "BNBUSDT": {
+          "total_return": 0.07111011643500698,
+          "sharpe": 2.3552398721584638,
+          "max_drawdown": -0.0912317073465515,
+          "avg_daily_return": 0.002581615835170444,
+          "n_wins": 856,
+          "n_losses": 899,
+          "n_trades": 1756,
+          "roundtrip_win_rate": 0.4877492877492878
+        },
+        "ETHUSDT": {
+          "total_return": 0.021875017510603945,
+          "sharpe": 1.8699179748289332,
+          "max_drawdown": -0.023937170588333667,
+          "avg_daily_return": 0.0007371439585326933,
+          "n_wins": 240,
+          "n_losses": 127,
+          "n_trades": 387,
+          "roundtrip_win_rate": 0.6539509536784741
+        },
+        "SOLUSDT": {
+          "total_return": 0.45895433378356243,
+          "sharpe": 10.165237550547749,
+          "max_drawdown": -0.06943382181707314,
+          "avg_daily_return": 0.013094992288861521,
+          "n_wins": 1703,
+          "n_losses": 405,
+          "n_trades": 2109,
+          "roundtrip_win_rate": 0.8078747628083491
+        },
+        "XRPUSDT": {
+          "total_return": 0.30289930367527007,
+          "sharpe": 6.159580540323619,
+          "max_drawdown": -0.07513691493758223,
+          "avg_daily_return": 0.009304421184963297,
+          "n_wins": 1593,
+          "n_losses": 679,
+          "n_trades": 2273,
+          "roundtrip_win_rate": 0.7011443661971831
+        },
+        "DOGEUSDT": {
+          "total_return": 0.3177715038773885,
+          "sharpe": 7.041157187174675,
+          "max_drawdown": -0.08345721207289247,
+          "avg_daily_return": 0.009616582474320796,
+          "n_wins": 1699,
+          "n_losses": 599,
+          "n_trades": 2299,
+          "roundtrip_win_rate": 0.7393385552654482
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_023",
+      "fold_idx": 23,
+      "train_start": "2024-10-22T00:00:00+00:00",
+      "train_end": "2025-01-20T00:00:00+00:00",
+      "test_start": "2025-01-20T00:00:00+00:00",
+      "test_end": "2025-02-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.46458187882633495,
+          "sharpe": 5.020575753414147,
+          "max_drawdown": -0.07441888723700119,
+          "avg_daily_return": 0.004308597670211747,
+          "n_wins": 1155,
+          "n_losses": 121,
+          "n_trades": 1284,
+          "roundtrip_win_rate": 0.9051724137931034
+        },
+        "BNBUSDT": {
+          "total_return": 0.8169972927589437,
+          "sharpe": 6.219682591075382,
+          "max_drawdown": -0.10299014153195263,
+          "avg_daily_return": 0.006934358165367028,
+          "n_wins": 2903,
+          "n_losses": 1823,
+          "n_trades": 4744,
+          "roundtrip_win_rate": 0.6142615319509098
+        },
+        "ETHUSDT": {
+          "total_return": 0.19218696364785393,
+          "sharpe": 2.8173918386278745,
+          "max_drawdown": -0.083886711399482,
+          "avg_daily_return": 0.0020392449323169194,
+          "n_wins": 1302,
+          "n_losses": 525,
+          "n_trades": 1853,
+          "roundtrip_win_rate": 0.7126436781609196
+        },
+        "SOLUSDT": {
+          "total_return": 0.9753687572495602,
+          "sharpe": 6.492807537572791,
+          "max_drawdown": -0.08413315358071038,
+          "avg_daily_return": 0.007866793915060915,
+          "n_wins": 3693,
+          "n_losses": 1328,
+          "n_trades": 5023,
+          "roundtrip_win_rate": 0.7355108544114718
+        },
+        "XRPUSDT": {
+          "total_return": 0.559338566050595,
+          "sharpe": 4.122774853402501,
+          "max_drawdown": -0.1335727549329193,
+          "avg_daily_return": 0.005369392994276826,
+          "n_wins": 1498,
+          "n_losses": 253,
+          "n_trades": 1752,
+          "roundtrip_win_rate": 0.8555111364934324
+        },
+        "DOGEUSDT": {
+          "total_return": 1.0595771371593337,
+          "sharpe": 5.777014937406516,
+          "max_drawdown": -0.1367217454092282,
+          "avg_daily_return": 0.008609192661788336,
+          "n_wins": 1366,
+          "n_losses": 120,
+          "n_trades": 1487,
+          "roundtrip_win_rate": 0.9192462987886945
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.028929122245128447,
+          "sharpe": 1.1196365361936802,
+          "max_drawdown": -0.1043683753207375,
+          "avg_daily_return": 0.0009597927777507935,
+          "n_wins": 154,
+          "n_losses": 216,
+          "n_trades": 377,
+          "roundtrip_win_rate": 0.41621621621621624
+        },
+        "BNBUSDT": {
+          "total_return": 0.1433162787919977,
+          "sharpe": 3.9623876182690627,
+          "max_drawdown": -0.07975739042664853,
+          "avg_daily_return": 0.004756182935519274,
+          "n_wins": 1396,
+          "n_losses": 1034,
+          "n_trades": 2431,
+          "roundtrip_win_rate": 0.574485596707819
+        },
+        "ETHUSDT": {
+          "total_return": 0.018223693058317947,
+          "sharpe": 1.5954933291247806,
+          "max_drawdown": -0.03683330505751892,
+          "avg_daily_return": 0.0006144132107241185,
+          "n_wins": 65,
+          "n_losses": 54,
+          "n_trades": 127,
+          "roundtrip_win_rate": 0.5462184873949579
+        },
+        "SOLUSDT": {
+          "total_return": -0.0019913837285705505,
+          "sharpe": 0.007178744463142973,
+          "max_drawdown": -0.04931967473571508,
+          "avg_daily_return": -3.382306848800735e-05,
+          "n_wins": 238,
+          "n_losses": 229,
+          "n_trades": 469,
+          "roundtrip_win_rate": 0.5096359743040685
+        },
+        "XRPUSDT": {
+          "total_return": 0.03224578381083276,
+          "sharpe": 1.7688368931828578,
+          "max_drawdown": -0.03510956011723487,
+          "avg_daily_return": 0.0011341713098215263,
+          "n_wins": 287,
+          "n_losses": 318,
+          "n_trades": 606,
+          "roundtrip_win_rate": 0.4743801652892562
+        },
+        "DOGEUSDT": {
+          "total_return": -0.013618796445215464,
+          "sharpe": -0.7887103541538157,
+          "max_drawdown": -0.04032532397063604,
+          "avg_daily_return": -0.00044054629160517425,
+          "n_wins": 210,
+          "n_losses": 232,
+          "n_trades": 443,
+          "roundtrip_win_rate": 0.4751131221719457
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_024",
+      "fold_idx": 24,
+      "train_start": "2024-11-21T00:00:00+00:00",
+      "train_end": "2025-02-19T00:00:00+00:00",
+      "test_start": "2025-02-19T00:00:00+00:00",
+      "test_end": "2025-03-21T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.4544467894362234,
+          "sharpe": 4.119544559057978,
+          "max_drawdown": -0.11805710011454418,
+          "avg_daily_return": 0.004241474591850288,
+          "n_wins": 1648,
+          "n_losses": 403,
+          "n_trades": 2067,
+          "roundtrip_win_rate": 0.80351048269137
+        },
+        "BNBUSDT": {
+          "total_return": 0.752210570463149,
+          "sharpe": 5.417725069644732,
+          "max_drawdown": -0.09354538021338998,
+          "avg_daily_return": 0.006576344300717614,
+          "n_wins": 3130,
+          "n_losses": 2430,
+          "n_trades": 5572,
+          "roundtrip_win_rate": 0.5629496402877698
+        },
+        "ETHUSDT": {
+          "total_return": 0.06698730343856418,
+          "sharpe": 1.5282505122245023,
+          "max_drawdown": -0.06007951707282766,
+          "avg_daily_return": 0.0007480526097839717,
+          "n_wins": 1151,
+          "n_losses": 430,
+          "n_trades": 1613,
+          "roundtrip_win_rate": 0.7280202403542062
+        },
+        "SOLUSDT": {
+          "total_return": 0.40676158519129446,
+          "sharpe": 4.306065942637399,
+          "max_drawdown": -0.08133900135639771,
+          "avg_daily_return": 0.003977264260411902,
+          "n_wins": 2180,
+          "n_losses": 1267,
+          "n_trades": 3449,
+          "roundtrip_win_rate": 0.6324340005802147
+        },
+        "XRPUSDT": {
+          "total_return": 0.23686384406042293,
+          "sharpe": 2.663449440347638,
+          "max_drawdown": -0.13609158966384116,
+          "avg_daily_return": 0.002645547790956921,
+          "n_wins": 624,
+          "n_losses": 303,
+          "n_trades": 928,
+          "roundtrip_win_rate": 0.6731391585760518
+        },
+        "DOGEUSDT": {
+          "total_return": 0.44001670445011065,
+          "sharpe": 3.830530483497921,
+          "max_drawdown": -0.1184586158392783,
+          "avg_daily_return": 0.004220182631819966,
+          "n_wins": 2750,
+          "n_losses": 847,
+          "n_trades": 3598,
+          "roundtrip_win_rate": 0.764525993883792
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.09798130493079449,
+          "sharpe": 3.6365721391174946,
+          "max_drawdown": -0.06873367376662154,
+          "avg_daily_return": 0.0032334584382257598,
+          "n_wins": 335,
+          "n_losses": 53,
+          "n_trades": 393,
+          "roundtrip_win_rate": 0.8634020618556701
+        },
+        "BNBUSDT": {
+          "total_return": 0.34777103645015917,
+          "sharpe": 8.21800989790772,
+          "max_drawdown": -0.08138158880182178,
+          "avg_daily_return": 0.010478519309154118,
+          "n_wins": 1541,
+          "n_losses": 912,
+          "n_trades": 2454,
+          "roundtrip_win_rate": 0.6282103546677538
+        },
+        "ETHUSDT": {
+          "total_return": 0.1087761776125391,
+          "sharpe": 5.167791250907993,
+          "max_drawdown": -0.023956696885910733,
+          "avg_daily_return": 0.003595541025222674,
+          "n_wins": 98,
+          "n_losses": 30,
+          "n_trades": 137,
+          "roundtrip_win_rate": 0.765625
+        },
+        "SOLUSDT": {
+          "total_return": 0.2556589555384716,
+          "sharpe": 7.423721072599166,
+          "max_drawdown": -0.05584235847197827,
+          "avg_daily_return": 0.008074065984128909,
+          "n_wins": 358,
+          "n_losses": 79,
+          "n_trades": 439,
+          "roundtrip_win_rate": 0.8192219679633868
+        },
+        "XRPUSDT": {
+          "total_return": 0.48996507032201486,
+          "sharpe": 8.805649307799866,
+          "max_drawdown": -0.05463790899004095,
+          "avg_daily_return": 0.01426028484148075,
+          "n_wins": 922,
+          "n_losses": 145,
+          "n_trades": 1068,
+          "roundtrip_win_rate": 0.8641049671977507
+        },
+        "DOGEUSDT": {
+          "total_return": 0.10874927305782633,
+          "sharpe": 5.2791037596709485,
+          "max_drawdown": -0.02754524179682294,
+          "avg_daily_return": 0.00362666850677054,
+          "n_wins": 125,
+          "n_losses": 27,
+          "n_trades": 153,
+          "roundtrip_win_rate": 0.8223684210526315
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_025",
+      "fold_idx": 25,
+      "train_start": "2024-12-21T00:00:00+00:00",
+      "train_end": "2025-03-21T00:00:00+00:00",
+      "test_start": "2025-03-21T00:00:00+00:00",
+      "test_end": "2025-04-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6419848520400129,
+          "sharpe": 4.956262214858576,
+          "max_drawdown": -0.11697678910972231,
+          "avg_daily_return": 0.005677672500426833,
+          "n_wins": 2041,
+          "n_losses": 532,
+          "n_trades": 2589,
+          "roundtrip_win_rate": 0.7932374659930043
+        },
+        "BNBUSDT": {
+          "total_return": 0.7621714797042476,
+          "sharpe": 5.08049731226876,
+          "max_drawdown": -0.09342848479371157,
+          "avg_daily_return": 0.006731471351363134,
+          "n_wins": 3639,
+          "n_losses": 2826,
+          "n_trades": 6466,
+          "roundtrip_win_rate": 0.562877030162413
+        },
+        "ETHUSDT": {
+          "total_return": 0.19943262646417592,
+          "sharpe": 3.937018074992782,
+          "max_drawdown": -0.03712310208311087,
+          "avg_daily_return": 0.002083147608243595,
+          "n_wins": 566,
+          "n_losses": 286,
+          "n_trades": 890,
+          "roundtrip_win_rate": 0.6643192488262911
+        },
+        "SOLUSDT": {
+          "total_return": 0.8761719642057118,
+          "sharpe": 6.873869272433784,
+          "max_drawdown": -0.07984722547589818,
+          "avg_daily_return": 0.007335860222488022,
+          "n_wins": 2428,
+          "n_losses": 743,
+          "n_trades": 3173,
+          "roundtrip_win_rate": 0.7656890570797855
+        },
+        "XRPUSDT": {
+          "total_return": 1.0548941045265354,
+          "sharpe": 6.32771891469739,
+          "max_drawdown": -0.07513691493758223,
+          "avg_daily_return": 0.008508657486387126,
+          "n_wins": 2862,
+          "n_losses": 1111,
+          "n_trades": 3974,
+          "roundtrip_win_rate": 0.7203624465139693
+        },
+        "DOGEUSDT": {
+          "total_return": 0.39947418979325655,
+          "sharpe": 4.243293839349665,
+          "max_drawdown": -0.11845861246707179,
+          "avg_daily_return": 0.003940788562671697,
+          "n_wins": 1858,
+          "n_losses": 900,
+          "n_trades": 2759,
+          "roundtrip_win_rate": 0.6736765772298767
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.1275245202841213,
+          "sharpe": 5.056030579391697,
+          "max_drawdown": -0.07501595854467125,
+          "avg_daily_return": 0.0041440319380833075,
+          "n_wins": 33,
+          "n_losses": 10,
+          "n_trades": 46,
+          "roundtrip_win_rate": 0.7674418604651163
+        },
+        "BNBUSDT": {
+          "total_return": 0.1307296430570275,
+          "sharpe": 4.031669457866895,
+          "max_drawdown": -0.06397304649547941,
+          "avg_daily_return": 0.004540416236854872,
+          "n_wins": 1293,
+          "n_losses": 1011,
+          "n_trades": 2305,
+          "roundtrip_win_rate": 0.5611979166666666
+        },
+        "ETHUSDT": {
+          "total_return": 0.0574615516445276,
+          "sharpe": 5.892913293208889,
+          "max_drawdown": -0.02413026441433297,
+          "avg_daily_return": 0.001891991452217671,
+          "n_wins": 149,
+          "n_losses": 61,
+          "n_trades": 216,
+          "roundtrip_win_rate": 0.7095238095238096
+        },
+        "SOLUSDT": {
+          "total_return": 0.2958082070770034,
+          "sharpe": 7.845817573381187,
+          "max_drawdown": -0.06764088906685684,
+          "avg_daily_return": 0.009004574374783822,
+          "n_wins": 933,
+          "n_losses": 456,
+          "n_trades": 1501,
+          "roundtrip_win_rate": 0.67170626349892
+        },
+        "XRPUSDT": {
+          "total_return": 0.04366372068543156,
+          "sharpe": 2.0579267338732956,
+          "max_drawdown": -0.05652099871818339,
+          "avg_daily_return": 0.001494692861630557,
+          "n_wins": 565,
+          "n_losses": 565,
+          "n_trades": 1131,
+          "roundtrip_win_rate": 0.5
+        },
+        "DOGEUSDT": {
+          "total_return": 0.1625130669531476,
+          "sharpe": 6.099277346975118,
+          "max_drawdown": -0.048918742951788996,
+          "avg_daily_return": 0.00512811848356276,
+          "n_wins": 885,
+          "n_losses": 279,
+          "n_trades": 1165,
+          "roundtrip_win_rate": 0.7603092783505154
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_026",
+      "fold_idx": 26,
+      "train_start": "2025-01-20T00:00:00+00:00",
+      "train_end": "2025-04-20T00:00:00+00:00",
+      "test_start": "2025-04-20T00:00:00+00:00",
+      "test_end": "2025-05-20T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.744017117342634,
+          "sharpe": 5.455409033329562,
+          "max_drawdown": -0.1043683753207375,
+          "avg_daily_return": 0.006357963445287371,
+          "n_wins": 1860,
+          "n_losses": 553,
+          "n_trades": 2433,
+          "roundtrip_win_rate": 0.7708246995441359
+        },
+        "BNBUSDT": {
+          "total_return": 0.8459225947463123,
+          "sharpe": 5.660980870974906,
+          "max_drawdown": -0.08138208870627472,
+          "avg_daily_return": 0.007215541295189043,
+          "n_wins": 3759,
+          "n_losses": 2619,
+          "n_trades": 6379,
+          "roundtrip_win_rate": 0.5893697083725306
+        },
+        "ETHUSDT": {
+          "total_return": 0.21245088483160934,
+          "sharpe": 4.371051550467567,
+          "max_drawdown": -0.03683330505751892,
+          "avg_daily_return": 0.0022061811843124453,
+          "n_wins": 479,
+          "n_losses": 216,
+          "n_trades": 712,
+          "roundtrip_win_rate": 0.6892086330935252
+        },
+        "SOLUSDT": {
+          "total_return": 0.6622573945832904,
+          "sharpe": 6.017336180968675,
+          "max_drawdown": -0.06807685036657507,
+          "avg_daily_return": 0.005944785331289299,
+          "n_wins": 1676,
+          "n_losses": 768,
+          "n_trades": 2557,
+          "roundtrip_win_rate": 0.6857610474631751
+        },
+        "XRPUSDT": {
+          "total_return": 0.6339886449366579,
+          "sharpe": 5.358444456827405,
+          "max_drawdown": -0.054637785761874835,
+          "avg_daily_return": 0.005825408208853047,
+          "n_wins": 1871,
+          "n_losses": 915,
+          "n_trades": 2787,
+          "roundtrip_win_rate": 0.6715721464465183
+        },
+        "DOGEUSDT": {
+          "total_return": 0.30220094490389715,
+          "sharpe": 4.342383836624653,
+          "max_drawdown": -0.049190940907419156,
+          "avg_daily_return": 0.003040913400636019,
+          "n_wins": 1365,
+          "n_losses": 534,
+          "n_trades": 1900,
+          "roundtrip_win_rate": 0.7187993680884676
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "avg_daily_return": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.06450428663007357,
+          "sharpe": -4.4541509144856475,
+          "max_drawdown": -0.08324509302312233,
+          "avg_daily_return": -0.002104820427481702,
+          "n_wins": 209,
+          "n_losses": 515,
+          "n_trades": 725,
+          "roundtrip_win_rate": 0.2886740331491713
+        },
+        "ETHUSDT": {
+          "total_return": 0.3114258901716276,
+          "sharpe": 7.320402937788256,
+          "max_drawdown": -0.09465097322012572,
+          "avg_daily_return": 0.009605435926024712,
+          "n_wins": 990,
+          "n_losses": 365,
+          "n_trades": 1370,
+          "roundtrip_win_rate": 0.7306273062730627
+        },
+        "SOLUSDT": {
+          "total_return": 0.15034859199307782,
+          "sharpe": 4.070489305343714,
+          "max_drawdown": -0.0718386142812617,
+          "avg_daily_return": 0.0049118170639874375,
+          "n_wins": 1542,
+          "n_losses": 757,
+          "n_trades": 2427,
+          "roundtrip_win_rate": 0.670726402783819
+        },
+        "XRPUSDT": {
+          "total_return": 0.16474374816768322,
+          "sharpe": 4.50539904673583,
+          "max_drawdown": -0.06509649363610615,
+          "avg_daily_return": 0.00527663422336101,
+          "n_wins": 1325,
+          "n_losses": 821,
+          "n_trades": 2296,
+          "roundtrip_win_rate": 0.6174277726001864
+        },
+        "DOGEUSDT": {
+          "total_return": 0.2623760053683719,
+          "sharpe": 5.623849368153688,
+          "max_drawdown": -0.12109294236292445,
+          "avg_daily_return": 0.008622916106380933,
+          "n_wins": 1227,
+          "n_losses": 518,
+          "n_trades": 1746,
+          "roundtrip_win_rate": 0.7031518624641834
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_027",
+      "fold_idx": 27,
+      "train_start": "2025-02-19T00:00:00+00:00",
+      "train_end": "2025-05-20T00:00:00+00:00",
+      "test_start": "2025-05-20T00:00:00+00:00",
+      "test_end": "2025-06-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.3691552950496588,
+          "sharpe": 4.33695335787005,
+          "max_drawdown": -0.07415842859172872,
+          "avg_daily_return": 0.003588090318229098,
+          "n_wins": 868,
+          "n_losses": 288,
+          "n_trades": 1167,
+          "roundtrip_win_rate": 0.7508650519031141
+        },
+        "BNBUSDT": {
+          "total_return": 0.533003729624854,
+          "sharpe": 5.09582754828071,
+          "max_drawdown": -0.08138158880182178,
+          "avg_daily_return": 0.005023618055234125,
+          "n_wins": 2694,
+          "n_losses": 1727,
+          "n_trades": 4422,
+          "roundtrip_win_rate": 0.6093643971952047
+        },
+        "ETHUSDT": {
+          "total_return": 0.636712325806903,
+          "sharpe": 6.243528952503556,
+          "max_drawdown": -0.09466381890579012,
+          "avg_daily_return": 0.0057660495899715,
+          "n_wins": 1530,
+          "n_losses": 594,
+          "n_trades": 2137,
+          "roundtrip_win_rate": 0.7203389830508474
+        },
+        "SOLUSDT": {
+          "total_return": 1.0127196751974767,
+          "sharpe": 6.85620899083974,
+          "max_drawdown": -0.07183761590224935,
+          "avg_daily_return": 0.008166513639795116,
+          "n_wins": 3604,
+          "n_losses": 1188,
+          "n_trades": 4922,
+          "roundtrip_win_rate": 0.7520868113522537
+        },
+        "XRPUSDT": {
+          "total_return": 0.9325359713386838,
+          "sharpe": 6.228210426058079,
+          "max_drawdown": -0.06509625684234766,
+          "avg_daily_return": 0.007742714136449342,
+          "n_wins": 3387,
+          "n_losses": 1256,
+          "n_trades": 4793,
+          "roundtrip_win_rate": 0.7294852466077967
+        },
+        "DOGEUSDT": {
+          "total_return": 0.8426808274987918,
+          "sharpe": 6.464821997841198,
+          "max_drawdown": -0.12109298881516928,
+          "avg_daily_return": 0.00722761359456319,
+          "n_wins": 2846,
+          "n_losses": 781,
+          "n_trades": 3628,
+          "roundtrip_win_rate": 0.7846705266060104
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.023842881738073585,
+          "sharpe": 1.215739567465618,
+          "max_drawdown": -0.07751080059352156,
+          "avg_daily_return": 0.0008951454683934508,
+          "n_wins": 489,
+          "n_losses": 95,
+          "n_trades": 587,
+          "roundtrip_win_rate": 0.8373287671232876
+        },
+        "BNBUSDT": {
+          "total_return": 0.0032525811310979424,
+          "sharpe": 0.31433284350017276,
+          "max_drawdown": -0.09774911289445509,
+          "avg_daily_return": 0.0003116708597651045,
+          "n_wins": 682,
+          "n_losses": 780,
+          "n_trades": 1530,
+          "roundtrip_win_rate": 0.466484268125855
+        },
+        "ETHUSDT": {
+          "total_return": 0.08461496745713948,
+          "sharpe": 4.283241600659902,
+          "max_drawdown": -0.0651481855241347,
+          "avg_daily_return": 0.002827215611467667,
+          "n_wins": 53,
+          "n_losses": 51,
+          "n_trades": 113,
+          "roundtrip_win_rate": 0.5096153846153846
+        },
+        "SOLUSDT": {
+          "total_return": 0.009995334399524491,
+          "sharpe": 0.5858649676528034,
+          "max_drawdown": -0.0801930161576262,
+          "avg_daily_return": 0.0003858072947184654,
+          "n_wins": 598,
+          "n_losses": 449,
+          "n_trades": 1050,
+          "roundtrip_win_rate": 0.5711556829035339
+        },
+        "XRPUSDT": {
+          "total_return": -0.0006791666521014372,
+          "sharpe": 0.06704214412027024,
+          "max_drawdown": -0.0804422488337383,
+          "avg_daily_return": 4.069305449377891e-05,
+          "n_wins": 643,
+          "n_losses": 617,
+          "n_trades": 1261,
+          "roundtrip_win_rate": 0.5103174603174603
+        },
+        "DOGEUSDT": {
+          "total_return": -0.05880869240372266,
+          "sharpe": -3.354724739067941,
+          "max_drawdown": -0.10506959442506236,
+          "avg_daily_return": -0.0019468791353613902,
+          "n_wins": 256,
+          "n_losses": 335,
+          "n_trades": 592,
+          "roundtrip_win_rate": 0.43316412859560066
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_028",
+      "fold_idx": 28,
+      "train_start": "2025-03-21T00:00:00+00:00",
+      "train_end": "2025-06-19T00:00:00+00:00",
+      "test_start": "2025-06-19T00:00:00+00:00",
+      "test_end": "2025-07-19T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.18466055862058006,
+          "sharpe": 2.8268734928223047,
+          "max_drawdown": -0.07738609778743,
+          "avg_daily_return": 0.0019698382259656613,
+          "n_wins": 37,
+          "n_losses": 16,
+          "n_trades": 60,
+          "roundtrip_win_rate": 0.6981132075471698
+        },
+        "BNBUSDT": {
+          "total_return": 0.2151449969072261,
+          "sharpe": 2.832632135818072,
+          "max_drawdown": -0.07582664134776174,
+          "avg_daily_return": 0.0023998226595838995,
+          "n_wins": 2412,
+          "n_losses": 2067,
+          "n_trades": 4547,
+          "roundtrip_win_rate": 0.5385130609511052
+        },
+        "ETHUSDT": {
+          "total_return": 0.6608058287645586,
+          "sharpe": 6.139969742425422,
+          "max_drawdown": -0.09465742905090213,
+          "avg_daily_return": 0.005920924507643693,
+          "n_wins": 1948,
+          "n_losses": 794,
+          "n_trades": 2750,
+          "roundtrip_win_rate": 0.7104303428154631
+        },
+        "SOLUSDT": {
+          "total_return": 0.666067065429307,
+          "sharpe": 5.310815778395004,
+          "max_drawdown": -0.0762998053619407,
+          "avg_daily_return": 0.005924588233666619,
+          "n_wins": 3992,
+          "n_losses": 1487,
+          "n_trades": 5480,
+          "roundtrip_win_rate": 0.7286001095090345
+        },
+        "XRPUSDT": {
+          "total_return": 0.35192101714601587,
+          "sharpe": 3.8928100775333183,
+          "max_drawdown": -0.06509586375472709,
+          "avg_daily_return": 0.0034634743232308416,
+          "n_wins": 3284,
+          "n_losses": 1591,
+          "n_trades": 4876,
+          "roundtrip_win_rate": 0.6736410256410257
+        },
+        "DOGEUSDT": {
+          "total_return": 0.6226122853628764,
+          "sharpe": 5.517154452110651,
+          "max_drawdown": -0.12109306951919463,
+          "avg_daily_return": 0.005749224967079061,
+          "n_wins": 2573,
+          "n_losses": 759,
+          "n_trades": 3333,
+          "roundtrip_win_rate": 0.7722088835534213
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown": 0.0,
+          "avg_daily_return": 0.0,
+          "n_wins": 0,
+          "n_losses": 0,
+          "n_trades": 0,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.05347306891417025,
+          "sharpe": 3.478405942188447,
+          "max_drawdown": -0.046381224773889396,
+          "avg_daily_return": 0.0017712360433858377,
+          "n_wins": 520,
+          "n_losses": 301,
+          "n_trades": 822,
+          "roundtrip_win_rate": 0.633373934226553
+        },
+        "ETHUSDT": {
+          "total_return": 0.3681273223218222,
+          "sharpe": 10.613665179965807,
+          "max_drawdown": -0.04167675042190422,
+          "avg_daily_return": 0.010705562854797894,
+          "n_wins": 431,
+          "n_losses": 314,
+          "n_trades": 757,
+          "roundtrip_win_rate": 0.5785234899328859
+        },
+        "SOLUSDT": {
+          "total_return": 0.21683209397464442,
+          "sharpe": 6.183931602673182,
+          "max_drawdown": -0.062257725017287546,
+          "avg_daily_return": 0.006733538052966082,
+          "n_wins": 1589,
+          "n_losses": 768,
+          "n_trades": 2596,
+          "roundtrip_win_rate": 0.6741620704285108
+        },
+        "XRPUSDT": {
+          "total_return": 0.45896905429114554,
+          "sharpe": 9.353551684014294,
+          "max_drawdown": -0.08158158607649868,
+          "avg_daily_return": 0.01301330056998817,
+          "n_wins": 1867,
+          "n_losses": 508,
+          "n_trades": 2665,
+          "roundtrip_win_rate": 0.7861052631578948
+        },
+        "DOGEUSDT": {
+          "total_return": 0.40414013819196093,
+          "sharpe": 7.773095760354689,
+          "max_drawdown": -0.08534350665352441,
+          "avg_daily_return": 0.011697977386781636,
+          "n_wins": 1775,
+          "n_losses": 670,
+          "n_trades": 2736,
+          "roundtrip_win_rate": 0.7259713701431493
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_029",
+      "fold_idx": 29,
+      "train_start": "2025-04-20T00:00:00+00:00",
+      "train_end": "2025-07-19T00:00:00+00:00",
+      "test_start": "2025-07-19T00:00:00+00:00",
+      "test_end": "2025-08-18T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.11807475797407108,
+          "sharpe": 2.1365748378137552,
+          "max_drawdown": -0.07755977496384603,
+          "avg_daily_return": 0.0012828928988880069,
+          "n_wins": 1047,
+          "n_losses": 230,
+          "n_trades": 1283,
+          "roundtrip_win_rate": 0.8198903680501175
+        },
+        "BNBUSDT": {
+          "total_return": 0.06273174262590087,
+          "sharpe": 1.1915220675978448,
+          "max_drawdown": -0.11884203141943772,
+          "avg_daily_return": 0.0007998803946425751,
+          "n_wins": 1617,
+          "n_losses": 1760,
+          "n_trades": 3378,
+          "roundtrip_win_rate": 0.4788273615635179
+        },
+        "ETHUSDT": {
+          "total_return": 0.8816892145742106,
+          "sharpe": 6.995244664793577,
+          "max_drawdown": -0.09465097322012572,
+          "avg_daily_return": 0.007329321751412242,
+          "n_wins": 2426,
+          "n_losses": 1212,
+          "n_trades": 3651,
+          "roundtrip_win_rate": 0.6668499175371083
+        },
+        "SOLUSDT": {
+          "total_return": 0.38061472395207785,
+          "sharpe": 3.6617131896118,
+          "max_drawdown": -0.07624457856738542,
+          "avg_daily_return": 0.0037242488098511027,
+          "n_wins": 3769,
+          "n_losses": 1883,
+          "n_trades": 5891,
+          "roundtrip_win_rate": 0.6668435951875442
+        },
+        "XRPUSDT": {
+          "total_return": 0.7075211369921657,
+          "sharpe": 5.650193921062256,
+          "max_drawdown": -0.08158210262015397,
+          "avg_daily_return": 0.006145268040956696,
+          "n_wins": 3989,
+          "n_losses": 1678,
+          "n_trades": 5958,
+          "roundtrip_win_rate": 0.7038997706017293
+        },
+        "DOGEUSDT": {
+          "total_return": 0.26237600536837213,
+          "sharpe": 3.2463550175500377,
+          "max_drawdown": -0.1210929423629249,
+          "avg_daily_return": 0.0028743053687936638,
+          "n_wins": 1227,
+          "n_losses": 518,
+          "n_trades": 1746,
+          "roundtrip_win_rate": 0.7031518624641834
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.016777479805172635,
+          "sharpe": -2.039635745859204,
+          "max_drawdown": -0.0363434175872126,
+          "avg_daily_return": -0.0005717614750503697,
+          "n_wins": 0,
+          "n_losses": 64,
+          "n_trades": 66,
+          "roundtrip_win_rate": 0.0
+        },
+        "BNBUSDT": {
+          "total_return": -0.03578397899545982,
+          "sharpe": -1.6507249108412183,
+          "max_drawdown": -0.10432164955495193,
+          "avg_daily_return": -0.0011329112374007947,
+          "n_wins": 229,
+          "n_losses": 452,
+          "n_trades": 682,
+          "roundtrip_win_rate": 0.33627019089574156
+        },
+        "ETHUSDT": {
+          "total_return": 0.11326812777530337,
+          "sharpe": 4.484805098182012,
+          "max_drawdown": -0.05123946482023811,
+          "avg_daily_return": 0.003701218337785846,
+          "n_wins": 39,
+          "n_losses": 81,
+          "n_trades": 122,
+          "roundtrip_win_rate": 0.325
+        },
+        "SOLUSDT": {
+          "total_return": 0.19877566329034346,
+          "sharpe": 5.954603588003244,
+          "max_drawdown": -0.08159016182678447,
+          "avg_daily_return": 0.0062163392418951415,
+          "n_wins": 1082,
+          "n_losses": 204,
+          "n_trades": 1287,
+          "roundtrip_win_rate": 0.8413685847589425
+        },
+        "XRPUSDT": {
+          "total_return": 0.11097711237729913,
+          "sharpe": 5.0140860476272096,
+          "max_drawdown": -0.0392928660898354,
+          "avg_daily_return": 0.0036309987250889558,
+          "n_wins": 682,
+          "n_losses": 315,
+          "n_trades": 998,
+          "roundtrip_win_rate": 0.6840521564694082
+        },
+        "DOGEUSDT": {
+          "total_return": 0.11516357755841655,
+          "sharpe": 3.2426078918251013,
+          "max_drawdown": -0.11061378795028864,
+          "avg_daily_return": 0.003862769047928956,
+          "n_wins": 892,
+          "n_losses": 428,
+          "n_trades": 1321,
+          "roundtrip_win_rate": 0.6757575757575758
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_030",
+      "fold_idx": 30,
+      "train_start": "2025-05-20T00:00:00+00:00",
+      "train_end": "2025-08-18T00:00:00+00:00",
+      "test_start": "2025-08-18T00:00:00+00:00",
+      "test_end": "2025-09-17T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.13485046867850126,
+          "sharpe": 2.268421800560118,
+          "max_drawdown": -0.07751080059352156,
+          "avg_daily_return": 0.0014450817949167101,
+          "n_wins": 1101,
+          "n_losses": 334,
+          "n_trades": 1443,
+          "roundtrip_win_rate": 0.7672473867595819
+        },
+        "BNBUSDT": {
+          "total_return": 0.15484947245879788,
+          "sharpe": 2.49608712775092,
+          "max_drawdown": -0.09774911289445509,
+          "avg_daily_return": 0.0017057935477052329,
+          "n_wins": 1542,
+          "n_losses": 1220,
+          "n_trades": 2763,
+          "roundtrip_win_rate": 0.558291093410572
+        },
+        "ETHUSDT": {
+          "total_return": 0.586295298466383,
+          "sharpe": 6.315461599937928,
+          "max_drawdown": -0.06578526975445209,
+          "avg_daily_return": 0.005282995865541714,
+          "n_wins": 816,
+          "n_losses": 683,
+          "n_trades": 1524,
+          "roundtrip_win_rate": 0.5443629086057371
+        },
+        "SOLUSDT": {
+          "total_return": 0.4795426725578038,
+          "sharpe": 4.636505209653804,
+          "max_drawdown": -0.08155978162423583,
+          "avg_daily_return": 0.004488306411621608,
+          "n_wins": 3681,
+          "n_losses": 1392,
+          "n_trades": 5077,
+          "roundtrip_win_rate": 0.7256061502069782
+        },
+        "XRPUSDT": {
+          "total_return": 0.5808518212528206,
+          "sharpe": 5.325345260463395,
+          "max_drawdown": -0.08158212642428098,
+          "avg_daily_return": 0.005276980859346992,
+          "n_wins": 3813,
+          "n_losses": 1415,
+          "n_trades": 5229,
+          "roundtrip_win_rate": 0.7293420045906657
+        },
+        "DOGEUSDT": {
+          "total_return": 0.4996414261506916,
+          "sharpe": 3.8395117080488825,
+          "max_drawdown": -0.11061381397543735,
+          "avg_daily_return": 0.00475661456639384,
+          "n_wins": 3082,
+          "n_losses": 1352,
+          "n_trades": 4435,
+          "roundtrip_win_rate": 0.6950834460983311
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": -0.010442761659683941,
+          "sharpe": -0.8844105333557547,
+          "max_drawdown": -0.058195660999319165,
+          "avg_daily_return": -0.00036199134093877573,
+          "n_wins": 51,
+          "n_losses": 166,
+          "n_trades": 219,
+          "roundtrip_win_rate": 0.2350230414746544
+        },
+        "BNBUSDT": {
+          "total_return": 0.03289424248939987,
+          "sharpe": 1.4182564088305876,
+          "max_drawdown": -0.05899196099615889,
+          "avg_daily_return": 0.0011787761605293453,
+          "n_wins": 796,
+          "n_losses": 931,
+          "n_trades": 1733,
+          "roundtrip_win_rate": 0.4609148812970469
+        },
+        "ETHUSDT": {
+          "total_return": 0.09576094081161068,
+          "sharpe": 4.776568272182032,
+          "max_drawdown": -0.044209372120079804,
+          "avg_daily_return": 0.003201897698525554,
+          "n_wins": 148,
+          "n_losses": 122,
+          "n_trades": 283,
+          "roundtrip_win_rate": 0.5481481481481482
+        },
+        "SOLUSDT": {
+          "total_return": 0.29161067178334266,
+          "sharpe": 8.896935867924782,
+          "max_drawdown": -0.03792289909949331,
+          "avg_daily_return": 0.008752096064968233,
+          "n_wins": 1546,
+          "n_losses": 407,
+          "n_trades": 1955,
+          "roundtrip_win_rate": 0.7916026625704045
+        },
+        "XRPUSDT": {
+          "total_return": 0.080613358911799,
+          "sharpe": 3.7255582657919835,
+          "max_drawdown": -0.04115077068137596,
+          "avg_daily_return": 0.00266395447904972,
+          "n_wins": 1098,
+          "n_losses": 476,
+          "n_trades": 1575,
+          "roundtrip_win_rate": 0.6975857687420585
+        },
+        "DOGEUSDT": {
+          "total_return": 0.2943710547684566,
+          "sharpe": 6.976376589785495,
+          "max_drawdown": -0.08481600050139593,
+          "avg_daily_return": 0.008925801135231459,
+          "n_wins": 1545,
+          "n_losses": 392,
+          "n_trades": 1938,
+          "roundtrip_win_rate": 0.7976251935983479
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_031",
+      "fold_idx": 31,
+      "train_start": "2025-06-19T00:00:00+00:00",
+      "train_end": "2025-09-17T00:00:00+00:00",
+      "test_start": "2025-09-17T00:00:00+00:00",
+      "test_end": "2025-10-17T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.1850685539674115,
+          "sharpe": 3.1074445237708965,
+          "max_drawdown": -0.058617397477639055,
+          "avg_daily_return": 0.0019132303565319807,
+          "n_wins": 1195,
+          "n_losses": 299,
+          "n_trades": 1501,
+          "roundtrip_win_rate": 0.7998661311914324
+        },
+        "BNBUSDT": {
+          "total_return": 0.22134285904139173,
+          "sharpe": 3.665862576275143,
+          "max_drawdown": -0.046381224773889396,
+          "avg_daily_return": 0.00228892610863299,
+          "n_wins": 1403,
+          "n_losses": 848,
+          "n_trades": 2252,
+          "roundtrip_win_rate": 0.6232785428698356
+        },
+        "ETHUSDT": {
+          "total_return": 0.7125861544259411,
+          "sharpe": 7.050585424460719,
+          "max_drawdown": -0.05345408927053208,
+          "avg_daily_return": 0.00616010376261918,
+          "n_wins": 964,
+          "n_losses": 581,
+          "n_trades": 1569,
+          "roundtrip_win_rate": 0.623948220064725
+        },
+        "SOLUSDT": {
+          "total_return": 1.0410034562616794,
+          "sharpe": 7.558337687563716,
+          "max_drawdown": -0.08154584785704544,
+          "avg_daily_return": 0.00814675672114996,
+          "n_wins": 4887,
+          "n_losses": 1373,
+          "n_trades": 6261,
+          "roundtrip_win_rate": 0.7806709265175719
+        },
+        "XRPUSDT": {
+          "total_return": 0.8116707853928362,
+          "sharpe": 6.598522623867785,
+          "max_drawdown": -0.08158158607649868,
+          "avg_daily_return": 0.006813080882797926,
+          "n_wins": 4228,
+          "n_losses": 1318,
+          "n_trades": 5546,
+          "roundtrip_win_rate": 0.7623512441399206
+        },
+        "DOGEUSDT": {
+          "total_return": 1.2688308344965877,
+          "sharpe": 6.533589768786823,
+          "max_drawdown": -0.11664554238125158,
+          "avg_daily_return": 0.009480373257723971,
+          "n_wins": 4960,
+          "n_losses": 1495,
+          "n_trades": 6456,
+          "roundtrip_win_rate": 0.7683965917893106
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.24131856358482784,
+          "sharpe": 6.307722961503064,
+          "max_drawdown": -0.055808182189107325,
+          "avg_daily_return": 0.007737845301418075,
+          "n_wins": 361,
+          "n_losses": 30,
+          "n_trades": 399,
+          "roundtrip_win_rate": 0.9232736572890026
+        },
+        "BNBUSDT": {
+          "total_return": -0.1068995879683089,
+          "sharpe": -5.552193255863756,
+          "max_drawdown": -0.12045498005391142,
+          "avg_daily_return": -0.0036907509575330438,
+          "n_wins": 319,
+          "n_losses": 387,
+          "n_trades": 716,
+          "roundtrip_win_rate": 0.4518413597733711
+        },
+        "ETHUSDT": {
+          "total_return": 0.07229586913291564,
+          "sharpe": 3.948308909852299,
+          "max_drawdown": -0.06827598710170402,
+          "avg_daily_return": 0.0023606193182537983,
+          "n_wins": 432,
+          "n_losses": 51,
+          "n_trades": 491,
+          "roundtrip_win_rate": 0.8944099378881988
+        },
+        "SOLUSDT": {
+          "total_return": 0.12709756164407815,
+          "sharpe": 4.852856173119992,
+          "max_drawdown": -0.06903390678309418,
+          "avg_daily_return": 0.004083977711932807,
+          "n_wins": 888,
+          "n_losses": 337,
+          "n_trades": 1226,
+          "roundtrip_win_rate": 0.7248979591836735
+        },
+        "XRPUSDT": {
+          "total_return": 0.04262166501778042,
+          "sharpe": 2.5568385460967282,
+          "max_drawdown": -0.03789493749737449,
+          "avg_daily_return": 0.0014182696815879655,
+          "n_wins": 655,
+          "n_losses": 439,
+          "n_trades": 1095,
+          "roundtrip_win_rate": 0.5987202925045704
+        },
+        "DOGEUSDT": {
+          "total_return": 0.0859618812626537,
+          "sharpe": 3.395542838957825,
+          "max_drawdown": -0.07813804095164034,
+          "avg_daily_return": 0.002836150473522181,
+          "n_wins": 853,
+          "n_losses": 429,
+          "n_trades": 1283,
+          "roundtrip_win_rate": 0.6653666146645866
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_032",
+      "fold_idx": 32,
+      "train_start": "2025-07-19T00:00:00+00:00",
+      "train_end": "2025-10-17T00:00:00+00:00",
+      "test_start": "2025-10-17T00:00:00+00:00",
+      "test_end": "2025-11-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.48642881007180283,
+          "sharpe": 4.93810557968302,
+          "max_drawdown": -0.0580896846845218,
+          "avg_daily_return": 0.004626079230529014,
+          "n_wins": 1598,
+          "n_losses": 223,
+          "n_trades": 1834,
+          "roundtrip_win_rate": 0.8775398132894014
+        },
+        "BNBUSDT": {
+          "total_return": 0.07230692245959203,
+          "sharpe": 1.1659021252492048,
+          "max_drawdown": -0.1130614352921514,
+          "avg_daily_return": 0.0008668439816743564,
+          "n_wins": 1009,
+          "n_losses": 1174,
+          "n_trades": 2192,
+          "roundtrip_win_rate": 0.46220797068254693
+        },
+        "ETHUSDT": {
+          "total_return": 0.33656945936116367,
+          "sharpe": 4.613970098583671,
+          "max_drawdown": -0.0682765908004136,
+          "avg_daily_return": 0.003328798643488145,
+          "n_wins": 1173,
+          "n_losses": 405,
+          "n_trades": 1593,
+          "roundtrip_win_rate": 0.7433460076045627
+        },
+        "SOLUSDT": {
+          "total_return": 0.8120391219655763,
+          "sharpe": 6.970000924943282,
+          "max_drawdown": -0.08159016182678447,
+          "avg_daily_return": 0.006771037737438134,
+          "n_wins": 3512,
+          "n_losses": 937,
+          "n_trades": 4450,
+          "roundtrip_win_rate": 0.7893908743537874
+        },
+        "XRPUSDT": {
+          "total_return": 0.27748346951268754,
+          "sharpe": 4.143975725890321,
+          "max_drawdown": -0.050613471931538645,
+          "avg_daily_return": 0.002797833907392263,
+          "n_wins": 2370,
+          "n_losses": 1277,
+          "n_trades": 3648,
+          "roundtrip_win_rate": 0.6498491911159857
+        },
+        "DOGEUSDT": {
+          "total_return": 0.5921801190033147,
+          "sharpe": 4.720686915335047,
+          "max_drawdown": -0.11664545435756568,
+          "avg_daily_return": 0.005385167886673574,
+          "n_wins": 3171,
+          "n_losses": 1228,
+          "n_trades": 4400,
+          "roundtrip_win_rate": 0.720845646737895
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.2624090822354437,
+          "sharpe": 6.722938466076956,
+          "max_drawdown": -0.0694227434796062,
+          "avg_daily_return": 0.007992258722397309,
+          "n_wins": 714,
+          "n_losses": 97,
+          "n_trades": 822,
+          "roundtrip_win_rate": 0.8803945745992602
+        },
+        "BNBUSDT": {
+          "total_return": 0.18617255485618456,
+          "sharpe": 4.52777575747496,
+          "max_drawdown": -0.10086024731851206,
+          "avg_daily_return": 0.006116809841071003,
+          "n_wins": 911,
+          "n_losses": 808,
+          "n_trades": 1862,
+          "roundtrip_win_rate": 0.5299592786503782
+        },
+        "ETHUSDT": {
+          "total_return": -0.02621209374683764,
+          "sharpe": -2.1145496444314915,
+          "max_drawdown": -0.06087460661583621,
+          "avg_daily_return": -0.000870142219484656,
+          "n_wins": 628,
+          "n_losses": 271,
+          "n_trades": 909,
+          "roundtrip_win_rate": 0.6985539488320356
+        },
+        "SOLUSDT": {
+          "total_return": 0.024949607522674944,
+          "sharpe": 1.5606999398411217,
+          "max_drawdown": -0.05334374864148961,
+          "avg_daily_return": 0.0008409298453813773,
+          "n_wins": 624,
+          "n_losses": 364,
+          "n_trades": 990,
+          "roundtrip_win_rate": 0.631578947368421
+        },
+        "XRPUSDT": {
+          "total_return": 0.17008609525497276,
+          "sharpe": 7.933562429595163,
+          "max_drawdown": -0.034565315500819205,
+          "avg_daily_return": 0.005344206945158169,
+          "n_wins": 776,
+          "n_losses": 302,
+          "n_trades": 1080,
+          "roundtrip_win_rate": 0.7198515769944341
+        },
+        "DOGEUSDT": {
+          "total_return": 0.10289842842967434,
+          "sharpe": 4.66999056649929,
+          "max_drawdown": -0.06823807266092785,
+          "avg_daily_return": 0.0034151124554314496,
+          "n_wins": 608,
+          "n_losses": 471,
+          "n_trades": 1080,
+          "roundtrip_win_rate": 0.5634847080630213
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_033",
+      "fold_idx": 33,
+      "train_start": "2025-08-18T00:00:00+00:00",
+      "train_end": "2025-11-16T00:00:00+00:00",
+      "test_start": "2025-11-16T00:00:00+00:00",
+      "test_end": "2025-12-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.7605896132697352,
+          "sharpe": 5.612316218486423,
+          "max_drawdown": -0.06749615724960245,
+          "avg_daily_return": 0.006568522576369073,
+          "n_wins": 2088,
+          "n_losses": 301,
+          "n_trades": 2406,
+          "roundtrip_win_rate": 0.8740058601925492
+        },
+        "BNBUSDT": {
+          "total_return": -0.013110224418036998,
+          "sharpe": -0.029768953449810846,
+          "max_drawdown": -0.1210879753354479,
+          "avg_daily_return": -2.431374122325858e-05,
+          "n_wins": 1326,
+          "n_losses": 1490,
+          "n_trades": 2822,
+          "roundtrip_win_rate": 0.4708806818181818
+        },
+        "ETHUSDT": {
+          "total_return": 0.1970111314088967,
+          "sharpe": 3.620445314700561,
+          "max_drawdown": -0.06827775836221572,
+          "avg_daily_return": 0.0020640981725737893,
+          "n_wins": 1771,
+          "n_losses": 695,
+          "n_trades": 2492,
+          "roundtrip_win_rate": 0.7181670721816708
+        },
+        "SOLUSDT": {
+          "total_return": 0.5740026935660976,
+          "sharpe": 6.553896991890947,
+          "max_drawdown": -0.06906066609713502,
+          "avg_daily_return": 0.005153028068029942,
+          "n_wins": 2908,
+          "n_losses": 817,
+          "n_trades": 3727,
+          "roundtrip_win_rate": 0.7806711409395973
+        },
+        "XRPUSDT": {
+          "total_return": 0.2995288391701443,
+          "sharpe": 4.579797212598587,
+          "max_drawdown": -0.05061347085804946,
+          "avg_daily_return": 0.002977540349189484,
+          "n_wins": 2508,
+          "n_losses": 1213,
+          "n_trades": 3722,
+          "roundtrip_win_rate": 0.6740123622682075
+        },
+        "DOGEUSDT": {
+          "total_return": 0.6220385557106276,
+          "sharpe": 5.718594919252889,
+          "max_drawdown": -0.0929536092870541,
+          "avg_daily_return": 0.005556641162064672,
+          "n_wins": 2839,
+          "n_losses": 899,
+          "n_trades": 3739,
+          "roundtrip_win_rate": 0.7594970572498663
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.17097151105212482,
+          "sharpe": 7.0133419032852995,
+          "max_drawdown": -0.05425136104008832,
+          "avg_daily_return": 0.005340354619179585,
+          "n_wins": 343,
+          "n_losses": 87,
+          "n_trades": 440,
+          "roundtrip_win_rate": 0.7976744186046512
+        },
+        "BNBUSDT": {
+          "total_return": 0.20748634725265558,
+          "sharpe": 6.545738168599485,
+          "max_drawdown": -0.050114777938535915,
+          "avg_daily_return": 0.006360254728703093,
+          "n_wins": 923,
+          "n_losses": 407,
+          "n_trades": 1354,
+          "roundtrip_win_rate": 0.693984962406015
+        },
+        "ETHUSDT": {
+          "total_return": 0.17822464325904352,
+          "sharpe": 7.20472611959889,
+          "max_drawdown": -0.0350672075876004,
+          "avg_daily_return": 0.005569877190774023,
+          "n_wins": 293,
+          "n_losses": 163,
+          "n_trades": 460,
+          "roundtrip_win_rate": 0.6425438596491229
+        },
+        "SOLUSDT": {
+          "total_return": 0.16841592382942916,
+          "sharpe": 6.217504214563678,
+          "max_drawdown": -0.04707365296672428,
+          "avg_daily_return": 0.005353687821508694,
+          "n_wins": 808,
+          "n_losses": 265,
+          "n_trades": 1074,
+          "roundtrip_win_rate": 0.7530288909599254
+        },
+        "XRPUSDT": {
+          "total_return": 0.04931442420256582,
+          "sharpe": 2.351840740237298,
+          "max_drawdown": -0.05540071557862947,
+          "avg_daily_return": 0.0017216308230582806,
+          "n_wins": 624,
+          "n_losses": 344,
+          "n_trades": 969,
+          "roundtrip_win_rate": 0.6446280991735537
+        },
+        "DOGEUSDT": {
+          "total_return": 0.08267002084464248,
+          "sharpe": 3.701523491582629,
+          "max_drawdown": -0.042795125070903994,
+          "avg_daily_return": 0.0027113534837038007,
+          "n_wins": 661,
+          "n_losses": 319,
+          "n_trades": 981,
+          "roundtrip_win_rate": 0.6744897959183673
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_034",
+      "fold_idx": 34,
+      "train_start": "2025-09-17T00:00:00+00:00",
+      "train_end": "2025-12-16T00:00:00+00:00",
+      "test_start": "2025-12-16T00:00:00+00:00",
+      "test_end": "2026-01-15T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 1.197748353614466,
+          "sharpe": 6.845940752504108,
+          "max_drawdown": -0.07770609328044964,
+          "avg_daily_return": 0.009064518218756383,
+          "n_wins": 2627,
+          "n_losses": 350,
+          "n_trades": 2996,
+          "roundtrip_win_rate": 0.8824319785018475
+        },
+        "BNBUSDT": {
+          "total_return": -0.10689958796830967,
+          "sharpe": -3.204999812292888,
+          "max_drawdown": -0.12045498005391231,
+          "avg_daily_return": -0.0012302503191776776,
+          "n_wins": 319,
+          "n_losses": 387,
+          "n_trades": 716,
+          "roundtrip_win_rate": 0.4518413597733711
+        },
+        "ETHUSDT": {
+          "total_return": 0.189538577350856,
+          "sharpe": 3.5956625999078122,
+          "max_drawdown": -0.06827598710170402,
+          "avg_daily_return": 0.0019689446873033534,
+          "n_wins": 2006,
+          "n_losses": 859,
+          "n_trades": 2889,
+          "roundtrip_win_rate": 0.7001745200698081
+        },
+        "SOLUSDT": {
+          "total_return": 0.3267539124804808,
+          "sharpe": 4.700415464498425,
+          "max_drawdown": -0.06903390678309418,
+          "avg_daily_return": 0.003222151349861233,
+          "n_wins": 1934,
+          "n_losses": 676,
+          "n_trades": 2612,
+          "roundtrip_win_rate": 0.7409961685823755
+        },
+        "XRPUSDT": {
+          "total_return": 0.2487494398175063,
+          "sharpe": 4.0188679751031,
+          "max_drawdown": -0.05221886668289211,
+          "avg_daily_return": 0.00254656364355283,
+          "n_wins": 1868,
+          "n_losses": 994,
+          "n_trades": 2863,
+          "roundtrip_win_rate": 0.6526904262753319
+        },
+        "DOGEUSDT": {
+          "total_return": 0.2983434976854211,
+          "sharpe": 4.2993054543966265,
+          "max_drawdown": -0.07813804095164034,
+          "avg_daily_return": 0.0029849060881334743,
+          "n_wins": 1805,
+          "n_losses": 844,
+          "n_trades": 2650,
+          "roundtrip_win_rate": 0.6813892034730087
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.005479402412686074,
+          "sharpe": 0.6040853154769149,
+          "max_drawdown": -0.03475047750904148,
+          "avg_daily_return": 0.0001764101236417126,
+          "n_wins": 1,
+          "n_losses": 0,
+          "n_trades": 2,
+          "roundtrip_win_rate": 1.0
+        },
+        "BNBUSDT": {
+          "total_return": 0.059009907034140774,
+          "sharpe": 3.0321462591814465,
+          "max_drawdown": -0.03882937434525968,
+          "avg_daily_return": 0.001955450944839491,
+          "n_wins": 712,
+          "n_losses": 281,
+          "n_trades": 997,
+          "roundtrip_win_rate": 0.7170191339375629
+        },
+        "ETHUSDT": {
+          "total_return": 0.04191330842147556,
+          "sharpe": 2.63844986349624,
+          "max_drawdown": -0.04203070098659767,
+          "avg_daily_return": 0.0014261711550029458,
+          "n_wins": 48,
+          "n_losses": 52,
+          "n_trades": 113,
+          "roundtrip_win_rate": 0.48
+        },
+        "SOLUSDT": {
+          "total_return": 0.11471849644318843,
+          "sharpe": 4.729023891598791,
+          "max_drawdown": -0.04547110348995487,
+          "avg_daily_return": 0.003690216274071186,
+          "n_wins": 1356,
+          "n_losses": 642,
+          "n_trades": 2217,
+          "roundtrip_win_rate": 0.6786786786786787
+        },
+        "XRPUSDT": {
+          "total_return": 0.15732964190184262,
+          "sharpe": 5.743401788144448,
+          "max_drawdown": -0.09247477890443445,
+          "avg_daily_return": 0.0051658732849251005,
+          "n_wins": 1165,
+          "n_losses": 638,
+          "n_trades": 2018,
+          "roundtrip_win_rate": 0.6461453133666112
+        },
+        "DOGEUSDT": {
+          "total_return": 0.24699329992102248,
+          "sharpe": 6.963882588841544,
+          "max_drawdown": -0.06211626838283191,
+          "avg_daily_return": 0.007658258660661821,
+          "n_wins": 1227,
+          "n_losses": 742,
+          "n_trades": 2169,
+          "roundtrip_win_rate": 0.6231589639410868
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_035",
+      "fold_idx": 35,
+      "train_start": "2025-10-17T00:00:00+00:00",
+      "train_end": "2026-01-15T00:00:00+00:00",
+      "test_start": "2026-01-15T00:00:00+00:00",
+      "test_end": "2026-02-14T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.6917412737370172,
+          "sharpe": 5.29901775040884,
+          "max_drawdown": -0.08084025130275052,
+          "avg_daily_return": 0.005957890030010351,
+          "n_wins": 2262,
+          "n_losses": 395,
+          "n_trades": 2671,
+          "roundtrip_win_rate": 0.8513360933383515
+        },
+        "BNBUSDT": {
+          "total_return": 0.5951508209591032,
+          "sharpe": 4.516080642939952,
+          "max_drawdown": -0.10086024731851206,
+          "avg_daily_return": 0.005412778847430417,
+          "n_wins": 2952,
+          "n_losses": 1995,
+          "n_trades": 4967,
+          "roundtrip_win_rate": 0.5967252880533657
+        },
+        "ETHUSDT": {
+          "total_return": 0.19448476314900986,
+          "sharpe": 3.758495494775784,
+          "max_drawdown": -0.06288838046148537,
+          "avg_daily_return": 0.0020251380258763754,
+          "n_wins": 1632,
+          "n_losses": 842,
+          "n_trades": 2501,
+          "roundtrip_win_rate": 0.6596604688763137
+        },
+        "SOLUSDT": {
+          "total_return": 0.29060689405346385,
+          "sharpe": 4.290066635309113,
+          "max_drawdown": -0.05919860455391657,
+          "avg_daily_return": 0.0029068832571458128,
+          "n_wins": 2294,
+          "n_losses": 958,
+          "n_trades": 3473,
+          "roundtrip_win_rate": 0.7054120541205412
+        },
+        "XRPUSDT": {
+          "total_return": 0.44116356507980026,
+          "sharpe": 5.639959784147913,
+          "max_drawdown": -0.09247504888573121,
+          "avg_daily_return": 0.0042323881985628494,
+          "n_wins": 2302,
+          "n_losses": 924,
+          "n_trades": 3443,
+          "roundtrip_win_rate": 0.7135771853688778
+        },
+        "DOGEUSDT": {
+          "total_return": 0.43607196223059375,
+          "sharpe": 5.1117871610423755,
+          "max_drawdown": -0.06823807266092785,
+          "avg_daily_return": 0.004183402551401469,
+          "n_wins": 1884,
+          "n_losses": 1337,
+          "n_trades": 3421,
+          "roundtrip_win_rate": 0.5849115181620614
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.4284921148849077,
+          "sharpe": 9.04809509814032,
+          "max_drawdown": -0.08444228173365043,
+          "avg_daily_return": 0.01241043861534948,
+          "n_wins": 941,
+          "n_losses": 114,
+          "n_trades": 1060,
+          "roundtrip_win_rate": 0.8919431279620853
+        },
+        "BNBUSDT": {
+          "total_return": 0.6642518629771901,
+          "sharpe": 10.372391339061913,
+          "max_drawdown": -0.0571127378303532,
+          "avg_daily_return": 0.017477380564665308,
+          "n_wins": 2295,
+          "n_losses": 1056,
+          "n_trades": 3352,
+          "roundtrip_win_rate": 0.684870188003581
+        },
+        "ETHUSDT": {
+          "total_return": 0.054217209513217846,
+          "sharpe": 5.97335048179934,
+          "max_drawdown": -0.01858592075491272,
+          "avg_daily_return": 0.0017718383564667669,
+          "n_wins": 64,
+          "n_losses": 22,
+          "n_trades": 92,
+          "roundtrip_win_rate": 0.7441860465116279
+        },
+        "SOLUSDT": {
+          "total_return": -0.0007210283133542994,
+          "sharpe": -0.012840268463645166,
+          "max_drawdown": -0.02117812710804512,
+          "avg_daily_return": -1.6850620495223456e-05,
+          "n_wins": 185,
+          "n_losses": 228,
+          "n_trades": 414,
+          "roundtrip_win_rate": 0.44794188861985473
+        },
+        "XRPUSDT": {
+          "total_return": 0.0018106076815760375,
+          "sharpe": 0.21474520864660074,
+          "max_drawdown": -0.027400466979266236,
+          "avg_daily_return": 6.103298967888489e-05,
+          "n_wins": 260,
+          "n_losses": 264,
+          "n_trades": 525,
+          "roundtrip_win_rate": 0.4961832061068702
+        },
+        "DOGEUSDT": {
+          "total_return": 0.016974865145994444,
+          "sharpe": 1.5599736766337624,
+          "max_drawdown": -0.022270445065138644,
+          "avg_daily_return": 0.0005719452368232717,
+          "n_wins": 262,
+          "n_losses": 121,
+          "n_trades": 384,
+          "roundtrip_win_rate": 0.6840731070496083
+        }
+      },
+      "skipped_pairs": []
+    },
+    {
+      "fold": "fold_036",
+      "fold_idx": 36,
+      "train_start": "2025-11-16T00:00:00+00:00",
+      "train_end": "2026-02-14T00:00:00+00:00",
+      "test_start": "2026-02-14T00:00:00+00:00",
+      "test_end": "2026-03-16T00:00:00+00:00",
+      "IS": {
+        "BTCUSDT": {
+          "total_return": 0.8936962781755362,
+          "sharpe": 6.399683046332344,
+          "max_drawdown": -0.08603924682667052,
+          "avg_daily_return": 0.007335579610645303,
+          "n_wins": 2353,
+          "n_losses": 327,
+          "n_trades": 2690,
+          "roundtrip_win_rate": 0.8779850746268657
+        },
+        "BNBUSDT": {
+          "total_return": 1.018313359271379,
+          "sharpe": 6.674917376751591,
+          "max_drawdown": -0.057113723228947255,
+          "avg_daily_return": 0.008015022365025043,
+          "n_wins": 3630,
+          "n_losses": 1664,
+          "n_trades": 5302,
+          "roundtrip_win_rate": 0.685681904042312
+        },
+        "ETHUSDT": {
+          "total_return": 0.35335291579990713,
+          "sharpe": 6.019830636265738,
+          "max_drawdown": -0.0350672075876004,
+          "avg_daily_return": 0.003419317006882757,
+          "n_wins": 1841,
+          "n_losses": 482,
+          "n_trades": 2340,
+          "roundtrip_win_rate": 0.7925096857511839
+        },
+        "SOLUSDT": {
+          "total_return": 0.2713484732864664,
+          "sharpe": 4.21044089970916,
+          "max_drawdown": -0.048770209986339186,
+          "avg_daily_return": 0.002746214080267506,
+          "n_wins": 2091,
+          "n_losses": 783,
+          "n_trades": 2876,
+          "roundtrip_win_rate": 0.7275574112734864
+        },
+        "XRPUSDT": {
+          "total_return": 0.19918113696282735,
+          "sharpe": 3.1094141600592904,
+          "max_drawdown": -0.0924754098501015,
+          "avg_daily_return": 0.002156674850945326,
+          "n_wins": 1838,
+          "n_losses": 936,
+          "n_trades": 2775,
+          "roundtrip_win_rate": 0.6625811103100216
+        },
+        "DOGEUSDT": {
+          "total_return": 0.28937309038808223,
+          "sharpe": 3.9262162829258394,
+          "max_drawdown": -0.06211621955282631,
+          "avg_daily_return": 0.0029511426805811647,
+          "n_wins": 1711,
+          "n_losses": 1051,
+          "n_trades": 2763,
+          "roundtrip_win_rate": 0.6194786386676322
+        }
+      },
+      "OOS": {
+        "BTCUSDT": {
+          "total_return": 0.08278036808668787,
+          "sharpe": 3.4436138515435903,
+          "max_drawdown": -0.08748991877815138,
+          "avg_daily_return": 0.002708675655366947,
+          "n_wins": 264,
+          "n_losses": 119,
+          "n_trades": 385,
+          "roundtrip_win_rate": 0.6892950391644909
+        },
+        "BNBUSDT": {
+          "total_return": 0.09724509752626664,
+          "sharpe": 2.805403627153499,
+          "max_drawdown": -0.10106535500215441,
+          "avg_daily_return": 0.003278180340472858,
+          "n_wins": 1248,
+          "n_losses": 825,
+          "n_trades": 2074,
+          "roundtrip_win_rate": 0.6020260492040521
+        },
+        "ETHUSDT": {
+          "total_return": 0.11509892457470494,
+          "sharpe": 3.9107302344471346,
+          "max_drawdown": -0.07525901856832884,
+          "avg_daily_return": 0.003759848599949134,
+          "n_wins": 734,
+          "n_losses": 253,
+          "n_trades": 995,
+          "roundtrip_win_rate": 0.7436676798378926
+        },
+        "SOLUSDT": {
+          "total_return": 0.15397792575959257,
+          "sharpe": 4.26434179511337,
+          "max_drawdown": -0.08966604874103856,
+          "avg_daily_return": 0.005001151343534645,
+          "n_wins": 1258,
+          "n_losses": 503,
+          "n_trades": 2222,
+          "roundtrip_win_rate": 0.7143668370244179
+        },
+        "XRPUSDT": {
+          "total_return": 0.0679829431684682,
+          "sharpe": 2.74222398069742,
+          "max_drawdown": -0.07512155880439575,
+          "avg_daily_return": 0.0022852141652322114,
+          "n_wins": 943,
+          "n_losses": 459,
+          "n_trades": 1836,
+          "roundtrip_win_rate": 0.6726105563480742
+        },
+        "DOGEUSDT": {
+          "total_return": 0.12367567811872449,
+          "sharpe": 4.23277530478925,
+          "max_drawdown": -0.10079611655800946,
+          "avg_daily_return": 0.004121209385969733,
+          "n_wins": 666,
+          "n_losses": 524,
+          "n_trades": 1448,
+          "roundtrip_win_rate": 0.5596638655462185
+        }
+      },
+      "skipped_pairs": []
+    }
+  ]
+}

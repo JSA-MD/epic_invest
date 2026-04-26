@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-04-26T00:38:12.604986+00:00",
+  "window": "full_4y",
+  "window_start": "2022-04-06",
+  "window_end": "2026-04-06",
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "tail_risk_path": "/Users/jsa/work/epic_invest/models/tail_risk_report.json",
+  "strategy_descriptions": {
+    "cvar_99_cut": "Cut position to 0 for 24h when rolling 30d return < CVaR-99 threshold",
+    "vol_of_vol": "Halve position for 24h when 1d realised vol > 2x rolling 30d median vol",
+    "gross_cap": "Hard cap target_weight to ±0.5 (vs ±1.0 default)"
+  },
+  "per_pair": {
+    "BTCUSDT": {
+      "baseline": {
+        "roi": 249.23056042959698,
+        "mdd": -0.1197001494088814,
+        "sharpe": 5.286360610412723,
+        "cvar_99": -0.004809809588117065,
+        "worst_day": -0.061424527780670424,
+        "calmar": 2082.124054651387
+      },
+      "cvar_99_cut": {
+        "roi": 249.23056042959698,
+        "mdd": -0.1197001494088814,
+        "sharpe": 5.286360610412723,
+        "cvar_99": -0.004809809588117065,
+        "worst_day": -0.061424527780670424,
+        "calmar": 2082.124054651387,
+        "days_protected": 289
+      },
+      "vol_of_vol": {
+        "roi": 29.190814790205366,
+        "mdd": -0.08752411507573088,
+        "sharpe": 4.883323471778705,
+        "cvar_99": -0.003301254361172667,
+        "worst_day": -0.031187343027851422,
+        "calmar": 333.5173942055604,
+        "days_protected": 86122
+      },
+      "gross_cap": {
+        "roi": 6.601965119172569,
+        "mdd": -0.08046136671255233,
+        "sharpe": 4.287333332246179,
+        "cvar_99": -0.0022392772298687564,
+        "worst_day": -0.056431580280530746,
+        "calmar": 82.0513668722288,
+        "days_protected": 107710
+      }
+    },
+    "BNBUSDT": {
+      "baseline": {
+        "roi": 252.6115426369442,
+        "mdd": -0.11099201032317108,
+        "sharpe": 5.18636245927839,
+        "cvar_99": -0.004915145978458234,
+        "worst_day": -0.07227769238477844,
+        "calmar": 2275.9434836924306
+      },
+      "cvar_99_cut": {
+        "roi": 231.48382897001468,
+        "mdd": -0.11099201032316952,
+        "sharpe": 5.157160594705959,
+        "cvar_99": -0.004885262263048557,
+        "worst_day": -0.07227769238477844,
+        "calmar": 2085.590019461901,
+        "days_protected": 3468
+      },
+      "vol_of_vol": {
+        "roi": 27.4637470670361,
+        "mdd": -0.11024013557938439,
+        "sharpe": 4.7382404243059515,
+        "cvar_99": -0.003374675247564276,
+        "worst_day": -0.07227769238477844,
+        "calmar": 249.12657193948513,
+        "days_protected": 108664
+      },
+      "gross_cap": {
+        "roi": 5.018033578783483,
+        "mdd": -0.06907552472295952,
+        "sharpe": 3.8067025707882953,
+        "cvar_99": -0.002194340068242259,
+        "worst_day": -0.030529675916904808,
+        "calmar": 72.64560926477587,
+        "days_protected": 100267
+      }
+    }
+  },
+  "recommended_per_pair": {
+    "BTCUSDT": "cvar_99_cut",
+    "BNBUSDT": "cvar_99_cut"
+  }
+}

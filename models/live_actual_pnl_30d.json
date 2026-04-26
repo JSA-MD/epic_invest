@@ -1,0 +1,800 @@
+{
+  "generated_at": "2026-04-26T00:37:00.346974+00:00",
+  "window": {
+    "start": "2026-03-27T00:36:58.894213+00:00",
+    "end": "2026-04-26T00:36:58.894213+00:00"
+  },
+  "n_filled_trades_per_pair": {
+    "BNBUSDT": 160,
+    "BTCUSDT": 20
+  },
+  "initial_equity_estimate": 4532.4119,
+  "daily_pnl_live": [
+    {
+      "date": "2026-03-27",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-28",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-29",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-30",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-31",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-01",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-02",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-03",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-04",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-05",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-06",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-07",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-08",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-09",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-10",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-11",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-12",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-13",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-14",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-15",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-16",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-17",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-18",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-19",
+      "pair": "BTCUSDT",
+      "realized": -1.499723,
+      "unrealized": 83.224698,
+      "total": 81.724975
+    },
+    {
+      "date": "2026-04-20",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-21",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-22",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-23",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-24",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-25",
+      "pair": "BTCUSDT",
+      "realized": -20.452714,
+      "unrealized": 20.679905,
+      "total": 0.227191
+    },
+    {
+      "date": "2026-04-26",
+      "pair": "BTCUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-27",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-28",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-29",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-30",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-03-31",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-01",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-02",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-03",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-04",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-05",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-06",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-07",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-08",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-09",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-10",
+      "pair": "BNBUSDT",
+      "realized": -1.375434,
+      "unrealized": 295.605614,
+      "total": 294.23018
+    },
+    {
+      "date": "2026-04-11",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-12",
+      "pair": "BNBUSDT",
+      "realized": 6.161845,
+      "unrealized": -16.238753,
+      "total": -10.076908
+    },
+    {
+      "date": "2026-04-13",
+      "pair": "BNBUSDT",
+      "realized": -726.811179,
+      "unrealized": 1942.865656,
+      "total": 1216.054477
+    },
+    {
+      "date": "2026-04-14",
+      "pair": "BNBUSDT",
+      "realized": -685.751393,
+      "unrealized": 627.002699,
+      "total": -58.748693
+    },
+    {
+      "date": "2026-04-15",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-16",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-17",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-18",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-19",
+      "pair": "BNBUSDT",
+      "realized": -589.252603,
+      "unrealized": 518.178166,
+      "total": -71.074437
+    },
+    {
+      "date": "2026-04-20",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-21",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-22",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-23",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-24",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    },
+    {
+      "date": "2026-04-25",
+      "pair": "BNBUSDT",
+      "realized": -6.697779,
+      "unrealized": 12.140377,
+      "total": 5.442599
+    },
+    {
+      "date": "2026-04-26",
+      "pair": "BNBUSDT",
+      "realized": 0.0,
+      "unrealized": 0.0,
+      "total": 0.0
+    }
+  ],
+  "daily_pnl_backtest": [
+    {
+      "date": "2026-03-27",
+      "pair": "BTCUSDT",
+      "daily_return": 0.0011048666553004072
+    },
+    {
+      "date": "2026-03-28",
+      "pair": "BTCUSDT",
+      "daily_return": -0.0030988343590080403
+    },
+    {
+      "date": "2026-03-29",
+      "pair": "BTCUSDT",
+      "daily_return": 0.006498715379618991
+    },
+    {
+      "date": "2026-03-30",
+      "pair": "BTCUSDT",
+      "daily_return": -0.007725609037539716
+    },
+    {
+      "date": "2026-03-31",
+      "pair": "BTCUSDT",
+      "daily_return": -0.00014867378260974284
+    },
+    {
+      "date": "2026-04-01",
+      "pair": "BTCUSDT",
+      "daily_return": 2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-02",
+      "pair": "BTCUSDT",
+      "daily_return": 0.012949775122251816
+    },
+    {
+      "date": "2026-04-03",
+      "pair": "BTCUSDT",
+      "daily_return": 0.00036818336937050056
+    },
+    {
+      "date": "2026-04-04",
+      "pair": "BTCUSDT",
+      "daily_return": -0.007333107015690232
+    },
+    {
+      "date": "2026-04-05",
+      "pair": "BTCUSDT",
+      "daily_return": -0.000263356066691145
+    },
+    {
+      "date": "2026-04-06",
+      "pair": "BTCUSDT",
+      "daily_return": 2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-07",
+      "pair": "BTCUSDT",
+      "daily_return": -3.885780586188048e-15
+    },
+    {
+      "date": "2026-04-08",
+      "pair": "BTCUSDT",
+      "daily_return": 1.1102230246251565e-15
+    },
+    {
+      "date": "2026-04-09",
+      "pair": "BTCUSDT",
+      "daily_return": -7.771561172376096e-16
+    },
+    {
+      "date": "2026-04-10",
+      "pair": "BTCUSDT",
+      "daily_return": -1.5543122344752192e-15
+    },
+    {
+      "date": "2026-04-11",
+      "pair": "BTCUSDT",
+      "daily_return": -2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-12",
+      "pair": "BTCUSDT",
+      "daily_return": 3.1086244689504383e-15
+    },
+    {
+      "date": "2026-04-13",
+      "pair": "BTCUSDT",
+      "daily_return": -4.6629367034256575e-15
+    },
+    {
+      "date": "2026-04-14",
+      "pair": "BTCUSDT",
+      "daily_return": 2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-15",
+      "pair": "BTCUSDT",
+      "daily_return": -8.881784197001252e-16
+    },
+    {
+      "date": "2026-04-16",
+      "pair": "BTCUSDT",
+      "daily_return": -6.661338147750939e-16
+    },
+    {
+      "date": "2026-04-17",
+      "pair": "BTCUSDT",
+      "daily_return": -2.4424906541753444e-15
+    },
+    {
+      "date": "2026-04-18",
+      "pair": "BTCUSDT",
+      "daily_return": 1.9984014443252818e-15
+    },
+    {
+      "date": "2026-04-19",
+      "pair": "BTCUSDT",
+      "daily_return": 2.6645352591003757e-15
+    },
+    {
+      "date": "2026-04-20",
+      "pair": "BTCUSDT",
+      "daily_return": -2.7755575615628914e-15
+    },
+    {
+      "date": "2026-04-21",
+      "pair": "BTCUSDT",
+      "daily_return": -6.661338147750939e-16
+    },
+    {
+      "date": "2026-04-22",
+      "pair": "BTCUSDT",
+      "daily_return": -2.3314683517128287e-15
+    },
+    {
+      "date": "2026-04-23",
+      "pair": "BTCUSDT",
+      "daily_return": -2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-24",
+      "pair": "BTCUSDT",
+      "daily_return": 1.1102230246251565e-15
+    },
+    {
+      "date": "2026-04-25",
+      "pair": "BTCUSDT",
+      "daily_return": -2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-26",
+      "pair": "BTCUSDT",
+      "daily_return": 0.0
+    },
+    {
+      "date": "2026-03-27",
+      "pair": "BNBUSDT",
+      "daily_return": 0.03266537095891531
+    },
+    {
+      "date": "2026-03-28",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0073576585044454745
+    },
+    {
+      "date": "2026-03-29",
+      "pair": "BNBUSDT",
+      "daily_return": -0.0022669586016442755
+    },
+    {
+      "date": "2026-03-30",
+      "pair": "BNBUSDT",
+      "daily_return": 1.9984014443252818e-15
+    },
+    {
+      "date": "2026-03-31",
+      "pair": "BNBUSDT",
+      "daily_return": -1.1102230246251565e-16
+    },
+    {
+      "date": "2026-04-01",
+      "pair": "BNBUSDT",
+      "daily_return": 1.3322676295501878e-15
+    },
+    {
+      "date": "2026-04-02",
+      "pair": "BNBUSDT",
+      "daily_return": 3.9968028886505635e-15
+    },
+    {
+      "date": "2026-04-03",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0
+    },
+    {
+      "date": "2026-04-04",
+      "pair": "BNBUSDT",
+      "daily_return": 2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-05",
+      "pair": "BNBUSDT",
+      "daily_return": -9.992007221626409e-16
+    },
+    {
+      "date": "2026-04-06",
+      "pair": "BNBUSDT",
+      "daily_return": 1.1102230246251565e-15
+    },
+    {
+      "date": "2026-04-07",
+      "pair": "BNBUSDT",
+      "daily_return": -2.220446049250313e-15
+    },
+    {
+      "date": "2026-04-08",
+      "pair": "BNBUSDT",
+      "daily_return": 0.030945951663887694
+    },
+    {
+      "date": "2026-04-09",
+      "pair": "BNBUSDT",
+      "daily_return": 0.00040004222545309
+    },
+    {
+      "date": "2026-04-10",
+      "pair": "BNBUSDT",
+      "daily_return": -0.005844248829410148
+    },
+    {
+      "date": "2026-04-11",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0005117137814356632
+    },
+    {
+      "date": "2026-04-12",
+      "pair": "BNBUSDT",
+      "daily_return": 0.035377453106750556
+    },
+    {
+      "date": "2026-04-13",
+      "pair": "BNBUSDT",
+      "daily_return": -0.009008781034919311
+    },
+    {
+      "date": "2026-04-14",
+      "pair": "BNBUSDT",
+      "daily_return": 8.881784197001252e-16
+    },
+    {
+      "date": "2026-04-15",
+      "pair": "BNBUSDT",
+      "daily_return": 4.440892098500626e-16
+    },
+    {
+      "date": "2026-04-16",
+      "pair": "BNBUSDT",
+      "daily_return": -9.992007221626409e-16
+    },
+    {
+      "date": "2026-04-17",
+      "pair": "BNBUSDT",
+      "daily_return": -2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-18",
+      "pair": "BNBUSDT",
+      "daily_return": 1.7763568394002505e-15
+    },
+    {
+      "date": "2026-04-19",
+      "pair": "BNBUSDT",
+      "daily_return": 0.03249811540177605
+    },
+    {
+      "date": "2026-04-20",
+      "pair": "BNBUSDT",
+      "daily_return": -0.0075369309842719945
+    },
+    {
+      "date": "2026-04-21",
+      "pair": "BNBUSDT",
+      "daily_return": -2.220446049250313e-16
+    },
+    {
+      "date": "2026-04-22",
+      "pair": "BNBUSDT",
+      "daily_return": 1.7763568394002505e-15
+    },
+    {
+      "date": "2026-04-23",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0
+    },
+    {
+      "date": "2026-04-24",
+      "pair": "BNBUSDT",
+      "daily_return": 6.661338147750939e-16
+    },
+    {
+      "date": "2026-04-25",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0
+    },
+    {
+      "date": "2026-04-26",
+      "pair": "BNBUSDT",
+      "daily_return": 0.0
+    }
+  ],
+  "gap_analysis": {
+    "mean_abs_diff_bps": 174.35,
+    "max_abs_diff_bps": 2773.11,
+    "days_with_drift_gt_50bps": 11,
+    "drift_gt_50bps_dates": [
+      "2026-03-27",
+      "2026-03-30",
+      "2026-04-02",
+      "2026-04-04",
+      "2026-04-08",
+      "2026-04-10",
+      "2026-04-12",
+      "2026-04-13",
+      "2026-04-14",
+      "2026-04-19",
+      "2026-04-20"
+    ],
+    "sign_match_rate": 0.4516,
+    "total_live_pnl": 1457.7794,
+    "total_live_return": 0.321634,
+    "total_backtest_return": 0.117451,
+    "avg_live_daily_return": 0.010375,
+    "gap_to_1pct_per_day_target": 0.000375,
+    "gap_to_1pct_per_day_target_bps": 3.75,
+    "top_3_drift_days": [
+      {
+        "date": "2026-04-13",
+        "diff_bps": 2773.11
+      },
+      {
+        "date": "2026-04-10",
+        "diff_bps": 707.61
+      },
+      {
+        "date": "2026-04-12",
+        "diff_bps": -376.01
+      }
+    ],
+    "n_days": 31
+  }
+}

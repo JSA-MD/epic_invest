@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-04-26T00:47:36.082339+00:00",
+  "source": "real_bar_net_resample",
+  "window": {
+    "start": "2022-04-06",
+    "end": "2026-04-06"
+  },
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "bootstrap": {
+    "n_trials": 1000,
+    "days_per_trial": 252,
+    "seed": 42
+  },
+  "skipped_pairs": {},
+  "per_pair": {
+    "BTCUSDT": {
+      "n_actual_days": 1129,
+      "daily_pool_stats": {
+        "mean": 0.00507094,
+        "std": 0.0187284,
+        "skew": 3.4238,
+        "n": 1129
+      },
+      "scenarios": {
+        "0.25x": {
+          "p_daily_1pct": 0.057619047619047785,
+          "median_daily": 0.0,
+          "p5_daily": -0.0022447962817162825,
+          "expected_annual": 0.37855232183284243,
+          "p_annual_dd_25": 0.0
+        },
+        "0.5x": {
+          "p_daily_1pct": 0.12790873015873003,
+          "median_daily": 0.0,
+          "p5_daily": -0.004489592563432565,
+          "expected_annual": 0.9048508086825744,
+          "p_annual_dd_25": 0.0
+        },
+        "1.0x": {
+          "p_daily_1pct": 0.16364285714285606,
+          "median_daily": 0.0,
+          "p5_daily": -0.00897918512686513,
+          "expected_annual": 2.5576143340131283,
+          "p_annual_dd_25": 0.0
+        },
+        "2.0x": {
+          "p_daily_1pct": 0.19263095238095226,
+          "median_daily": 0.0,
+          "p5_daily": -0.01795837025373026,
+          "expected_annual": 11.98666630774939,
+          "p_annual_dd_25": 0.016
+        }
+      }
+    },
+    "BNBUSDT": {
+      "n_actual_days": 1129,
+      "daily_pool_stats": {
+        "mean": 0.00508894,
+        "std": 0.01897188,
+        "skew": 2.5219,
+        "n": 1129
+      },
+      "scenarios": {
+        "0.25x": {
+          "p_daily_1pct": 0.06108333333333352,
+          "median_daily": 0.0,
+          "p5_daily": -0.00352243643798425,
+          "expected_annual": 0.3760179563359713,
+          "p_annual_dd_25": 0.0
+        },
+        "0.5x": {
+          "p_daily_1pct": 0.1328015873015871,
+          "median_daily": 0.0,
+          "p5_daily": -0.006903178571168733,
+          "expected_annual": 0.8838769488336926,
+          "p_annual_dd_25": 0.0
+        },
+        "1.0x": {
+          "p_daily_1pct": 0.17923412698412616,
+          "median_daily": 0.0,
+          "p5_daily": -0.01349011103656328,
+          "expected_annual": 2.637082267778286,
+          "p_annual_dd_25": 0.001
+        },
+        "2.0x": {
+          "p_daily_1pct": 0.22407539682539826,
+          "median_daily": 0.0,
+          "p5_daily": -0.027612714284674933,
+          "expected_annual": 11.988405832649416,
+          "p_annual_dd_25": 0.045
+        }
+      }
+    }
+  },
+  "combined_portfolio": {
+    "n_pairs": 2,
+    "pairs": [
+      "BTCUSDT",
+      "BNBUSDT"
+    ],
+    "n_actual_days": 1129,
+    "daily_pool_stats": {
+      "mean": 0.00507994,
+      "std": 0.01708663,
+      "skew": 2.764,
+      "n": 1129
+    },
+    "scenarios": {
+      "0.25x": {
+        "p_daily_1pct": 0.04872619047619068,
+        "median_daily": 8.326672684688674e-17,
+        "p5_daily": -0.002731998357842061,
+        "expected_annual": 0.3771908557821141,
+        "p_annual_dd_25": 0.0
+      },
+      "0.5x": {
+        "p_daily_1pct": 0.1214404761904764,
+        "median_daily": 2.220446049250313e-16,
+        "p5_daily": -0.005463996715684122,
+        "expected_annual": 0.8929695140339652,
+        "p_annual_dd_25": 0.0
+      },
+      "1.0x": {
+        "p_daily_1pct": 0.18404761904761863,
+        "median_daily": 5.551115123125783e-16,
+        "p5_daily": -0.010927993431368244,
+        "expected_annual": 2.567837223086789,
+        "p_annual_dd_25": 0.0
+      },
+      "2.0x": {
+        "p_daily_1pct": 0.22468253968254112,
+        "median_daily": 8.881784197001252e-16,
+        "p5_daily": -0.021855986862736487,
+        "expected_annual": 11.396047953069392,
+        "p_annual_dd_25": 0.003
+      }
+    }
+  },
+  "verdict": "STRETCH",
+  "verdict_criteria": {
+    "REALISTIC": "combined 1.0x P(daily>=1%) >= 30%",
+    "STRETCH": "combined 1.0x P(daily>=1%) in [15%, 30%)",
+    "FANTASY": "P(daily>=1%) < 15% OR P(annual_dd>25%) > 50%"
+  }
+}

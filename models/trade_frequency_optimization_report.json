@@ -1,0 +1,221 @@
+{
+  "generated_at": "2026-04-26T00:37:21.407797+00:00",
+  "no_trade_band_default": 10.0,
+  "summary_path": "/Users/jsa/work/epic_invest/models/gp_regime_mixture_search_summary.json",
+  "model_path": "/Users/jsa/work/epic_invest/models/recent_6m_gp_vectorized_big_capped_rerun.dill",
+  "window": "full_4y",
+  "pairs": [
+    "BTCUSDT",
+    "BNBUSDT"
+  ],
+  "variants": [
+    {
+      "multiplier": 0.25,
+      "no_trade_band_pct": 2.5,
+      "per_pair": {
+        "BTCUSDT": {
+          "n_trades": 12701,
+          "roi": 24.21153840191178,
+          "sharpe": 3.5908542870545648,
+          "mdd": -0.16255938263599612,
+          "fee_paid": 147766.0744167362,
+          "daily_win_rate": 0.4738706820194863,
+          "kelly": 0.4514935930592051,
+          "payoff_ratio": 1.7465447637230411
+        },
+        "BNBUSDT": {
+          "n_trades": 65693,
+          "roi": 91.44632778222946,
+          "sharpe": 4.435698381577075,
+          "mdd": -0.1252952116353906,
+          "fee_paid": 1592832.2774752725,
+          "daily_win_rate": 0.43932683790965454,
+          "kelly": 0.2687041020639409,
+          "payoff_ratio": 2.032832198413231
+        }
+      }
+    },
+    {
+      "multiplier": 0.5,
+      "no_trade_band_pct": 5.0,
+      "per_pair": {
+        "BTCUSDT": {
+          "n_trades": 4367,
+          "roi": 24.61981976672968,
+          "sharpe": 3.614732583901503,
+          "mdd": -0.1618754211982396,
+          "fee_paid": 141507.08808526644,
+          "daily_win_rate": 0.46235606731620904,
+          "kelly": 0.4494368179111302,
+          "payoff_ratio": 1.9566868018400683
+        },
+        "BNBUSDT": {
+          "n_trades": 66643,
+          "roi": 95.02302779704296,
+          "sharpe": 4.472700471668715,
+          "mdd": -0.12559094450269026,
+          "fee_paid": 1596541.4531184132,
+          "daily_win_rate": 0.47475642161204606,
+          "kelly": 0.2801061541194822,
+          "payoff_ratio": 1.9608513936734773
+        }
+      }
+    },
+    {
+      "multiplier": 1.0,
+      "no_trade_band_pct": 10.0,
+      "per_pair": {
+        "BTCUSDT": {
+          "n_trades": 11393,
+          "roi": 24.943777693593404,
+          "sharpe": 3.6404219902765287,
+          "mdd": -0.16162565801920814,
+          "fee_paid": 135551.5233787711,
+          "daily_win_rate": 0.4712134632418069,
+          "kelly": 0.4993236410519768,
+          "payoff_ratio": 1.5553010156663563
+        },
+        "BNBUSDT": {
+          "n_trades": 69763,
+          "roi": 108.96332484022004,
+          "sharpe": 4.605088253786259,
+          "mdd": -0.1255104478139859,
+          "fee_paid": 1722927.580819424,
+          "daily_win_rate": 0.45172719220549157,
+          "kelly": 0.28556279558388453,
+          "payoff_ratio": 2.033275336759557
+        }
+      }
+    },
+    {
+      "multiplier": 2.0,
+      "no_trade_band_pct": 20.0,
+      "per_pair": {
+        "BTCUSDT": {
+          "n_trades": 8329,
+          "roi": 24.53618730757787,
+          "sharpe": 3.6716359279854216,
+          "mdd": -0.16500726762602747,
+          "fee_paid": 125596.6115244829,
+          "daily_win_rate": 0.4720992028343667,
+          "kelly": 0.5204343193581622,
+          "payoff_ratio": 1.4273555772389719
+        },
+        "BNBUSDT": {
+          "n_trades": 74851,
+          "roi": 126.72056452427607,
+          "sharpe": 4.7710163116123265,
+          "mdd": -0.12360212699459794,
+          "fee_paid": 1753160.45420867,
+          "daily_win_rate": 0.48804251550044286,
+          "kelly": 0.3078364028725594,
+          "payoff_ratio": 2.1263580950182317
+        }
+      }
+    },
+    {
+      "multiplier": 4.0,
+      "no_trade_band_pct": 40.0,
+      "per_pair": {
+        "BTCUSDT": {
+          "n_trades": 4693,
+          "roi": 352.01369701214867,
+          "sharpe": 4.95311951400197,
+          "mdd": -0.15244936518993868,
+          "fee_paid": 2330392.5896387524,
+          "daily_win_rate": 0.43932683790965454,
+          "kelly": 0.5207929735128969,
+          "payoff_ratio": 2.3182437395305526
+        },
+        "BNBUSDT": {
+          "n_trades": 78199,
+          "roi": 148.56411504956068,
+          "sharpe": 4.967272349601412,
+          "mdd": -0.12201380424258645,
+          "fee_paid": 1706302.3312361396,
+          "daily_win_rate": 0.4800708591674048,
+          "kelly": 0.3334463076946569,
+          "payoff_ratio": 2.176631258400949
+        }
+      }
+    }
+  ],
+  "optimal": {
+    "BTCUSDT": {
+      "multiplier": 4.0,
+      "no_trade_band_pct": 40.0,
+      "sharpe": 4.95311951400197,
+      "n_trades": 4693,
+      "sharpe_vs_default": 1.3126975237254412,
+      "knee_multiplier": 4.0,
+      "knee_sharpe": 4.95311951400197,
+      "knee_n_trades": 4693
+    },
+    "BNBUSDT": {
+      "multiplier": 4.0,
+      "no_trade_band_pct": 40.0,
+      "sharpe": 4.967272349601412,
+      "n_trades": 78199,
+      "sharpe_vs_default": 0.3621840958151532,
+      "knee_multiplier": 2.0,
+      "knee_sharpe": 4.7710163116123265,
+      "knee_n_trades": 74851
+    }
+  },
+  "curve": {
+    "BTCUSDT": [
+      {
+        "x": 12701.0,
+        "y": 3.5908542870545648,
+        "multiplier": 0.25
+      },
+      {
+        "x": 4367.0,
+        "y": 3.614732583901503,
+        "multiplier": 0.5
+      },
+      {
+        "x": 11393.0,
+        "y": 3.6404219902765287,
+        "multiplier": 1.0
+      },
+      {
+        "x": 8329.0,
+        "y": 3.6716359279854216,
+        "multiplier": 2.0
+      },
+      {
+        "x": 4693.0,
+        "y": 4.95311951400197,
+        "multiplier": 4.0
+      }
+    ],
+    "BNBUSDT": [
+      {
+        "x": 65693.0,
+        "y": 4.435698381577075,
+        "multiplier": 0.25
+      },
+      {
+        "x": 66643.0,
+        "y": 4.472700471668715,
+        "multiplier": 0.5
+      },
+      {
+        "x": 69763.0,
+        "y": 4.605088253786259,
+        "multiplier": 1.0
+      },
+      {
+        "x": 74851.0,
+        "y": 4.7710163116123265,
+        "multiplier": 2.0
+      },
+      {
+        "x": 78199.0,
+        "y": 4.967272349601412,
+        "multiplier": 4.0
+      }
+    ]
+  }
+}

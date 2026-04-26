@@ -27,6 +27,7 @@ DEFAULT_SYMBOL_CANDLE_TABLES = {
     "ETHUSDT": "candles_eth",
     "SOLUSDT": "candles_sol",
     "XRPUSDT": "candles_xrp",
+    "DOGEUSDT": "candles_doge",
 }
 POSTGRES_SOURCE_VALUES = {"postgres", "postgresql", "pg"}
 AUTO_SOURCE_VALUES = {"auto", "postgres-auto", "pg-auto"}

@@ -1,0 +1,316 @@
+{
+  "generated_at": "2026-04-26T00:37:28.794889+00:00",
+  "route_state_mode": "equity_corr",
+  "window": "full_4y",
+  "min_samples_threshold": 30,
+  "max_size_mult": 2.0,
+  "min_kelly_threshold": 0.1,
+  "per_pair": {
+    "BTCUSDT": {
+      "regime_table": {
+        "0": {
+          "name": "equity_inverse:bear_narrow",
+          "wins": 8876,
+          "losses": 2691,
+          "decided": 11567,
+          "win_rate": 0.7673554076251405,
+          "kelly": 0.6814871600156244,
+          "share": 0.8866998850134151,
+          "recommended_size_mult": 1.0183732631007234,
+          "skip_reason": null
+        },
+        "1": {
+          "name": "equity_inverse:bear_broad",
+          "wins": 1009,
+          "losses": 423,
+          "decided": 1432,
+          "win_rate": 0.7046089385474861,
+          "kelly": 0.5955812042360339,
+          "share": 0.10977385971636643,
+          "recommended_size_mult": 0.890000589864969,
+          "skip_reason": null
+        },
+        "2": {
+          "name": "equity_inverse:bull_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "3": {
+          "name": "equity_inverse:bull_broad",
+          "wins": 8,
+          "losses": 38,
+          "decided": 46,
+          "win_rate": 0.17391304347826086,
+          "kelly": -0.13099255783184216,
+          "share": 0.0035262552702184746,
+          "recommended_size_mult": 0.0,
+          "skip_reason": null
+        },
+        "4": {
+          "name": "equity_mixed:bear_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "5": {
+          "name": "equity_mixed:bear_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "6": {
+          "name": "equity_mixed:bull_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "7": {
+          "name": "equity_mixed:bull_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "8": {
+          "name": "equity_aligned:bear_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "9": {
+          "name": "equity_aligned:bear_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "10": {
+          "name": "equity_aligned:bull_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "11": {
+          "name": "equity_aligned:bull_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        }
+      },
+      "baseline_metrics": {
+        "total_return": 1658.198247340781,
+        "sharpe": 5.499087041002527,
+        "max_drawdown": -0.11970032193686864,
+        "avg_daily_return": 0.005249053910076083,
+        "daily_win_rate": 0.46269678302532513,
+        "prob_daily_ge_1pct": 0.17180013689253937
+      },
+      "adaptive_metrics": {
+        "total_return": 1659.7291297744582,
+        "sharpe": 5.500712784828283,
+        "max_drawdown": -0.1197003219368733,
+        "avg_daily_return": 0.005249693764927046,
+        "daily_win_rate": 0.4517453798767967,
+        "prob_daily_ge_1pct": 0.17180013689253937
+      },
+      "lift_pct": 0.012189908161059583
+    },
+    "BNBUSDT": {
+      "regime_table": {
+        "0": {
+          "name": "equity_inverse:bear_narrow",
+          "wins": 27983,
+          "losses": 16483,
+          "decided": 44466,
+          "win_rate": 0.6293122835424819,
+          "kelly": 0.45724420699654733,
+          "share": 0.7356196337287211,
+          "recommended_size_mult": 1.0121196393780223,
+          "skip_reason": null
+        },
+        "1": {
+          "name": "equity_inverse:bear_broad",
+          "wins": 6485,
+          "losses": 3668,
+          "decided": 10153,
+          "win_rate": 0.6387274697133852,
+          "kelly": 0.47102979149149354,
+          "share": 0.16796532499545055,
+          "recommended_size_mult": 1.0426343197045147,
+          "skip_reason": null
+        },
+        "2": {
+          "name": "equity_inverse:bull_narrow",
+          "wins": 636,
+          "losses": 470,
+          "decided": 1106,
+          "win_rate": 0.5750452079566004,
+          "kelly": 0.37778711053522207,
+          "share": 0.01829702053038199,
+          "recommended_size_mult": 0.8362396903575451,
+          "skip_reason": null
+        },
+        "3": {
+          "name": "equity_inverse:bull_broad",
+          "wins": 2710,
+          "losses": 2012,
+          "decided": 4722,
+          "win_rate": 0.5739093604404913,
+          "kelly": 0.3761240184176082,
+          "share": 0.07811802074544642,
+          "recommended_size_mult": 0.8325584010846019,
+          "skip_reason": null
+        },
+        "4": {
+          "name": "equity_mixed:bear_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "5": {
+          "name": "equity_mixed:bear_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "6": {
+          "name": "equity_mixed:bull_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "7": {
+          "name": "equity_mixed:bull_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "8": {
+          "name": "equity_aligned:bear_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "9": {
+          "name": "equity_aligned:bear_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "10": {
+          "name": "equity_aligned:bull_narrow",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        },
+        "11": {
+          "name": "equity_aligned:bull_broad",
+          "wins": 0,
+          "losses": 0,
+          "decided": 0,
+          "win_rate": null,
+          "kelly": null,
+          "share": 0.0,
+          "recommended_size_mult": null,
+          "skip_reason": "insufficient_samples"
+        }
+      },
+      "baseline_metrics": {
+        "total_return": 840.825292929076,
+        "sharpe": 4.926778760592757,
+        "max_drawdown": -0.11303062911227912,
+        "avg_daily_return": 0.004787401414422146,
+        "daily_win_rate": 0.4537987679671458,
+        "prob_daily_ge_1pct": 0.1841204654346338
+      },
+      "adaptive_metrics": {
+        "total_return": 841.9547094118046,
+        "sharpe": 4.930606558462562,
+        "max_drawdown": -0.11303062911227912,
+        "avg_daily_return": 0.004788196113482785,
+        "daily_win_rate": 0.4537987679671458,
+        "prob_daily_ge_1pct": 0.1841204654346338
+      },
+      "lift_pct": 0.016599800013520145
+    }
+  }
+}

@@ -97,11 +97,32 @@ DIRECTIONAL_GA_OVERLAY_MODE = os.getenv("PAIRWISE_DIRECTIONAL_GA_MODE", "gate").
 DIRECTIONAL_GA_OVERLAY_PATH = Path(
     os.getenv("PAIRWISE_DIRECTIONAL_GA_PATH", str(ROOT / "models" / "directional_genetic_overlay_candidate.json"))
 )
+def _safe_env_float(name: str, default: float) -> float:
+    """Parse env var as float; on failure, return default (warning surfaces via validate_safety_switches at run_live_once)."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 # D2: per-pair gross weight cap (1.0 = no cap; set PAIRWISE_GROSS_CAP=0.01 for Stage A)
-PAIRWISE_GROSS_CAP = float(os.getenv("PAIRWISE_GROSS_CAP", "1.0"))
+PAIRWISE_GROSS_CAP = _safe_env_float("PAIRWISE_GROSS_CAP", 1.0)
 
 # D1: max-hold-bars auto-flatten (24 h = 288 × 5-min bars)
-PAIRWISE_MAX_HOLD_BARS = int(os.getenv("PAIRWISE_MAX_HOLD_BARS", "288"))
+PAIRWISE_MAX_HOLD_BARS = _safe_env_int("PAIRWISE_MAX_HOLD_BARS", 288)
 _MAX_HOLD_SECONDS = PAIRWISE_MAX_HOLD_BARS * 5 * 60  # 288 bars × 300 s = 86 400 s
 
 # R3: CVaR-99 cut overlay
@@ -111,7 +132,7 @@ PAIRWISE_CVAR_CUT_ENABLED = os.getenv("PAIRWISE_CVAR_CUT", "1").strip().lower() 
     "no",
     "off",
 }
-PAIRWISE_CVAR_CUT_HOLD_HOURS = int(os.getenv("PAIRWISE_CVAR_CUT_HOLD_HOURS", "24"))
+PAIRWISE_CVAR_CUT_HOLD_HOURS = _safe_env_int("PAIRWISE_CVAR_CUT_HOLD_HOURS", 24)
 
 DEFAULT_TAIL_RISK_PATH = ROOT / "models" / "tail_risk_report.json"
 DEFAULT_LIVE_PNL_PATH = ROOT / "models" / "live_actual_pnl_30d.json"
@@ -852,6 +873,7 @@ def build_pairwise_plan(
     summary = load_selected_candidate(resolved_summary_path)
     embedded_model_ref = extract_strategy_artifact_reference(summary, "model_path")
     resolved_model_path = resolve_strategy_artifact_path(embedded_model_ref or model_path, resolved_summary_path)
+
     config = summary["selected_candidate"]["pair_configs"]
     library = list(iter_params())
     library_lookup = build_library_lookup(library)
@@ -1574,7 +1596,54 @@ def run_evaluate_shadow(args: argparse.Namespace) -> int:
 
 
 def run_live_once(args: argparse.Namespace) -> int:
+    from safety_guards import (
+        check_position_divergence,
+        enforce_runtime_gross_cap_ceiling,
+        update_stale_price_tracker,
+        validate_safety_switches,
+        validate_state_alphas_coverage,
+    )
+
     state = load_state(args.state_path)
+
+    # A. Safety-switch self-test (first thing on every cycle)
+    _warnings = validate_safety_switches()
+    if _warnings:
+        for _w in _warnings:
+            print(f"[pairwise-live] safety warning: {_w}")
+        if any("PAIRWISE_FORCE_EXECUTE" in _w for _w in _warnings):
+            try:
+                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                _notif = load_notification_bridge()
+                if _ss(_AL.HIGH, "force-execute-active"):
+                    _payload = _fa(_AL.HIGH, title="강제 실행 모드 활성", body="PAIRWISE_FORCE_EXECUTE=1 감지 — promotion gate 우회 중", pair="-")
+                    _notif.send_telegram_notification(_payload["text"])
+            except Exception:
+                pass
+        if any("is not a valid" in _w for _w in _warnings):
+            try:
+                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                _notif = load_notification_bridge()
+                if _ss(_AL.CRITICAL, "env-parse-fail"):
+                    _bad = "; ".join(w for w in _warnings if "is not a valid" in w)
+                    _payload = _fa(_AL.CRITICAL, title="환경변수 설정 오류", body=_bad, pair="-")
+                    _notif.send_telegram_notification(_payload["text"])
+            except Exception:
+                pass
+
+    # C. Runtime gross-cap ceiling enforcement
+    _effective_gross_cap, _gc_warning = enforce_runtime_gross_cap_ceiling()
+    if _gc_warning:
+        print(f"[pairwise-live] safety warning: {_gc_warning}")
+        try:
+            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+            if _ss(_AL.CRITICAL, "gross-cap-clip"):
+                _notif = load_notification_bridge()
+                _payload = _fa(_AL.CRITICAL, title="Gross cap 자동 제한", body=_gc_warning, pair="-")
+                _notif.send_telegram_notification(_payload["text"])
+        except Exception:
+            pass
+
     bridge = None
     exchange = None
     equity = None
@@ -1586,6 +1655,20 @@ def run_live_once(args: argparse.Namespace) -> int:
         equity = float(bridge.fetch_equity(exchange))
         positions = bridge.fetch_open_position_map(exchange)
         positions_fetched = True
+
+        # B. Position-divergence guard (catches reconcile-failure / state-staleness)
+        _divergence_msg = check_position_divergence(state, positions, equity)
+        if _divergence_msg:
+            print(f"[pairwise-live] POSITION DIVERGENCE: {_divergence_msg}")
+            try:
+                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                if _ss(_AL.CRITICAL, "position-divergence"):
+                    _notif = load_notification_bridge()
+                    _payload = _fa(_AL.CRITICAL, title="포지션 발산 감지", body=_divergence_msg, pair="-")
+                    _notif.send_telegram_notification(_payload["text"])
+            except Exception:
+                pass
+
         sync_shadow_paper_from_live_positions(state, positions, equity)
         # Persist a fresh exchange snapshot every cycle so consumers like
         # position_reconciliation.py see current ground truth. Without this,
@@ -1635,10 +1718,10 @@ def run_live_once(args: argparse.Namespace) -> int:
     # via decision_journal and decision_log even when no orders are placed.
     # ------------------------------------------------------------------
 
-    # D2: apply per-pair gross cap
-    if PAIRWISE_GROSS_CAP < 1.0:
+    # D2: apply per-pair gross cap before order placement
+    if _effective_gross_cap < 1.0:
         plan["target_weights"] = {
-            pair: max(-PAIRWISE_GROSS_CAP, min(PAIRWISE_GROSS_CAP, float(w)))
+            pair: max(-_effective_gross_cap, min(_effective_gross_cap, float(w)))
             for pair, w in plan["target_weights"].items()
         }
 
@@ -1792,6 +1875,66 @@ def run_live_once(args: argparse.Namespace) -> int:
                     }
                 )
         state["cvar_cut_until_ts"] = cvar_cut_until
+
+    # D. Stale-price guard
+    latest_prices = plan.get("latest_prices") or {}
+    _stale_pairs = update_stale_price_tracker(state, latest_prices)
+    if _stale_pairs:
+        for _sp in _stale_pairs:
+            plan["target_weights"][_sp] = 0.0
+            if _sp in plan.get("pair_plans", {}):
+                plan["pair_plans"][_sp]["target_weight"] = 0.0
+        print(f"[pairwise-live] stale price: forcing flat for {_stale_pairs}")
+        try:
+            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+            if _ss(_AL.HIGH, "stale-price"):
+                _notif = load_notification_bridge()
+                _payload = _fa(_AL.HIGH, title="가격 정체 감지", body=f"{', '.join(_stale_pairs)} — 강제 플랫", pair="-")
+                _notif.send_telegram_notification(_payload["text"])
+        except Exception:
+            pass
+
+    # E. state_alphas coverage check (detects BNB-style suppression — read from current plan)
+    _observed_routes: set[str] = set()
+    for _pair, _pair_plan in (plan.get("pair_plans") or {}).items():
+        _rs = (_pair_plan or {}).get("route_state_name")
+        if _rs:
+            _observed_routes.add(str(_rs))
+
+    # Also persist a rolling window across cycles so we catch routes that appear
+    # intermittently (e.g. equity_mixed:bull_narrow showing up only on some bars)
+    _recent_window: dict[str, Any] = state.get("recent_route_states") or {}
+    for _pair, _pair_plan in (plan.get("pair_plans") or {}).items():
+        _rs = (_pair_plan or {}).get("route_state_name")
+        if _rs:
+            _recent_window.setdefault(_pair, [])
+            # Bound to last 50 unique routes per pair
+            if isinstance(_recent_window.get(_pair), list):
+                _recent_window[_pair].append(str(_rs))
+                _recent_window[_pair] = list(dict.fromkeys(_recent_window[_pair]))[-50:]
+            else:
+                _recent_window[_pair] = [str(_rs)]
+    state["recent_route_states"] = _recent_window
+    for _routes in _recent_window.values():
+        if isinstance(_routes, list):
+            _observed_routes.update(_routes)
+
+    if _observed_routes:
+        try:
+            _summary_for_e = load_selected_candidate(Path(plan["summary_path"])) if plan.get("summary_path") else {}
+        except Exception:
+            _summary_for_e = {}
+        _missing = validate_state_alphas_coverage(_summary_for_e, _observed_routes)
+        if _missing:
+            print(f"[pairwise-live] state_alphas coverage gaps: {_missing}")
+            try:
+                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                if _ss(_AL.HIGH, "state-alphas-gap"):
+                    _notif = load_notification_bridge()
+                    _payload = _fa(_AL.HIGH, title="state_alphas 키 누락", body="; ".join(_missing[:3]), pair="-")
+                    _notif.send_telegram_notification(_payload["text"])
+            except Exception:
+                pass
 
     if args.execute:
         force_execute = bool(getattr(args, "force_execute", False))

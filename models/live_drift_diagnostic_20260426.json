@@ -1,0 +1,525 @@
+{
+  "generated_at": "2026-04-26T02:07:42.645230Z",
+  "attribution": {
+    "total_gap_usd": -5862.7,
+    "total_gap_pct": -129.35,
+    "avg_daily_gap_bps": -417.3,
+    "cause1_early_suppression_usd": -167.11,
+    "cause1_pct_of_gap": 2.9,
+    "cause2a_oversize_hold_apr10_14_usd": -2436.55,
+    "cause2a_pct_of_gap": 41.6,
+    "cause2b_open_carry_apr19_25_usd": -3288.01,
+    "cause2b_pct_of_gap": 56.1,
+    "cause3_stale_feed_usd": "enabling_factor_not_additive",
+    "cause4_regime_divergence_usd": "gate_behaviour_not_additive",
+    "residual_usd": 28.97
+  },
+  "worst_dates": [
+    {
+      "date": "2026-04-13",
+      "gap_usd": -2108.54,
+      "gap_bps": -4652.1,
+      "live_usd": -2151.67,
+      "backtest_usd": -43.13,
+      "primary_cause": "C2a: gross oversize tw=-1.5 held into BNB squeeze (+32% in 1 day)"
+    },
+    {
+      "date": "2026-04-25",
+      "gap_usd": -1900.66,
+      "gap_bps": -4193.5,
+      "live_usd": -1900.66,
+      "backtest_usd": 0.0,
+      "primary_cause": "C2b: open BNB short carried from Apr 19, unrealized -1873 USD"
+    },
+    {
+      "date": "2026-04-19",
+      "gap_usd": -1387.35,
+      "gap_bps": -3061.0,
+      "live_usd": -1245.46,
+      "backtest_usd": 141.89,
+      "primary_cause": "C2b: BNB short entered at tw=-0.46, backtest flat; position not closed"
+    },
+    {
+      "date": "2026-04-14",
+      "gap_usd": -517.22,
+      "gap_bps": -1141.2,
+      "live_usd": -517.22,
+      "backtest_usd": 0.0,
+      "primary_cause": "C2a: tail of Apr 10-14 hold, partial unwind at loss"
+    },
+    {
+      "date": "2026-03-27",
+      "gap_usd": -136.35,
+      "gap_bps": -300.8,
+      "live_usd": 0.0,
+      "backtest_usd": 136.35,
+      "primary_cause": "C1: early BNB suppression (state_alphas key mismatch, live=0 vs bt+136)"
+    },
+    {
+      "date": "2026-04-10",
+      "gap_usd": -82.98,
+      "gap_bps": -183.1,
+      "live_usd": -109.91,
+      "backtest_usd": -26.93,
+      "primary_cause": "C2a: initial BNB short entry at tw=-1.5, backtest at ~1% daily weight"
+    },
+    {
+      "date": "2026-03-28",
+      "gap_usd": -29.89,
+      "gap_bps": -66.0,
+      "live_usd": 0.0,
+      "backtest_usd": 29.89,
+      "primary_cause": "minor/rounding"
+    }
+  ],
+  "cause1": {
+    "bnb_total_neg_signal_bars": 3255,
+    "bnb_suppressed_bars": 1851,
+    "bnb_executed_bars": 1404,
+    "bnb_suppression_rate_pct": 56.9,
+    "bnb_regime_score_suppressed_mean": 0.021868,
+    "bnb_regime_score_executed_mean": -0.016728,
+    "bnb_state_crosstab": {
+      "equity_aligned:bear_broad": {
+        "exec_flat": 61,
+        "exec_short": 22
+      },
+      "equity_aligned:bear_narrow": {
+        "exec_short": 1303
+      },
+      "equity_aligned:bull_broad": {
+        "exec_flat": 1190
+      },
+      "equity_aligned:bull_narrow": {
+        "exec_flat": 17
+      },
+      "equity_mixed:bear_broad": {
+        "exec_flat": 20
+      },
+      "equity_mixed:bear_narrow": {
+        "exec_short": 10
+      },
+      "equity_mixed:bull_broad": {
+        "exec_flat": 430,
+        "exec_short": 12
+      },
+      "equity_mixed:bull_narrow": {
+        "exec_flat": 133
+      },
+      "unknown": {
+        "exec_short": 57
+      }
+    },
+    "btc_state_crosstab": {
+      "equity_aligned:bull_broad": {
+        "exec_flat": 1314
+      },
+      "equity_aligned:bull_narrow": {
+        "exec_flat": 1343
+      },
+      "equity_mixed:bull_broad": {
+        "exec_flat": 432,
+        "exec_short": 31
+      },
+      "equity_mixed:bull_narrow": {
+        "exec_short": 14,
+        "exec_flat": 129
+      },
+      "unknown": {
+        "exec_flat": 57
+      }
+    },
+    "per_date_bnb": {
+      "2026-04-10": {
+        "suppressed_bars": 0,
+        "executed_bars": 57,
+        "pct_executed": 100.0
+      },
+      "2026-04-11": {
+        "suppressed_bars": 441,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      },
+      "2026-04-12": {
+        "suppressed_bars": 78,
+        "executed_bars": 918,
+        "pct_executed": 92.2
+      },
+      "2026-04-13": {
+        "suppressed_bars": 249,
+        "executed_bars": 407,
+        "pct_executed": 62.0
+      },
+      "2026-04-14": {
+        "suppressed_bars": 355,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      },
+      "2026-04-15": {
+        "suppressed_bars": 114,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      },
+      "2026-04-17": {
+        "suppressed_bars": 117,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      },
+      "2026-04-18": {
+        "suppressed_bars": 226,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      },
+      "2026-04-19": {
+        "suppressed_bars": 106,
+        "executed_bars": 19,
+        "pct_executed": 15.2
+      },
+      "2026-04-25": {
+        "suppressed_bars": 145,
+        "executed_bars": 3,
+        "pct_executed": 2.0
+      },
+      "2026-04-26": {
+        "suppressed_bars": 20,
+        "executed_bars": 0,
+        "pct_executed": 0.0
+      }
+    },
+    "key_finding": "BNB suppressed 56.9% of negative-signal bars. Route state 'equity_aligned:bull_broad' suppresses 100% (1190/1190), 'equity_mixed:bull_narrow' suppresses 100% (132/132) \u2014 the state_alphas config only holds key 'equity_mixed:bull_broad'. BTC suppressed 97.8% of all bars due to regime_score persistently > 0.02 threshold."
+  },
+  "cause2": {
+    "sizing_by_date": {
+      "2026-04-10": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.5,
+          "n_bars": 55,
+          "implied_notional_usd": 6798.62,
+          "live_pnl_usd": -109.91
+        }
+      },
+      "2026-04-11": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.5,
+          "n_bars": 436,
+          "implied_notional_usd": 6798.62,
+          "live_pnl_usd": 0.0
+        }
+      },
+      "2026-04-12": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.4891,
+          "n_bars": 1008,
+          "implied_notional_usd": 6749.16,
+          "live_pnl_usd": 437.71
+        }
+      },
+      "2026-04-13": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.5,
+          "n_bars": 600,
+          "implied_notional_usd": 6798.62,
+          "live_pnl_usd": -2151.67
+        }
+      },
+      "2026-04-14": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.5,
+          "n_bars": 170,
+          "implied_notional_usd": 6798.62,
+          "live_pnl_usd": -517.22
+        }
+      },
+      "2026-04-19": {
+        "BNBUSDT": {
+          "avg_target_weight": -1.4403,
+          "n_bars": 10,
+          "implied_notional_usd": 6528.22,
+          "live_pnl_usd": -1242.78
+        }
+      }
+    },
+    "multi_day_hold": {
+      "description": "BNB tw=-1.5 entered 2026-04-10, held through 2026-04-14 (5 days)",
+      "hold_period_total_live_pnl_usd": -2341.09,
+      "backtest_same_period_total_usd": 93.0,
+      "gap_usd": -2434.09
+    },
+    "open_position_carry": {
+      "description": "BNB short entered 2026-04-19 NOT closed; unrealized loss -653 carried into 2026-04-25, swelling to -1873 unrealized",
+      "apr19_realized": -589.25,
+      "apr19_unrealized": -653.52,
+      "apr25_realized": -6.7,
+      "apr25_unrealized": -1873.56
+    },
+    "key_finding": "Live system ran at tw=-1.5x (gross_cap=1.5, notional=$6,799) \u2014 25-50x larger than backtest regime_mixture daily positions (~$100-300 equivalent). Multi-day holding amplifies adverse moves that the 5-min bar backtest exits intraday."
+  },
+  "cause3": {
+    "timing_by_date": {
+      "2026-04-10": {
+        "BNBUSDT": {
+          "n_exec_bars": 55,
+          "unique_prices": 1,
+          "staleness_pct": 100.0,
+          "intraday_range_pct": 0.0,
+          "price_open": 601.54,
+          "price_close": 601.54
+        },
+        "BTCUSDT": {
+          "n_exec_bars": 55,
+          "unique_prices": 1,
+          "staleness_pct": 100.0,
+          "intraday_range_pct": 0.0,
+          "price_open": 71640.9,
+          "price_close": 71640.9
+        }
+      },
+      "2026-04-12": {
+        "BNBUSDT": {
+          "n_exec_bars": 1019,
+          "unique_prices": 238,
+          "staleness_pct": 70.3,
+          "intraday_range_pct": 3.1,
+          "price_open": 607.52,
+          "price_close": 592.21
+        },
+        "BTCUSDT": {
+          "n_exec_bars": 1019,
+          "unique_prices": 295,
+          "staleness_pct": 70.0,
+          "intraday_range_pct": 3.53,
+          "price_open": 73013.4,
+          "price_close": 70696.8
+        }
+      },
+      "2026-04-13": {
+        "BNBUSDT": {
+          "n_exec_bars": 656,
+          "unique_prices": 244,
+          "staleness_pct": 57.3,
+          "intraday_range_pct": 4.23,
+          "price_open": 592.42,
+          "price_close": 615.21
+        },
+        "BTCUSDT": {
+          "n_exec_bars": 656,
+          "unique_prices": 277,
+          "staleness_pct": 56.8,
+          "intraday_range_pct": 5.94,
+          "price_open": 70711.1,
+          "price_close": 74534.2
+        }
+      },
+      "2026-04-19": {
+        "BNBUSDT": {
+          "n_exec_bars": 122,
+          "unique_prices": 112,
+          "staleness_pct": 3.3,
+          "intraday_range_pct": 1.88,
+          "price_open": 630.22,
+          "price_close": 625.47
+        },
+        "BTCUSDT": {
+          "n_exec_bars": 122,
+          "unique_prices": 119,
+          "staleness_pct": 1.7,
+          "intraday_range_pct": 1.43,
+          "price_open": 75653.8,
+          "price_close": 75999.0
+        }
+      },
+      "2026-04-25": {
+        "BNBUSDT": {
+          "n_exec_bars": 148,
+          "unique_prices": 121,
+          "staleness_pct": 6.8,
+          "intraday_range_pct": 1.71,
+          "price_open": 638.43,
+          "price_close": 629.04
+        },
+        "BTCUSDT": {
+          "n_exec_bars": 148,
+          "unique_prices": 142,
+          "staleness_pct": 2.7,
+          "intraday_range_pct": 0.83,
+          "price_open": 77603.3,
+          "price_close": 77571.0
+        }
+      }
+    },
+    "key_finding": "Price feed is severely stale: Apr 10 shows price=601.54 for all 55 executed bars (staleness 100%). Apr 12 changes price only at end of day. Stale prices prevent intraday rebalancing \u2014 live system cannot detect when an adverse price move should trigger a stop or position reduction. This is a secondary/enabling cause; it amplifies Cause 2 by preventing stop-loss triggers during multi-day holds."
+  },
+  "cause4": {
+    "regime_by_date": {
+      "2026-04-10": {
+        "BNBUSDT": {
+          "n_bars": 57,
+          "mean_regime_score": -0.026375,
+          "gate_pass_rate_pct": 100.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 57,
+          "mean_regime_score": 0.029724,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-11": {
+        "BNBUSDT": {
+          "n_bars": 482,
+          "mean_regime_score": 0.080395,
+          "gate_pass_rate_pct": 4.6,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 482,
+          "mean_regime_score": 0.173169,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-12": {
+        "BNBUSDT": {
+          "n_bars": 1019,
+          "mean_regime_score": -0.01588,
+          "gate_pass_rate_pct": 93.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 1019,
+          "mean_regime_score": 0.029843,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-13": {
+        "BNBUSDT": {
+          "n_bars": 656,
+          "mean_regime_score": -0.007232,
+          "gate_pass_rate_pct": 66.9,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 656,
+          "mean_regime_score": 0.024726,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-14": {
+        "BNBUSDT": {
+          "n_bars": 355,
+          "mean_regime_score": 0.007311,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 355,
+          "mean_regime_score": 0.04823,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-15": {
+        "BNBUSDT": {
+          "n_bars": 114,
+          "mean_regime_score": 0.026373,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 114,
+          "mean_regime_score": 0.064201,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-17": {
+        "BNBUSDT": {
+          "n_bars": 117,
+          "mean_regime_score": 0.064749,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 117,
+          "mean_regime_score": 0.089488,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-18": {
+        "BNBUSDT": {
+          "n_bars": 227,
+          "mean_regime_score": 0.041217,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 227,
+          "mean_regime_score": 0.065608,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-19": {
+        "BNBUSDT": {
+          "n_bars": 125,
+          "mean_regime_score": 0.003783,
+          "gate_pass_rate_pct": 24.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 125,
+          "mean_regime_score": 0.040487,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-25": {
+        "BNBUSDT": {
+          "n_bars": 148,
+          "mean_regime_score": 0.016141,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 148,
+          "mean_regime_score": 0.02894,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      },
+      "2026-04-26": {
+        "BNBUSDT": {
+          "n_bars": 20,
+          "mean_regime_score": 0.014376,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.0
+        },
+        "BTCUSDT": {
+          "n_bars": 20,
+          "mean_regime_score": 0.030826,
+          "gate_pass_rate_pct": 0.0,
+          "threshold": -0.02
+        }
+      }
+    },
+    "bnb_dates_gate_passed_majority": [
+      "2026-04-10",
+      "2026-04-12",
+      "2026-04-13"
+    ],
+    "bnb_dates_gate_blocked": [
+      "2026-04-11",
+      "2026-04-14",
+      "2026-04-15",
+      "2026-04-17",
+      "2026-04-18",
+      "2026-04-25",
+      "2026-04-26"
+    ],
+    "key_finding": "BTC regime_score > 0.02 on 95-100% of bars across the entire 31-day window \u2014 BTC short gate STRUCTURALLY BLOCKED in live; this matches backtest (backtest BTC also flat Apr 10+) so adds no gap. BNB gate passed (regime_score < 0) on Apr 10-13 only; regime turned positive Apr 14+ and stayed there. The gate is not 'wrong' \u2014 regime score correctly captured BNB bear-momentum Apr 10-13 \u2014 but the position size allowed by the gate was 25x what the backtest uses."
+  }
+}

@@ -92,6 +92,9 @@ def main() -> None:
             )
             overlay_inputs = build_overlay_inputs(df_window, PAIRS, regime_pair=pair)
             funding_df = filter_funding_window(funding_cache[pair], ws_str, we_str)
+            pair_cfg = config[pair]
+            route_state_mode = str(pair_cfg.get("route_state_mode") or "base")
+            use_equity_corr_risk = (route_state_mode == "equity_corr")
             result = realistic_overlay_replay(
                 df_window,
                 pair,
@@ -99,9 +102,10 @@ def main() -> None:
                 overlay_inputs,
                 funding_df,
                 library,
-                tuple(int(v) for v in config[pair]["mapping_indices"]),
-                float(config[pair]["route_breadth_threshold"]),
-                use_equity_corr_risk=False,
+                tuple(int(v) for v in pair_cfg["mapping_indices"]),
+                float(pair_cfg["route_breadth_threshold"]),
+                use_equity_corr_risk=use_equity_corr_risk,
+                route_state_mode=route_state_mode,
             )
             pair_reports[pair] = result
         report["windows"][label] = {

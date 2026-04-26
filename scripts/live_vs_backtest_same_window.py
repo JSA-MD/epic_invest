@@ -115,6 +115,13 @@ def main() -> None:
     backtest_daily: dict[str, dict[str, float]] = {}
     library_lookup = build_library_lookup(library)
     for pair in PAIRS:
+        pair_cfg = config[pair]
+        # Honour the per-pair route_state_mode from the candidate summary so the
+        # backtest replay uses the same regime-bucket structure as the live
+        # router (Codex 18th-round fix). Defaulting to "base" silently drops
+        # 8 of the 12 equity_corr buckets and produces an unrelated comparison.
+        route_state_mode = str(pair_cfg.get("route_state_mode") or "base")
+        rb_threshold = float(pair_cfg["route_breadth_threshold"])
         raw_signal = pd.Series(
             compiled(*gp.get_feature_arrays(df_window, pair)),
             index=df_window.index,
@@ -122,7 +129,6 @@ def main() -> None:
         )
         overlay_inputs = build_overlay_inputs(df_window, PAIRS, regime_pair=pair)
         funding_df = filter_funding_window(funding_cache[pair], start, end)
-        rb_threshold = float(config[pair]["route_breadth_threshold"])
         context = build_fast_context(
             df=df_window,
             pair=pair,
@@ -131,13 +137,17 @@ def main() -> None:
             route_thresholds=(rb_threshold,),
             library_lookup=library_lookup,
             funding_df=funding_df,
+            route_state_mode=route_state_mode,
         )
+        # use_equity_corr_risk also flips on for equity_corr mode so the
+        # equity-correlation risk overlay matches what the live system applies.
+        use_equity_corr_risk = (route_state_mode == "equity_corr")
         result = realistic_overlay_replay_from_context(
             context,
             library_lookup,
-            tuple(int(v) for v in config[pair]["mapping_indices"]),
+            tuple(int(v) for v in pair_cfg["mapping_indices"]),
             rb_threshold,
-            use_equity_corr_risk=False,
+            use_equity_corr_risk=use_equity_corr_risk,
             return_trace=True,
         )
         bar_net = result.get("trace", {}).get("bar_net")

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-26T01:57:39.888645+00:00",
+  "generated_at": "2026-04-26T02:21:34.289418+00:00",
   "window": {
     "start": "2026-03-27",
     "end": "2026-04-26",
@@ -26,7 +26,7 @@
     "backtest_total_pct_of_base": 8.284368255306429,
     "gap_total_pct_of_base": -129.35048325248928,
     "avg_daily_gap_bps": -417.25962339512665,
-    "primary_metric_note": "USE per_date_mean_abs_diff_bps as the daily drift figure. pair_day_mean_abs_diff_bps is diluted by zero-trade pair-rows and by within-date sign offsets between BTC/BNB and will materially understate the drift the user observes in account equity."
+    "primary_metric_note": "USE per_date_mean_abs_diff_bps as the daily drift figure. The pair-day metric averages |BTC_diff| and |BNB_diff| individually, which understates the realised daily drift whenever BTC and BNB drifts ALIGN in sign within a date \u2014 those aligned errors compound in the account on the per-date sum. (In this dataset per_date_mean_abs is ~2x pair_day_mean_abs, indicating both pairs drift in the same direction on most dates rather than offsetting.)"
   },
   "per_date_per_pair": [
     {

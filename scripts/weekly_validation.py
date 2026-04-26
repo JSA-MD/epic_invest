@@ -324,8 +324,17 @@ def compute_live_win_rate(days: int = 30) -> dict:
             try:
                 live_pnl = json.loads(live_pnl_path.read_text())
                 daily_rows = live_pnl.get("daily_pnl_live") or []
-                wins = sum(1 for r in daily_rows if float(r.get("total", 0.0)) > 0.0)
-                losses = sum(1 for r in daily_rows if float(r.get("total", 0.0)) < 0.0)
+                # Rows are per (date, pair); aggregate to per-date totals so we count
+                # calendar days, not pair-days. Codex 13th-round fix.
+                from collections import defaultdict
+                per_date_total: dict[str, float] = defaultdict(float)
+                for r in daily_rows:
+                    date_key = r.get("date")
+                    if not date_key:
+                        continue
+                    per_date_total[date_key] += float(r.get("total", 0.0))
+                wins = sum(1 for total in per_date_total.values() if total > 0.0)
+                losses = sum(1 for total in per_date_total.values() if total < 0.0)
                 fallback_evaluated = wins + losses
                 if fallback_evaluated > 0:
                     fb_win_rate = wins / fallback_evaluated * 100.0
@@ -334,7 +343,11 @@ def compute_live_win_rate(days: int = 30) -> dict:
                         "n_trades": len(records),
                         "n_days_evaluated": fallback_evaluated,
                         "flag": fb_win_rate < WIN_RATE_WARN,
-                        "note": f"pnl_pct missing in decisions; live_actual_pnl_30d fallback ({fallback_evaluated} days, age={age_seconds/60:.0f}min)",
+                        "note": (
+                            f"pnl_pct missing in decisions; live_actual_pnl_30d fallback "
+                            f"({fallback_evaluated} dates aggregated from {len(daily_rows)} pair-rows, "
+                            f"age={age_seconds/60:.0f}min)"
+                        ),
                     }
             except (json.JSONDecodeError, OSError, KeyError, ValueError) as exc:
                 return {

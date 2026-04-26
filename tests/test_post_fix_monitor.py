@@ -233,6 +233,30 @@ class TestTradeCounts:
         assert result["BTCUSDT"] == 0
         assert result["BNBUSDT"] == 0
 
+    def test_ccxt_unified_symbol_normalized(self, module):
+        """Regression: ccxt symbols ('BTC/USDT:USDT') must match flat PAIRS.
+
+        _log_slippage stores the ccxt unified symbol; PAIRS uses the flat
+        Binance form. Without _normalize_symbol every record was dropped
+        and the no-trade alert fired even when live had been trading.
+        """
+        entries = [
+            _make_slippage_entry("2026-04-26", "BTC/USDT:USDT"),
+            _make_slippage_entry("2026-04-26", "BTC/USDT:USDT"),
+            _make_slippage_entry("2026-04-26", "BNB/USDT"),
+            _make_slippage_entry("2026-04-26", "BNBUSDT"),  # already flat
+        ]
+        _write_slippage_log(module.SLIPPAGE_LOG_PATH, entries)
+        result = module.collect_trade_counts("2026-04-26")
+        assert result["BTCUSDT"] == 2
+        assert result["BNBUSDT"] == 2
+
+    def test_normalize_symbol_helper(self, module):
+        assert module._normalize_symbol("BTC/USDT:USDT") == "BTCUSDT"
+        assert module._normalize_symbol("BNB/USDT") == "BNBUSDT"
+        assert module._normalize_symbol("BTCUSDT") == "BTCUSDT"
+        assert module._normalize_symbol("") == ""
+
 
 # ---------------------------------------------------------------------------
 # Tests: evaluate_alerts

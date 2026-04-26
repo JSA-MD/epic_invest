@@ -145,6 +145,24 @@ def collect_breadth_stats(date_str: str) -> dict[str, dict]:
     return result
 
 
+def _normalize_symbol(sym: str) -> str:
+    """Normalize ccxt unified symbol to flat exchange symbol.
+
+    Examples:
+      "BTC/USDT:USDT" -> "BTCUSDT"
+      "BNB/USDT"      -> "BNBUSDT"
+      "BTCUSDT"       -> "BTCUSDT"  (already flat)
+
+    Slippage records written by ccxt-using paths (rotation_target_050_live,
+    pairwise_regime_mixture_shadow_live) carry the ccxt unified symbol, while
+    PAIRS uses the flat Binance symbol. Without normalization the trade-count
+    filter rejects every record and the no-trade alert fires spuriously.
+    """
+    if not sym:
+        return ""
+    return sym.split(":", 1)[0].replace("/", "")
+
+
 def collect_trade_counts(date_str: str) -> dict[str, int]:
     """Count actual trades per pair from slippage log for date_str (KST)."""
     counts: dict[str, int] = {pair: 0 for pair in PAIRS}
@@ -166,7 +184,7 @@ def collect_trade_counts(date_str: str) -> dict[str, int]:
                 continue
             if date_str not in at and date_str not in _utc_to_kst_date(at):
                 continue
-            sym = entry.get("symbol", "")
+            sym = _normalize_symbol(entry.get("symbol", ""))
             if sym in counts:
                 counts[sym] += 1
     except Exception:

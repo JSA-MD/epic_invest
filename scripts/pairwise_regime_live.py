@@ -28,6 +28,7 @@ from btc_event_blend import apply_runtime_event_blend, build_runtime_event_conte
 from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
 from execution_gene_utils import normalize_execution_gene
 from replay_regime_mixture_realistic import load_model as load_signal_model
+from safety_guards import enforce_runtime_gross_cap_ceiling
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
     _load_derivative_bundle,
@@ -118,21 +119,27 @@ def _safe_env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
 # D2: per-pair gross weight cap (1.0 = no cap; set PAIRWISE_GROSS_CAP=0.01 for Stage A)
 PAIRWISE_GROSS_CAP = _safe_env_float("PAIRWISE_GROSS_CAP", 1.0)
+PAIRWISE_EFFECTIVE_GROSS_CAP, _PAIRWISE_GROSS_CAP_WARNING_AT_IMPORT = enforce_runtime_gross_cap_ceiling()
+PAIRWISE_REBALANCE_NOTIONAL_BAND_USD = _safe_env_float("REBALANCE_NOTIONAL_BAND_USD", 25.0)
 
-# D1: max-hold-bars auto-flatten (24 h = 288 × 5-min bars)
+# D1: max-hold-bars auto-flatten (24 h = 288 × 5-min bars; <=0 disables)
 PAIRWISE_MAX_HOLD_BARS = _safe_env_int("PAIRWISE_MAX_HOLD_BARS", 288)
+PAIRWISE_MAX_HOLD_ENABLED = PAIRWISE_MAX_HOLD_BARS > 0
 _MAX_HOLD_SECONDS = PAIRWISE_MAX_HOLD_BARS * 5 * 60  # 288 bars × 300 s = 86 400 s
 
 # R3: CVaR-99 cut overlay
-PAIRWISE_CVAR_CUT_ENABLED = os.getenv("PAIRWISE_CVAR_CUT", "1").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
-}
+PAIRWISE_CVAR_CUT_ENABLED = _env_bool("PAIRWISE_CVAR_CUT", True)
 PAIRWISE_CVAR_CUT_HOLD_HOURS = _safe_env_int("PAIRWISE_CVAR_CUT_HOLD_HOURS", 24)
+PAIRWISE_RUNTIME_BLEND_ENABLED = _env_bool("PAIRWISE_RUNTIME_BLEND", True)
 
 DEFAULT_TAIL_RISK_PATH = ROOT / "models" / "tail_risk_report.json"
 DEFAULT_LIVE_PNL_PATH = ROOT / "models" / "live_actual_pnl_30d.json"
@@ -842,6 +849,9 @@ def _build_trace_driven_pair_plan(
         state_specialists=_resolve_pair_state_specialists(pair_config),
         engine="python",
         return_trace=True,
+        min_notional_usd=PAIRWISE_REBALANCE_NOTIONAL_BAND_USD,
+        max_hold_bars=PAIRWISE_MAX_HOLD_BARS,
+        runtime_gross_cap=PAIRWISE_EFFECTIVE_GROSS_CAP,
         final_decision_cooldown_override=final_decision_cooldown_override,
     )
     trace = result.get("trace") or {}
@@ -944,7 +954,7 @@ def build_pairwise_plan(
             final_decision_cooldown_override=pair_cooldown_bars if pair_cooldown_bars > 0 else None,
         )
         final_plan = baseline_plan
-        blend = get_btc_convex_blend(summary["selected_candidate"], pair)
+        blend = get_btc_convex_blend(summary["selected_candidate"], pair) if PAIRWISE_RUNTIME_BLEND_ENABLED else None
         specialist_plan: Dict[str, Any] | None = None
         if blend is not None:
             specialist_plan = _build_trace_driven_pair_plan(
@@ -984,7 +994,7 @@ def build_pairwise_plan(
                 "specialist_requested_weight": float(specialist_plan["requested_weight"]),
                 "specialist_route_state_name": str(specialist_plan["route_state_name"]),
             }
-        online = get_btc_online_blend(summary["selected_candidate"], pair)
+        online = get_btc_online_blend(summary["selected_candidate"], pair) if PAIRWISE_RUNTIME_BLEND_ENABLED else None
         if online is not None and specialist_plan is not None:
             pair_state = dict(online_blend_state.get(pair) or {})
             baseline_requested_weight = float(final_plan["requested_weight"])
@@ -1037,7 +1047,7 @@ def build_pairwise_plan(
                 "route_state_name": str(final_plan["route_state_name"]),
                 "updated_at": iso_now(),
             }
-        event = get_btc_event_blend(summary["selected_candidate"], pair)
+        event = get_btc_event_blend(summary["selected_candidate"], pair) if PAIRWISE_RUNTIME_BLEND_ENABLED else None
         if event is not None:
             event_context = build_runtime_event_context_from_frame(
                 df,
@@ -1059,6 +1069,7 @@ def build_pairwise_plan(
         target_weights[pair] = float(final_plan["target_weight"])
         pair_plans[pair] = {
             **final_plan,
+            "runtime_blend_enabled": bool(PAIRWISE_RUNTIME_BLEND_ENABLED),
         }
 
     directional_ga_overlay: Dict[str, Any] | None = None
@@ -1768,7 +1779,7 @@ def run_live_once(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
 
     # D2: apply per-pair gross cap before order placement
-    if _effective_gross_cap < 1.0:
+    if _effective_gross_cap >= 0.0:
         plan["target_weights"] = {
             pair: max(-_effective_gross_cap, min(_effective_gross_cap, float(w)))
             for pair, w in plan["target_weights"].items()
@@ -1780,72 +1791,75 @@ def run_live_once(args: argparse.Namespace) -> int:
     # clears (fully flat), so a new entry never inherits a dead position's age.
     position_open_since: Dict[str, Any] = dict(state.get("position_open_since_ts") or {})
     _now = utc_now()
-    if not positions_fetched:
-        # Position fetch unavailable — skip D1 entirely. Preserve existing timers
-        # so a later successful-fetch cycle can resume tracking. The dry-run fetch
-        # already printed a warning at fetch time; one line here is sufficient.
-        print("[pairwise-live] D1 skipped: positions unknown (fetch unavailable)")
-    else:
-        for _pair in list(PAIRS):
-            _tw = float(plan["target_weights"].get(_pair, 0.0))
-            _prev_since = position_open_since.get(_pair)
-            tw_active = abs(_tw) > TARGET_WEIGHT_EPS
-            exch_active = _exchange_position_is_open(positions, _pair)
-            if exch_active:
-                # Exchange has a real open position — track continuously from first appearance.
-                if _prev_since is None:
-                    # First cycle this position is visible — start the clock.
-                    position_open_since[_pair] = _now.isoformat()
-                else:
-                    age_secs = compute_position_age_seconds(_prev_since)
-                    if age_secs > _MAX_HOLD_SECONDS:
-                        _msg = (
-                            f"[pairwise-live] D1 max_hold override: {_pair} position "
-                            f"open {age_secs/3600:.1f}h >= {PAIRWISE_MAX_HOLD_BARS} bars — forcing flat"
-                        )
-                        print(_msg)
-                        _notif = load_notification_bridge()
-                        try:
-                            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
-                            if _ss(_AL.HIGH, f"d1-max-hold-{_pair}"):
-                                _payload = _fa(
-                                    _AL.HIGH,
-                                    title="D1 max_hold 자동 청산",
-                                    body=f"{_pair} 포지션 {age_secs/3600:.1f}h 경과 ({PAIRWISE_MAX_HOLD_BARS}바 한도) — 강제 플랫",
-                                    pair=_pair,
-                                )
-                                _notif.send_telegram_notification(_payload["text"])
-                        except Exception:
-                            _notif.send_telegram_notification(_msg)
-                        plan["target_weights"][_pair] = 0.0
-                        if _pair in plan.get("pair_plans", {}):
-                            plan["pair_plans"][_pair]["target_weight"] = 0.0
-                        # NOTE: do NOT clear position_open_since here. The timer must
-                        # persist until reconcile actually closes the exchange position.
-                        # D1 re-fires every cycle while exch_active=True AND age>24h
-                        # (nag-until-fixed). The else branch below handles clean-up.
-                        # Log to decision_journal
-                        state.setdefault("decision_journal", []).append(
-                            {
-                                "at": _now.isoformat(),
-                                "pair": _pair,
-                                "override_reason": "max_hold",
-                                "age_seconds": age_secs,
-                                "max_hold_seconds": _MAX_HOLD_SECONDS,
-                                "target_weight_forced": 0.0,
-                                "exchange_position_active": exch_active,
-                            }
-                        )
-            else:
-                # Exchange is flat — the previous position (if any) has closed.
-                if tw_active:
-                    # Fresh signal will open a new position; reset timer to now so
-                    # the new entry is not penalised by the dead position's age.
-                    position_open_since[_pair] = _now.isoformat()
-                else:
-                    # Fully flat — clear the timer.
-                    position_open_since[_pair] = None
+    if not PAIRWISE_MAX_HOLD_ENABLED:
         state["position_open_since_ts"] = position_open_since
+    else:
+        if not positions_fetched:
+            # Position fetch unavailable — skip D1 entirely. Preserve existing timers
+            # so a later successful-fetch cycle can resume tracking. The dry-run fetch
+            # already printed a warning at fetch time; one line here is sufficient.
+            print("[pairwise-live] D1 skipped: positions unknown (fetch unavailable)")
+        else:
+            for _pair in list(PAIRS):
+                _tw = float(plan["target_weights"].get(_pair, 0.0))
+                _prev_since = position_open_since.get(_pair)
+                tw_active = abs(_tw) > TARGET_WEIGHT_EPS
+                exch_active = _exchange_position_is_open(positions, _pair)
+                if exch_active:
+                    # Exchange has a real open position — track continuously from first appearance.
+                    if _prev_since is None:
+                        # First cycle this position is visible — start the clock.
+                        position_open_since[_pair] = _now.isoformat()
+                    else:
+                        age_secs = compute_position_age_seconds(_prev_since)
+                        if age_secs > _MAX_HOLD_SECONDS:
+                            _msg = (
+                                f"[pairwise-live] D1 max_hold override: {_pair} position "
+                                f"open {age_secs/3600:.1f}h >= {PAIRWISE_MAX_HOLD_BARS} bars — forcing flat"
+                            )
+                            print(_msg)
+                            _notif = load_notification_bridge()
+                            try:
+                                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                                if _ss(_AL.HIGH, f"d1-max-hold-{_pair}"):
+                                    _payload = _fa(
+                                        _AL.HIGH,
+                                        title="D1 max_hold 자동 청산",
+                                        body=f"{_pair} 포지션 {age_secs/3600:.1f}h 경과 ({PAIRWISE_MAX_HOLD_BARS}바 한도) — 강제 플랫",
+                                        pair=_pair,
+                                    )
+                                    _notif.send_telegram_notification(_payload["text"])
+                            except Exception:
+                                _notif.send_telegram_notification(_msg)
+                            plan["target_weights"][_pair] = 0.0
+                            if _pair in plan.get("pair_plans", {}):
+                                plan["pair_plans"][_pair]["target_weight"] = 0.0
+                            # NOTE: do NOT clear position_open_since here. The timer must
+                            # persist until reconcile actually closes the exchange position.
+                            # D1 re-fires every cycle while exch_active=True AND age>24h
+                            # (nag-until-fixed). The else branch below handles clean-up.
+                            # Log to decision_journal
+                            state.setdefault("decision_journal", []).append(
+                                {
+                                    "at": _now.isoformat(),
+                                    "pair": _pair,
+                                    "override_reason": "max_hold",
+                                    "age_seconds": age_secs,
+                                    "max_hold_seconds": _MAX_HOLD_SECONDS,
+                                    "target_weight_forced": 0.0,
+                                    "exchange_position_active": exch_active,
+                                }
+                            )
+                else:
+                    # Exchange is flat — the previous position (if any) has closed.
+                    if tw_active:
+                        # Fresh signal will open a new position; reset timer to now so
+                        # the new entry is not penalised by the dead position's age.
+                        position_open_since[_pair] = _now.isoformat()
+                    else:
+                        # Fully flat — clear the timer.
+                        position_open_since[_pair] = None
+            state["position_open_since_ts"] = position_open_since
 
     # R3: CVaR-99 cut overlay
     if PAIRWISE_CVAR_CUT_ENABLED:
@@ -2344,7 +2358,13 @@ def main() -> int:
     if _no_trade_band:
         gp.NO_TRADE_BAND = float(_no_trade_band)
         print(f"[pairwise-live] NO_TRADE_BAND overridden to {gp.NO_TRADE_BAND} (from env)")
-    print(f"[pairwise-live] PAIRWISE_GROSS_CAP={PAIRWISE_GROSS_CAP}  NO_TRADE_BAND={gp.NO_TRADE_BAND}")
+    print(
+        f"[pairwise-live] PAIRWISE_GROSS_CAP={PAIRWISE_GROSS_CAP}  "
+        f"NO_TRADE_BAND={gp.NO_TRADE_BAND}  "
+        f"MAX_HOLD_BARS={PAIRWISE_MAX_HOLD_BARS}  "
+        f"CVAR_CUT={int(PAIRWISE_CVAR_CUT_ENABLED)}  "
+        f"RUNTIME_BLEND={int(PAIRWISE_RUNTIME_BLEND_ENABLED)}"
+    )
     args = parse_args()
     if args.command == "status":
         return run_status(args)

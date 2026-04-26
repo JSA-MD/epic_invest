@@ -150,6 +150,7 @@ def main() -> None:
     min_notional_usd = _env_float("REBALANCE_NOTIONAL_BAND_USD", 25.0)
     max_hold_bars = _env_int("PAIRWISE_MAX_HOLD_BARS", 288)
     use_equity_corr_risk = _env_bool("PAIRWISE_EQUITY_CORR_RISK", False)
+    runtime_blend_enabled = _env_bool("PAIRWISE_RUNTIME_BLEND", True)
     if gross_cap_warning:
         print(f"Runtime gross cap: {effective_gross_cap:.4f} ({gross_cap_warning})")
     else:
@@ -179,7 +180,7 @@ def main() -> None:
             funding_df=funding_df,
             route_state_mode=route_state_mode,
         )
-        blend = get_btc_convex_blend(selected_candidate, pair)
+        blend = get_btc_convex_blend(selected_candidate, pair) if runtime_blend_enabled else None
         if blend is not None:
             result = replay_btc_convex_blend_candidate(
                 candidate=selected_candidate,
@@ -306,10 +307,12 @@ def main() -> None:
             "EPIC_MARKET_DATA_SOURCE": __import__("os").getenv("EPIC_MARKET_DATA_SOURCE", "csv"),
             "PAIRWISE_EFFECTIVE_GROSS_CAP": effective_gross_cap,
             "PAIRWISE_GROSS_CAP_WARNING": gross_cap_warning,
+            "PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP": _env_bool("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP", False),
             "REBALANCE_NOTIONAL_BAND_USD": min_notional_usd,
             "PAIRWISE_NO_TRADE_BAND_PCT": no_trade_band_pct,
             "PAIRWISE_MAX_HOLD_BARS": max_hold_bars,
             "PAIRWISE_EQUITY_CORR_RISK": use_equity_corr_risk,
+            "PAIRWISE_RUNTIME_BLEND": runtime_blend_enabled,
             "live_parity": True,
         },
         "method": "Apples-to-apples per-date comparison: live arithmetic daily P&L from logs vs backtest bar_net resampled to UTC calendar daily over the SAME window.",

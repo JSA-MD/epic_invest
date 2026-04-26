@@ -233,7 +233,7 @@ def replay_target_trace(
             target_qty = 0.0
             force_close_next = False
             hold_bars = 0
-        elif qty != 0.0:
+        elif qty != 0.0 and int(max_hold_bars) > 0:
             hold_bars += 1
             if hold_bars >= int(max_hold_bars):
                 force_close_next = True

@@ -89,15 +89,18 @@ write_launchd_env_file() {
     printf 'export PAIRWISE_FORCE_EXECUTE=%q\n' "$FORCE_EXECUTE"
     printf 'export PAIRWISE_FORCE_NOTE=%q\n' "$FORCE_NOTE"
     printf 'export PAIRWISE_LIVE_PROMOTION_REPORT_PATH=%q\n' "$PROMOTION_REPORT_PATH"
-    # Drift-fix overlays — pinned safe defaults so watchdog-triggered restarts
-    # never silently revert to unbounded sizing or stale-price exposure.
-    printf 'export PAIRWISE_GROSS_CAP=%q\n' "${PAIRWISE_GROSS_CAP:-0.01}"
-    printf 'export PAIRWISE_LIVE_MAX_GROSS_CAP=%q\n' "${PAIRWISE_LIVE_MAX_GROSS_CAP:-0.05}"
-    printf 'export PAIRWISE_NO_TRADE_BAND_PCT=%q\n' "${PAIRWISE_NO_TRADE_BAND_PCT:-40}"
-    printf 'export REBALANCE_NOTIONAL_BAND_USD=%q\n' "${REBALANCE_NOTIONAL_BAND_USD:-25}"
-    printf 'export PAIRWISE_MAX_HOLD_BARS=%q\n' "${PAIRWISE_MAX_HOLD_BARS:-288}"
-    printf 'export PAIRWISE_CVAR_CUT=%q\n' "${PAIRWISE_CVAR_CUT:-1}"
+    # Backtest-like demo runtime: use the candidate's own sizing and trading
+    # cadence unless the caller overrides these env vars explicitly.
+    printf 'export PAIRWISE_GROSS_CAP=%q\n' "${PAIRWISE_GROSS_CAP:-1.0}"
+    printf 'export PAIRWISE_LIVE_MAX_GROSS_CAP=%q\n' "${PAIRWISE_LIVE_MAX_GROSS_CAP:-1.0}"
+    printf 'export PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP=%q\n' "${PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP:-1}"
+    printf 'export PAIRWISE_NO_TRADE_BAND_PCT=%q\n' "${PAIRWISE_NO_TRADE_BAND_PCT:-10}"
+    printf 'export REBALANCE_NOTIONAL_BAND_USD=%q\n' "${PAIRWISE_REBALANCE_NOTIONAL_BAND_USD:-0}"
+    printf 'export PAIRWISE_MAX_HOLD_BARS=%q\n' "${PAIRWISE_MAX_HOLD_BARS:-0}"
+    printf 'export PAIRWISE_CVAR_CUT=%q\n' "${PAIRWISE_CVAR_CUT:-0}"
     printf 'export PAIRWISE_CVAR_CUT_HOLD_HOURS=%q\n' "${PAIRWISE_CVAR_CUT_HOLD_HOURS:-24}"
+    printf 'export PAIRWISE_RUNTIME_BLEND=%q\n' "${PAIRWISE_RUNTIME_BLEND:-0}"
+    printf 'export PAIRWISE_EQUITY_CORR_RISK=%q\n' "${PAIRWISE_EQUITY_CORR_RISK:-0}"
     printf 'export EPIC_MARKET_DATA_SOURCE=%q\n' "${EPIC_MARKET_DATA_SOURCE:-postgres}"
     for key in \
       MARKET_DATA_SOURCE \

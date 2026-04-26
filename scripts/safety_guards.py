@@ -24,6 +24,12 @@ def enforce_runtime_gross_cap_ceiling(
 
     SAFE_DEFAULT = 0.05
     HARD_MAX = 1.0
+    allow_backtest_like = str(env.get("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     def _parse_safe(name: str, default: str) -> tuple[Optional[float], Optional[str]]:
         raw = env.get(name, default)
@@ -56,6 +62,15 @@ def enforce_runtime_gross_cap_ceiling(
     if errors:
         warning = "; ".join(errors) + f" — falling back to most conservative valid value {effective}"
         return effective, warning
+
+    if allow_backtest_like and runtime is not None and ceiling is not None:
+        if runtime > ceiling:
+            warning = (
+                f"PAIRWISE_GROSS_CAP={runtime} exceeds PAIRWISE_LIVE_MAX_GROSS_CAP={ceiling} — "
+                f"clipping to {ceiling}"
+            )
+            return ceiling, warning
+        return runtime, None
 
     # Both inputs valid. Apply normal ceiling enforcement.
     if runtime > ceiling:
@@ -180,7 +195,11 @@ def validate_safety_switches(env: Mapping[str, str] | None = None) -> list[str]:
     if raw_max_hold is not None:
         try:
             val = int(raw_max_hold)
-            if val < 12:
+            if val <= 0:
+                warnings.append(
+                    f"PAIRWISE_MAX_HOLD_BARS={val} — max-hold auto-flatten is disabled"
+                )
+            elif val < 12:
                 warnings.append(
                     f"PAIRWISE_MAX_HOLD_BARS={val} is suspiciously low (<12); expected 12-2880"
                 )
@@ -238,6 +257,18 @@ def validate_safety_switches(env: Mapping[str, str] | None = None) -> list[str]:
                 )
         except (TypeError, ValueError):
             warnings.append(f"PAIRWISE_LIVE_MAX_GROSS_CAP={raw_cap!r} is not a valid number")
+
+    raw_allow_backtest_cap = env.get("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP")
+    if raw_allow_backtest_cap is not None:
+        normalized = raw_allow_backtest_cap.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            warnings.append(
+                "PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP=1 — defensive 5% gross-cap floor is bypassed"
+            )
+        elif normalized not in _BOOL_VALUES and normalized != "off":
+            warnings.append(
+                f"PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP={raw_allow_backtest_cap!r} is not a valid boolean"
+            )
 
     return warnings
 

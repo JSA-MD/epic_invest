@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 from dotenv import load_dotenv
 
 from data_quality_monitor import build_data_quality_snapshot
+from telegram_format import AlertLevel, format_alert, should_send, format_kst
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
@@ -734,6 +735,18 @@ def _debounce_alert(key: str, cooldown_seconds: int = PRICE_FEED_DEBOUNCE_SECOND
     return True
 
 
+def _send_formatted_alert(payload: dict) -> bool:
+    """Send a format_alert payload via send_telegram_notification.
+
+    Extracts ``text`` (already formatted) and sends to all configured chat IDs.
+    Returns True if at least one message was delivered.
+    """
+    text = payload.get("text", "").strip()
+    if not text:
+        return False
+    return send_telegram_notification(text)
+
+
 def check_signal_staleness() -> dict[str, Any] | None:
     """Check whether last_signal_timestamp in live state is stale (> PAIRWISE_STALENESS_MAX_MINUTES).
 
@@ -778,12 +791,27 @@ def check_signal_staleness() -> dict[str, Any] | None:
     # send_telegram_notification(); we do NOT short-circuit on the legacy
     # WATCHDOG_TELEGRAM_ALERTS_ENABLED flag because it defaults off and would
     # silence the safety alarms that Codex 20th-round flagged as ship-stopping.
-    if _debounce_alert("staleness"):
-        msg = (
-            f"[STALENESS ALERT] last_signal_ts is {age_min:.1f}min old"
-            f" (service running but no fresh signal)"
+    if should_send(AlertLevel.HIGH, "d4-staleness"):
+        ts_kst = format_kst(last_signal_ts) if last_signal_ts else "불명"
+        # Read live context for position / PnL enrichment (best-effort)
+        _state = read_json(PAIRWISE_STATE_PATH, {})
+        _sync = _state.get("latest_live_sync") or {}
+        _positions = _sync.get("positions") or {}
+        _pos_str = ", ".join(str(p) for p in _positions) if _positions else "없음"
+        payload = format_alert(
+            AlertLevel.HIGH,
+            title="신호 stale",
+            body=f"last_signal_ts {age_min:.1f}분 경과 (서비스 실행 중인데 신호 없음)",
+            context={
+                "⏰ 마지막 신호": ts_kst,
+                "💼 포지션": _pos_str,
+            },
+            buttons=[
+                {"label": "⏸ 1h 스누즈", "callback_data": "snooze_1h"},
+                {"label": "📊 상세", "callback_data": "details"},
+            ],
         )
-        sent = send_telegram_notification(msg)
+        sent = _send_formatted_alert(payload)
         result["alerted"] = bool(sent)
     return result
 
@@ -894,14 +922,19 @@ def check_stuck_price() -> dict[str, Any] | None:
 
     result["status"] = "stuck"
     for info in stuck_pairs:
-        key = f"stuck-price-{info['pair'].replace('/', '-')}"
+        key = f"d4-stuck-{info['pair'].replace('/', '-')}"
         # Same Codex 20th-round fix: bypass the legacy WATCHDOG_TELEGRAM flag.
-        if _debounce_alert(key):
-            msg = (
-                f"[PRICE STUCK ALERT] {info['pair']} price={info['price']}"
-                f" unchanged across {info['bars']} bars; possible feed freeze"
+        if should_send(AlertLevel.HIGH, key):
+            payload = format_alert(
+                AlertLevel.HIGH,
+                title=f"{info['pair']} 가격 정체",
+                body=f"{info['bars']}바 동안 {info['price']} 동일 (가격 피드 동결 가능성)",
+                buttons=[
+                    {"label": "🛑 정지", "callback_data": "stop"},
+                    {"label": "⏸ 1h 스누즈", "callback_data": "snooze_1h"},
+                ],
             )
-            send_telegram_notification(msg)
+            _send_formatted_alert(payload)
             result["alerted"] = True
     return result
 

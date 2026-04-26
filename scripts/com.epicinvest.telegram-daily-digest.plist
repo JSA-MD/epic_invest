@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.epicinvest.telegram-daily-digest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jsa/work/epic_invest/.venv/bin/python</string>
+        <string>/Users/jsa/work/epic_invest/scripts/telegram_daily_digest.py</string>
+    </array>
+
+    <!-- 09:00 KST = 00:00 UTC -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>0</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jsa/work/epic_invest</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/jsa/work/epic_invest/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>DOTENV_PATH</key>
+        <string>/Users/jsa/work/epic_invest/.env</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/epic-invest-telegram-daily-digest.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/epic-invest-telegram-daily-digest.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

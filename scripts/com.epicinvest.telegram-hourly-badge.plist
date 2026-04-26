@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.epicinvest.telegram-hourly-badge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jsa/work/epic_invest/.venv/bin/python</string>
+        <string>/Users/jsa/work/epic_invest/scripts/telegram_hourly_badge.py</string>
+    </array>
+
+    <!--
+        Fire at :00 each hour from 00:00 UTC to 12:00 UTC
+        = 09:00 KST to 21:00 KST (inclusive).
+        launchd StartCalendarInterval accepts an array of dicts.
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jsa/work/epic_invest</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/jsa/work/epic_invest/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>DOTENV_PATH</key>
+        <string>/Users/jsa/work/epic_invest/.env</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/epic-invest-telegram-hourly-badge.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/epic-invest-telegram-hourly-badge.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

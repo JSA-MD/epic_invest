@@ -1638,7 +1638,18 @@ def run_live_once(args: argparse.Namespace) -> int:
                         )
                         print(_msg)
                         _notif = load_notification_bridge()
-                        _notif.send_telegram_notification(_msg)
+                        try:
+                            from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                            if _ss(_AL.HIGH, f"d1-max-hold-{_pair}"):
+                                _payload = _fa(
+                                    _AL.HIGH,
+                                    title="D1 max_hold 자동 청산",
+                                    body=f"{_pair} 포지션 {age_secs/3600:.1f}h 경과 ({PAIRWISE_MAX_HOLD_BARS}바 한도) — 강제 플랫",
+                                    pair=_pair,
+                                )
+                                _notif.send_telegram_notification(_payload["text"])
+                        except Exception:
+                            _notif.send_telegram_notification(_msg)
                         plan["target_weights"][_pair] = 0.0
                         if _pair in plan.get("pair_plans", {}):
                             plan["pair_plans"][_pair]["target_weight"] = 0.0
@@ -1691,7 +1702,24 @@ def run_live_once(args: argparse.Namespace) -> int:
                     )
                     print(_msg)
                     _notif = load_notification_bridge()
-                    _notif.send_telegram_notification(_msg)
+                    try:
+                        from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss, format_kst as _fkst
+                        if _ss(_AL.HIGH, f"r3-cvar-cut-{_pair}"):
+                            _thresh_val = cvar_thresholds.get(_pair)
+                            _thresh_str = f"{_thresh_val:.4f}" if _thresh_val is not None else "N/A"
+                            _payload = _fa(
+                                _AL.HIGH,
+                                title="R3 CVaR-99 컷 발동",
+                                body=f"{_pair} 30일 수익률이 CVaR-99 임계({_thresh_str}) 미만 — 재개 {_fkst(_resume_dt)}",
+                                pair=_pair,
+                                buttons=[
+                                    {"label": "📈 차트", "callback_data": "chart"},
+                                    {"label": "🔓 재개", "callback_data": "resume"},
+                                ],
+                            )
+                            _notif.send_telegram_notification(_payload["text"])
+                    except Exception:
+                        _notif.send_telegram_notification(_msg)
                     plan["target_weights"][_pair] = 0.0
                     if _pair in plan.get("pair_plans", {}):
                         plan["pair_plans"][_pair]["target_weight"] = 0.0

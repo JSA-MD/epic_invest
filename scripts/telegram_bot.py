@@ -33,6 +33,7 @@ from rotation_target_050_live import (
     load_state,
     resolve_default_leverage,
 )
+from telegram_format import AlertLevel, format_alert, BUTTON_LABELS, format_kst, now_kst
 
 load_dotenv()
 
@@ -77,10 +78,21 @@ ASYNC_READ_COMMANDS = {
     "rationale",
     "reason",
     "exitplan",
+    "pnl",
+    "safety",
 }
 SNAPSHOT_CACHE_STALE_SECONDS = int(os.getenv("TELEGRAM_SNAPSHOT_CACHE_STALE_SECONDS", "180"))
 STATE_LOCK = threading.Lock()
 COMMAND_EXECUTOR = ThreadPoolExecutor(max_workers=BOT_MAX_WORKERS, thread_name_prefix="telegram-bot")
+
+SNOOZE_STATE_PATH = Path(os.getenv("TELEGRAM_SNOOZE_PATH", "/tmp/epic-invest-tg-snooze.json"))
+PNL_30D_PATH = ROOT_DIR / "models" / "live_actual_pnl_30d.json"
+PAIRWISE_LAUNCHD_LABEL = os.getenv("PAIRWISE_LAUNCHD_LABEL", "com.epicinvest.pairwise-trader")
+PAIRWISE_LAUNCHD_DOMAIN = os.getenv("PAIRWISE_LAUNCHD_DOMAIN", f"gui/{os.getuid()}")
+PAIRWISE_SERVICE_SCRIPT = ROOT_DIR / "scripts" / "pairwise_live_service.sh"
+
+# Levels that snooze suppresses (CRITICAL always bypasses snooze)
+_SNOOZE_AFFECTED_LEVELS = {AlertLevel.HIGH, AlertLevel.INFO}
 
 
 def parse_args() -> argparse.Namespace:
@@ -699,8 +711,8 @@ def format_decision(snapshot: dict[str, Any]) -> str:
         if promotion_gate:
             lines.append(
                 f"- 승격 게이트: {promotion_gate.get('status')} | "
-                f"shadow_live={bool(promotion_gate.get('ready_for_shadow_live'))} | "
-                f"live={bool(promotion_gate.get('ready_for_live'))}"
+                f"live={bool(promotion_gate.get('ready_for_live'))} | "
+                f"merge={bool(promotion_gate.get('ready_for_merge'))}"
             )
         lines.append("- 종료 조건:")
         lines.extend(protection_summary_lines(snapshot.get("protections") or []))
@@ -1055,10 +1067,11 @@ def build_help_text() -> str:
             "",
             "조회",
             "/help - 도움말 보기",
-            "/start - 도움말 보기",
             "/status - 트레이더/자산/세션 요약",
-            "/plan - 오늘의 코어 비중과 오버레이 신호",
+            "/pnl [day|week|month|30d] - PnL 요약 (기간 선택 가능)",
             "/positions - 열린 포지션 조회",
+            "/safety - D1/D2/D3/D4/D5/R3/R4 안전장치 상태",
+            "/plan - 오늘의 코어 비중과 오버레이 신호",
             "/why - 현재 포지션의 진입근거와 종료 조건",
             "/protection - 관리 중인 보호주문 조회",
             "/killswitch - 코어 킬 스위치 상태 조회",
@@ -1067,9 +1080,12 @@ def build_help_text() -> str:
             "/ping - 봇 상태 확인",
             "",
             "제어",
-            "/starttrader - 트레이더 루프 시작",
-            "/stoptrader - 트레이더 루프 중지",
-            "/restarttrader - 트레이더 루프 재시작",
+            "/start_pairwise - pairwise 트레이더 시작",
+            "/stop - pairwise 서비스 정지 (2단계 확인)",
+            "/snooze [1h|6h|24h] - 알림 일시 중지",
+            "/starttrader - 코어 트레이더 루프 시작",
+            "/stoptrader - 코어 트레이더 루프 중지",
+            "/restarttrader - 코어 트레이더 루프 재시작",
             "/sync - 상태 동기화 및 관리 중 보호주문 정리",
             "/protect - fallback reduceOnly 보호주문 설치",
             "/closeall - 트레이더 중지 후 전체 포지션 종료",
@@ -1080,6 +1096,323 @@ def build_help_text() -> str:
             "/cancel - 대기 중인 제어 명령 취소",
         ]
     )
+
+
+# ---------------------------------------------------------------------------
+# Snooze helpers
+# ---------------------------------------------------------------------------
+
+
+def snooze_active(level: AlertLevel) -> bool:
+    """Return True if snooze is active for the given alert level.
+
+    CRITICAL always bypasses snooze. HIGH and INFO are suppressed when snooze is active.
+    Reads /tmp/epic-invest-tg-snooze.json written by /snooze command.
+    """
+    if level not in _SNOOZE_AFFECTED_LEVELS:
+        return False
+    if not SNOOZE_STATE_PATH.exists():
+        return False
+    try:
+        data = json.loads(SNOOZE_STATE_PATH.read_text())
+        until_str = data.get("snooze_until")
+        if not until_str:
+            return False
+        until_dt = datetime.fromisoformat(str(until_str))
+        if until_dt.tzinfo is None:
+            until_dt = until_dt.replace(tzinfo=UTC)
+        return utc_now() < until_dt
+    except (json.JSONDecodeError, ValueError, OSError):
+        return False
+
+
+def write_snooze(hours: float) -> datetime:
+    """Write snooze_until to SNOOZE_STATE_PATH. Returns the until datetime (UTC)."""
+    until_dt = utc_now() + timedelta(hours=hours)
+    SNOOZE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SNOOZE_STATE_PATH.write_text(
+        json.dumps({"snooze_until": until_dt.isoformat(), "hours": hours})
+    )
+    return until_dt
+
+
+# ---------------------------------------------------------------------------
+# send_message with inline keyboard support
+# ---------------------------------------------------------------------------
+
+
+def send_alert_payload(chat_id: int, payload: dict[str, Any]) -> None:
+    """Send a format_alert() payload dict via Telegram sendMessage.
+
+    Handles reply_markup serialisation and falls back to plain chunked text.
+    """
+    text = payload.get("text", "")
+    params: dict[str, Any] = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": payload.get("parse_mode", "Markdown"),
+        "disable_web_page_preview": "true",
+    }
+    if payload.get("disable_notification"):
+        params["disable_notification"] = "true"
+    reply_markup = payload.get("reply_markup")
+    if reply_markup:
+        params["reply_markup"] = json.dumps(reply_markup)
+    try:
+        telegram_api("sendMessage", params)
+    except Exception:
+        # Fallback: strip Markdown and send plain
+        send_message(chat_id, text)
+
+
+def send_inline_keyboard(
+    chat_id: int,
+    text: str,
+    buttons: list[list[dict[str, str]]],
+) -> None:
+    """Send a plain text message with an inline keyboard."""
+    reply_markup = json.dumps({"inline_keyboard": buttons})
+    telegram_api(
+        "sendMessage",
+        {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": reply_markup,
+            "disable_web_page_preview": "true",
+        },
+    )
+
+
+def answer_callback_query(callback_query_id: str, text: str = "") -> None:
+    """Acknowledge a callback_query (removes loading spinner on button)."""
+    try:
+        telegram_api(
+            "answerCallbackQuery",
+            {"callback_query_id": callback_query_id, "text": text},
+        )
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# /pnl command formatter
+# ---------------------------------------------------------------------------
+
+
+def format_pnl(period: str = "30d") -> str:
+    """Load live_actual_pnl_30d.json and return a PnL summary text."""
+    data = load_json_payload(PNL_30D_PATH)
+    if not data:
+        return "PnL 데이터를 불러오지 못했습니다."
+
+    generated_at = data.get("generated_at", "")
+    window = data.get("window") or {}
+    initial_equity = data.get("initial_equity_estimate")
+    daily_rows: list[dict[str, Any]] = data.get("daily_pnl_live") or []
+
+    # Filter rows by period
+    now_date = utc_now().date()
+    period_lower = period.lower().strip()
+    if period_lower in ("day", "1d"):
+        cutoff = now_date - timedelta(days=1)
+    elif period_lower == "week":
+        cutoff = now_date - timedelta(days=7)
+    elif period_lower == "month":
+        cutoff = now_date - timedelta(days=30)
+    else:
+        cutoff = None  # 30d default: use all rows
+
+    if cutoff is not None:
+        daily_rows = [
+            r for r in daily_rows
+            if r.get("date") and str(r["date"]) >= str(cutoff)
+        ]
+
+    # Aggregate by pair
+    pair_totals: dict[str, float] = {}
+    pair_realized: dict[str, float] = {}
+    pair_unrealized: dict[str, float] = {}
+    for row in daily_rows:
+        pair = str(row.get("pair") or "ALL")
+        pair_totals[pair] = pair_totals.get(pair, 0.0) + float(row.get("total", 0.0))
+        pair_realized[pair] = pair_realized.get(pair, 0.0) + float(row.get("realized", 0.0))
+        pair_unrealized[pair] = pair_unrealized.get(pair, 0.0) + float(row.get("unrealized", 0.0))
+
+    grand_total = sum(pair_totals.values())
+    lines = [f"PnL 요약 ({period_lower})"]
+    if generated_at:
+        lines.append(f"- 데이터 기준: {generated_at[:19]}")
+    if window.get("start") and window.get("end"):
+        lines.append(f"- 기간: {str(window['start'])[:10]} ~ {str(window['end'])[:10]}")
+    if initial_equity is not None:
+        lines.append(f"- 초기 자산 추정: ${float(initial_equity):,.2f}")
+    lines.append(f"- 합계 PnL: ${grand_total:+,.4f}")
+    for pair in sorted(pair_totals):
+        r = pair_realized.get(pair, 0.0)
+        u = pair_unrealized.get(pair, 0.0)
+        lines.append(f"  {pair}: 합계 ${pair_totals[pair]:+,.4f} (실현 ${r:+,.4f} / 미실현 ${u:+,.4f})")
+    n_filled = data.get("n_filled_trades_per_pair") or {}
+    if n_filled:
+        trades_str = ", ".join(f"{k} {v}건" for k, v in sorted(n_filled.items()))
+        lines.append(f"- 체결 건수: {trades_str}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# /safety command formatter
+# ---------------------------------------------------------------------------
+
+_SAFETY_ICONS = {
+    True: "✅",
+    False: "❌",
+    None: "⬜",
+}
+
+_SAFETY_CHECKS: list[tuple[str, str]] = [
+    ("max_hold", "D1 Max-hold 24h"),
+    ("gross_cap", "D2 Gross cap"),
+    ("reconciliation", "D3 포지션 일치"),
+    ("price_feed", "D4 가격 피드"),
+    ("funding_check", "D5 펀딩비 점검"),
+    ("cvar_cut", "R3 CVaR-99 cut"),
+    ("drawdown_guard", "R4 드로다운 가드"),
+]
+
+
+def format_safety(trader_state: dict[str, Any]) -> str:
+    """Render D1/D2/D3/D4/D5/R3/R4 safety status from pairwise state."""
+    runtime_health = trader_state.get("runtime_health") or {}
+    safety_status = runtime_health.get("safety_status") or {}
+    notification_state = trader_state.get("notification_state") or {}
+
+    lines = ["안전장치 상태"]
+
+    for key, label in _SAFETY_CHECKS:
+        raw = safety_status.get(key)
+        if raw is None:
+            # Try notification_state as fallback
+            raw = notification_state.get(key)
+        icon = _SAFETY_ICONS.get(raw if isinstance(raw, bool) else None, "⬜")
+        if isinstance(raw, bool):
+            icon = _SAFETY_ICONS[raw]
+            status_str = "정상" if raw else "위반"
+        elif raw is not None:
+            icon = "⚠️"
+            status_str = str(raw)
+        else:
+            icon = "⬜"
+            status_str = "정보 없음"
+        lines.append(f"- {icon} {label}: {status_str}")
+
+    # cvar_cut_until_ts
+    cvar_cut = trader_state.get("cvar_cut_until_ts") or {}
+    if cvar_cut:
+        lines.append("- CVaR 차단 중인 페어:")
+        for pair, until_val in cvar_cut.items():
+            lines.append(f"    {pair}: {until_val}")
+
+    last_success = runtime_health.get("last_success_at")
+    if last_success:
+        lines.append(f"- 최근 정상 시각: {last_success}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# /stop 2-step inline-button flow
+# ---------------------------------------------------------------------------
+
+
+def send_stop_confirm_prompt(chat_id: int) -> None:
+    """Send the /stop confirmation message with inline buttons."""
+    buttons = [
+        [
+            {"text": "✅ 정지 확인", "callback_data": "stop_confirm"},
+            {"text": "❌ 취소", "callback_data": "stop_cancel"},
+        ]
+    ]
+    send_inline_keyboard(
+        chat_id,
+        "⚠️ pairwise 서비스를 정지하시겠습니까?\n\n확인 버튼을 누르면 launchctl bootout 이 실행됩니다.",
+        buttons,
+    )
+
+
+def execute_stop_pairwise() -> str:
+    """Run launchctl bootout for the pairwise launchd service."""
+    label_domain = f"{PAIRWISE_LAUNCHD_DOMAIN}/{PAIRWISE_LAUNCHD_LABEL}"
+    result = run_local_command(["launchctl", "bootout", label_domain])
+    return summarize_command_result("pairwise 서비스 정지", result)
+
+
+def execute_start_pairwise() -> str:
+    """Start pairwise via pairwise_live_service.sh start."""
+    result = run_local_command([str(PAIRWISE_SERVICE_SCRIPT), "start"])
+    return summarize_command_result("pairwise 서비스 시작", result)
+
+
+# ---------------------------------------------------------------------------
+# resume_cvar: clear cvar_cut_until_ts[pair] in pairwise state
+# ---------------------------------------------------------------------------
+
+
+def execute_resume_cvar(pair: str) -> str:
+    """Atomically clear cvar_cut_until_ts[pair] from pairwise live state."""
+    state_path = PAIRWISE_STATE_PATH
+    if not Path(state_path).exists():
+        return f"pairwise 상태 파일이 없습니다: {state_path}"
+    try:
+        with open(state_path, "r") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"상태 파일 읽기 실패: {exc}"
+
+    cvar_cut = data.get("cvar_cut_until_ts")
+    if not isinstance(cvar_cut, dict):
+        return f"{pair}: cvar_cut_until_ts 필드가 없습니다."
+    if pair not in cvar_cut:
+        return f"{pair}: CVaR 차단 항목이 없습니다."
+
+    removed_until = cvar_cut.pop(pair)
+    data["cvar_cut_until_ts"] = cvar_cut
+    tmp_path = str(state_path) + ".tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, state_path)
+    except OSError as exc:
+        return f"상태 파일 쓰기 실패: {exc}"
+    audit("resume_cvar", {"pair": pair, "removed_until": str(removed_until)})
+    return f"✅ {pair} CVaR 차단 해제 완료 (기존 until: {removed_until})"
+
+
+# ---------------------------------------------------------------------------
+# Telegram Bot API setup: setMyCommands
+# ---------------------------------------------------------------------------
+
+
+def register_bot_commands() -> None:
+    """Register slash commands with Telegram so users see autocomplete."""
+    commands = [
+        {"command": "help", "description": "명령어 목록 보기"},
+        {"command": "status", "description": "트레이더/자산/세션 요약"},
+        {"command": "pnl", "description": "PnL 요약 (day|week|month|30d)"},
+        {"command": "positions", "description": "열린 포지션 조회"},
+        {"command": "safety", "description": "안전장치 D1-D5/R3-R4 상태"},
+        {"command": "plan", "description": "오늘의 전략 계획"},
+        {"command": "why", "description": "현재 포지션 진입근거"},
+        {"command": "protection", "description": "보호주문 조회"},
+        {"command": "killswitch", "description": "킬 스위치 상태"},
+        {"command": "snooze", "description": "알림 스누즈 (1h|6h|24h)"},
+        {"command": "stop", "description": "pairwise 서비스 정지 (2단계 확인)"},
+        {"command": "start_pairwise", "description": "pairwise 서비스 시작"},
+        {"command": "logs", "description": "최근 트레이더 로그"},
+        {"command": "recent", "description": "최근 봇 감사 로그"},
+        {"command": "ping", "description": "봇 상태 확인"},
+    ]
+    try:
+        telegram_api("setMyCommands", {"commands": json.dumps(commands)})
+    except Exception as exc:
+        audit("set_commands_error", {"error": str(exc)})
 
 
 def run_local_command(command: list[str], timeout: int = 120) -> dict[str, Any]:
@@ -1161,11 +1494,15 @@ def execute_control_action(action: str) -> str:
     raise ValueError(f"Unsupported action: {action}")
 
 
-def handle_read_command(command: str) -> str:
-    if command in {"start", "help"}:
+def handle_read_command(command: str, args: list[str] | None = None) -> str:
+    if command in {"help"}:
         return build_help_text()
     if command == "ping":
         return "정상입니다."
+
+    if command == "pnl":
+        period = (args[0] if args else None) or "30d"
+        return format_pnl(period)
 
     snapshot = get_runtime_snapshot()
     if command == "status":
@@ -1180,6 +1517,9 @@ def handle_read_command(command: str) -> str:
         return format_protections(snapshot)
     if command == "killswitch":
         return format_killswitch(snapshot)
+    if command == "safety":
+        trader_state = load_trader_state()
+        return format_safety(trader_state)
     if command == "logs":
         return format_logs()
     if command == "recent":
@@ -1193,7 +1533,6 @@ def handle_command(state: dict[str, Any], chat_id: int, text: str) -> str:
         return "지원하지 않는 입력입니다. /help 를 사용하세요."
 
     if command in {
-        "start",
         "help",
         "ping",
         "status",
@@ -1207,8 +1546,14 @@ def handle_command(state: dict[str, Any], chat_id: int, text: str) -> str:
         "killswitch",
         "logs",
         "recent",
+        "pnl",
+        "safety",
     }:
-        return handle_read_command(command)
+        return handle_read_command(command, args)
+
+    # /start is remapped to help for backwards-compat (Telegram sends /start on bot open)
+    if command == "start":
+        return build_help_text()
 
     if command == "cancel":
         clear_pending_action(state, chat_id)
@@ -1231,6 +1576,30 @@ def handle_command(state: dict[str, Any], chat_id: int, text: str) -> str:
         clear_pending_action(state, chat_id)
         audit("control_execute", {"chat_id": chat_id, "action": action})
         return execute_control_action(action)
+
+    # /snooze [1h|6h|24h]
+    if command == "snooze":
+        period_arg = (args[0] if args else "1h").lower().strip()
+        hours_map = {"1h": 1.0, "6h": 6.0, "24h": 24.0}
+        hours = hours_map.get(period_arg, 1.0)
+        until_dt = write_snooze(hours)
+        until_str = format_kst(until_dt)
+        audit("snooze_set", {"chat_id": chat_id, "hours": hours, "until": until_dt.isoformat()})
+        payload = format_alert(
+            AlertLevel.SUCCESS,
+            "알림 스누즈 설정",
+            f"{period_arg} 동안 HIGH/INFO 알림이 일시 중지됩니다.\n해제 시각: {until_str}",
+        )
+        return payload["text"]
+
+    # /stop — send inline confirm prompt; handled specially in process_update
+    if command == "stop":
+        return "__stop_confirm_prompt__"
+
+    # /start_pairwise
+    if command == "start_pairwise":
+        audit("control_execute", {"chat_id": chat_id, "action": "start_pairwise"})
+        return execute_start_pairwise()
 
     control_commands = {
         "starttrader": "트레이더 시작",
@@ -1309,7 +1678,92 @@ def handle_async_read_command(state: dict[str, Any], chat_id: int, text: str, co
         record_bot_error(state, command, exc)
 
 
+def process_callback_query(state: dict[str, Any], callback_query: dict[str, Any]) -> None:
+    """Handle inline keyboard button presses (callback_query updates)."""
+    cq_id = str(callback_query.get("id") or "")
+    from_user = callback_query.get("from") or {}
+    chat_id_raw = (callback_query.get("message") or {}).get("chat", {}).get("id")
+    if chat_id_raw is None:
+        chat_id_raw = from_user.get("id")
+    if chat_id_raw is None:
+        answer_callback_query(cq_id, "알 수 없는 채팅입니다.")
+        return
+
+    chat_id = int(chat_id_raw)
+    callback_data = str(callback_query.get("data") or "")
+
+    audit("callback_query", {"chat_id": chat_id, "data": callback_data})
+
+    if TELEGRAM_ALLOWED_CHAT_IDS and chat_id not in TELEGRAM_ALLOWED_CHAT_IDS:
+        answer_callback_query(cq_id, "허용되지 않은 사용자입니다.")
+        return
+
+    if callback_data == "stop_confirm":
+        answer_callback_query(cq_id, "정지 명령 실행 중...")
+        audit("control_execute", {"chat_id": chat_id, "action": "stop_pairwise"})
+        result_text = execute_stop_pairwise()
+        try:
+            send_message(chat_id, result_text)
+        except Exception as exc:
+            audit("send_error", {"chat_id": chat_id, "error": str(exc)})
+
+    elif callback_data == "stop_cancel":
+        answer_callback_query(cq_id, "취소됐습니다.")
+        try:
+            send_message(chat_id, "정지 명령이 취소됐습니다.")
+        except Exception:
+            pass
+
+    elif callback_data in {"snooze_1h", "snooze_6h", "snooze_24h"}:
+        hours_map = {"snooze_1h": 1.0, "snooze_6h": 6.0, "snooze_24h": 24.0}
+        hours = hours_map[callback_data]
+        until_dt = write_snooze(hours)
+        until_str = format_kst(until_dt)
+        answer_callback_query(cq_id, f"{int(hours)}h 스누즈 설정됨")
+        audit("snooze_set", {"chat_id": chat_id, "hours": hours, "until": until_dt.isoformat()})
+        try:
+            send_message(chat_id, f"⏸ {int(hours)}h 스누즈 설정됨. 해제 시각: {until_str}")
+        except Exception:
+            pass
+
+    elif callback_data == "details":
+        answer_callback_query(cq_id, "상세 정보 조회 중...")
+        try:
+            snapshot = get_runtime_snapshot()
+            send_message(chat_id, format_status(snapshot))
+        except Exception as exc:
+            send_message(chat_id, f"오류: {exc}")
+
+    elif callback_data == "chart":
+        answer_callback_query(cq_id, "차트는 추후 지원 예정입니다.")
+        try:
+            send_message(chat_id, "차트 기능은 추후 업데이트 예정입니다.")
+        except Exception:
+            pass
+
+    elif callback_data.startswith("resume_cvar:"):
+        pair = callback_data.split(":", 1)[1].strip().upper()
+        answer_callback_query(cq_id, f"{pair} CVaR 차단 해제 중...")
+        result_text = execute_resume_cvar(pair)
+        try:
+            send_message(chat_id, result_text)
+        except Exception as exc:
+            audit("send_error", {"chat_id": chat_id, "error": str(exc)})
+
+    else:
+        answer_callback_query(cq_id, "알 수 없는 버튼입니다.")
+
+
 def process_update(state: dict[str, Any], update: dict[str, Any]) -> None:
+    # Handle inline keyboard callbacks
+    callback_query = update.get("callback_query")
+    if callback_query:
+        try:
+            process_callback_query(state, callback_query)
+        except Exception as exc:
+            audit("callback_query_error", {"error": str(exc)})
+        return
+
     message = update.get("message") or update.get("edited_message")
     if not message:
         return
@@ -1344,6 +1798,17 @@ def process_update(state: dict[str, Any], update: dict[str, Any]) -> None:
     if command in ASYNC_READ_COMMANDS:
         COMMAND_EXECUTOR.submit(handle_async_read_command, state, int(chat_id), text, command)
         audit("async_command_queued", {"chat_id": chat_id, "command": command})
+        return
+
+    # /stop is handled inline (sends buttons, never goes through send_response_and_audit)
+    if command == "stop":
+        audit("control_requested", {"chat_id": chat_id, "action": "stop"})
+        try:
+            send_stop_confirm_prompt(int(chat_id))
+        except Exception as exc:
+            audit("send_error", {"chat_id": chat_id, "error": str(exc)})
+            record_bot_error(state, command, exc)
+        record_bot_reply(state, command)
         return
 
     try:
@@ -1384,6 +1849,7 @@ def run_loop() -> None:
             pid=os.getpid(),
         )
         save_bot_state(state)
+    register_bot_commands()
     print("Telegram bot ready")
     audit("bot_start", {"allowed_chat_ids": sorted(TELEGRAM_ALLOWED_CHAT_IDS)})
 

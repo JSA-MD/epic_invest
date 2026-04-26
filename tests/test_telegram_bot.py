@@ -121,7 +121,6 @@ class TelegramBotProcessTests(unittest.TestCase):
     def test_handle_command_routes_all_supported_read_commands(self) -> None:
         state = self.make_state()
         commands = [
-            "start",
             "help",
             "ping",
             "status",
@@ -136,7 +135,7 @@ class TelegramBotProcessTests(unittest.TestCase):
             "logs",
             "recent",
         ]
-        with patch.object(telegram_bot, "handle_read_command", side_effect=lambda cmd: f"response:{cmd}"):
+        with patch.object(telegram_bot, "handle_read_command", side_effect=lambda cmd, args=None: f"response:{cmd}"):
             for command in commands:
                 with self.subTest(command=command):
                     response = telegram_bot.handle_command(state, 11, f"/{command}")

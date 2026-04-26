@@ -27,6 +27,12 @@ load_dotenv(ROOT / ".env")
 
 import ccxt
 
+try:
+    from telegram_format import AlertLevel as _TF_AlertLevel, format_alert as _tf_format_alert, should_send as _tf_should_send
+    _TF_AVAILABLE = True
+except ImportError:
+    _TF_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -259,7 +265,21 @@ def reconcile(
             f"delta={mm['delta']:+.6f}"
         )
         log.warning(alert)
-        send_telegram(alert, dry_run=dry_run)
+        if _TF_AVAILABLE and _tf_should_send(_TF_AlertLevel.HIGH, f"recon-{mm['pair']}"):
+            _payload = _tf_format_alert(
+                _TF_AlertLevel.HIGH,
+                title="포지션 불일치",
+                body=f"{mm['pair']}: 거래소={mm['exchange_qty']:.6f}, 상태={mm['state_qty']:.6f}, 차이={mm['delta']:+.6f}",
+                context={
+                    "📌 종목": mm['pair'],
+                    "🏦 거래소": f"{mm['exchange_qty']:.6f}",
+                    "💾 상태": f"{mm['state_qty']:.6f}",
+                    "△ 차이": f"{mm['delta']:+.6f}",
+                },
+            )
+            send_telegram(_payload["text"], dry_run=dry_run)
+        else:
+            send_telegram(alert, dry_run=dry_run)
 
     if not mismatches:
         log.info("All positions matched within tolerance %.6f", tolerance)

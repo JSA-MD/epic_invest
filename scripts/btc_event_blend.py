@@ -156,6 +156,10 @@ def _baseline_replay_without_event(
     pair: str,
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
+    use_equity_corr_risk: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
     return_trace: bool = False,
 ) -> dict[str, Any]:
     base_candidate = copy.deepcopy(dict(candidate))
@@ -166,6 +170,10 @@ def _baseline_replay_without_event(
             pair=pair,
             context=context,
             library_lookup=library_lookup,
+            use_equity_corr_risk=use_equity_corr_risk,
+            min_notional_usd=min_notional_usd,
+            max_hold_bars=max_hold_bars,
+            runtime_gross_cap=runtime_gross_cap,
             return_trace=return_trace,
         )
     if pair == "BTCUSDT" and base_candidate.get("btc_convex_blend"):
@@ -174,6 +182,10 @@ def _baseline_replay_without_event(
             pair=pair,
             context=context,
             library_lookup=library_lookup,
+            use_equity_corr_risk=use_equity_corr_risk,
+            min_notional_usd=min_notional_usd,
+            max_hold_bars=max_hold_bars,
+            runtime_gross_cap=runtime_gross_cap,
             return_trace=return_trace,
         )
     pair_config = dict((base_candidate.get("pair_configs") or {}).get(pair) or {})
@@ -183,6 +195,10 @@ def _baseline_replay_without_event(
         tuple(int(v) for v in pair_config["mapping_indices"]),
         float(pair_config["route_breadth_threshold"]),
         execution_gene=pair_config.get("execution_gene"),
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         engine="python",
         return_trace=return_trace,
     )
@@ -194,6 +210,10 @@ def replay_btc_event_blend_candidate(
     pair: str,
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
+    use_equity_corr_risk: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
     return_trace: bool = False,
 ) -> dict[str, Any]:
     event = get_btc_event_blend(candidate, pair)
@@ -204,6 +224,10 @@ def replay_btc_event_blend_candidate(
         pair=pair,
         context=context,
         library_lookup=library_lookup,
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         return_trace=True,
     )
     baseline_trace = baseline["trace"]
@@ -233,6 +257,9 @@ def replay_btc_event_blend_candidate(
         target_trace=np.asarray(target_trace, dtype="float64"),
         execution_gene=pair_cfg.get("execution_gene"),
         trace_template=baseline_trace,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         return_trace=return_trace,
     )
     result["event_blend"] = {

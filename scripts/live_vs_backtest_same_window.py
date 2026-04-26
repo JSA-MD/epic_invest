@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import get_btc_convex_blend, replay_btc_convex_blend_candidate
-from pairwise_regime_live import DEFAULT_MODEL_PATH, DEFAULT_SUMMARY_PATH, PAIRS
+from pairwise_regime_live import DEFAULT_MODEL_PATH, DEFAULT_SUMMARY_PATH, PAIRS, load_live_frame
 from replay_regime_mixture_realistic import load_model as load_signal_model
 from safety_guards import enforce_runtime_gross_cap_ceiling
 from search_gp_drawdown_overlay import iter_params
@@ -136,7 +136,11 @@ def main() -> None:
     no_trade_band_pct = _env_float("PAIRWISE_NO_TRADE_BAND_PCT", float(gp.NO_TRADE_BAND))
     gp.NO_TRADE_BAND = no_trade_band_pct
 
-    df_all = gp.load_all_pairs(pairs=list(PAIRS), start=start, end=end, refresh_cache=False)
+    refresh_live_data = _env_bool("PAIRWISE_REFRESH_LIVE_DATA", False)
+    if refresh_live_data:
+        df_all = load_live_frame(PAIRS, refresh_live_data=True)
+    else:
+        df_all = gp.load_all_pairs(pairs=list(PAIRS), start=start, end=end, refresh_cache=False)
     funding_cache = {pair: load_funding_cache(pair) for pair in PAIRS}
 
     df_window = filter_window(df_all, start, end)
@@ -313,6 +317,7 @@ def main() -> None:
             "PAIRWISE_MAX_HOLD_BARS": max_hold_bars,
             "PAIRWISE_EQUITY_CORR_RISK": use_equity_corr_risk,
             "PAIRWISE_RUNTIME_BLEND": runtime_blend_enabled,
+            "PAIRWISE_REFRESH_LIVE_DATA": refresh_live_data,
             "live_parity": True,
         },
         "method": "Apples-to-apples per-date comparison: live arithmetic daily P&L from logs vs backtest bar_net resampled to UTC calendar daily over the SAME window.",

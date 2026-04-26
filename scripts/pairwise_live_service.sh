@@ -101,6 +101,7 @@ write_launchd_env_file() {
     printf 'export PAIRWISE_CVAR_CUT_HOLD_HOURS=%q\n' "${PAIRWISE_CVAR_CUT_HOLD_HOURS:-24}"
     printf 'export PAIRWISE_RUNTIME_BLEND=%q\n' "${PAIRWISE_RUNTIME_BLEND:-0}"
     printf 'export PAIRWISE_EQUITY_CORR_RISK=%q\n' "${PAIRWISE_EQUITY_CORR_RISK:-0}"
+    printf 'export PAIRWISE_REFRESH_LIVE_DATA=%q\n' "${PAIRWISE_REFRESH_LIVE_DATA:-1}"
     printf 'export EPIC_MARKET_DATA_SOURCE=%q\n' "${EPIC_MARKET_DATA_SOURCE:-postgres}"
     for key in \
       MARKET_DATA_SOURCE \

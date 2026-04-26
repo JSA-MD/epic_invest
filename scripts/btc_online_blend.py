@@ -175,6 +175,10 @@ def replay_btc_online_blend_candidate(
     pair: str,
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
+    use_equity_corr_risk: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
     return_trace: bool = False,
 ) -> dict[str, Any]:
     online = get_btc_online_blend(candidate, pair)
@@ -189,6 +193,10 @@ def replay_btc_online_blend_candidate(
         pair=pair,
         context=context,
         library_lookup=library_lookup,
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         return_trace=True,
     )
     base_blend = get_btc_convex_blend(candidate, pair)
@@ -201,6 +209,10 @@ def replay_btc_online_blend_candidate(
         tuple(int(v) for v in specialist_pair_config["mapping_indices"]),
         float(specialist_pair_config["route_breadth_threshold"]),
         execution_gene=specialist_pair_config.get("execution_gene"),
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         engine="python",
         return_trace=True,
     )
@@ -220,6 +232,9 @@ def replay_btc_online_blend_candidate(
         target_trace=np.asarray(blended["target_weight"], dtype="float64"),
         execution_gene=None,
         trace_template=baseline["trace"],
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         return_trace=return_trace,
     )
     if return_trace:

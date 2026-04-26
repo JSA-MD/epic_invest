@@ -32,6 +32,15 @@ from telegram_format import (  # noqa: E402
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
+# Load .env so launchd-spawned process picks up Telegram credentials.
+# Without this, TELEGRAM_BOT_TOKEN is empty and the cron raises every fire.
+try:
+    from dotenv import load_dotenv  # type: ignore
+    _dotenv_path = os.environ.get("DOTENV_PATH") or str(ROOT_DIR / ".env")
+    load_dotenv(_dotenv_path, override=False)
+except Exception:
+    pass
+
 LIVE_PNL_PATH = ROOT_DIR / "models" / "live_actual_pnl_30d.json"
 WF_REPORT_PATH = ROOT_DIR / "models" / "walkforward_report.json"
 LIVE_STATE_PATH = ROOT_DIR / "models" / "pairwise_regime_live_state.json"

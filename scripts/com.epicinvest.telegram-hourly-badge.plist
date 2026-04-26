@@ -12,25 +12,26 @@
     </array>
 
     <!--
-        Fire at :00 each hour from 00:00 UTC to 12:00 UTC
-        = 09:00 KST to 21:00 KST (inclusive).
-        launchd StartCalendarInterval accepts an array of dicts.
+        Fire at :00 each hour from 09:00 KST through 21:00 KST.
+        launchd StartCalendarInterval uses LOCAL time, not UTC, so on a KST
+        host the hour values are the literal KST hours. The previous 0..12
+        range fired during the user's sleep (midnight–noon KST) instead.
     -->
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
     </array>
 
     <key>WorkingDirectory</key>

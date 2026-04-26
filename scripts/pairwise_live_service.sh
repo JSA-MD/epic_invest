@@ -92,7 +92,9 @@ write_launchd_env_file() {
     # Drift-fix overlays — pinned safe defaults so watchdog-triggered restarts
     # never silently revert to unbounded sizing or stale-price exposure.
     printf 'export PAIRWISE_GROSS_CAP=%q\n' "${PAIRWISE_GROSS_CAP:-0.01}"
+    printf 'export PAIRWISE_LIVE_MAX_GROSS_CAP=%q\n' "${PAIRWISE_LIVE_MAX_GROSS_CAP:-0.05}"
     printf 'export PAIRWISE_NO_TRADE_BAND_PCT=%q\n' "${PAIRWISE_NO_TRADE_BAND_PCT:-40}"
+    printf 'export REBALANCE_NOTIONAL_BAND_USD=%q\n' "${REBALANCE_NOTIONAL_BAND_USD:-25}"
     printf 'export PAIRWISE_MAX_HOLD_BARS=%q\n' "${PAIRWISE_MAX_HOLD_BARS:-288}"
     printf 'export PAIRWISE_CVAR_CUT=%q\n' "${PAIRWISE_CVAR_CUT:-1}"
     printf 'export PAIRWISE_CVAR_CUT_HOLD_HOURS=%q\n' "${PAIRWISE_CVAR_CUT_HOLD_HOURS:-24}"

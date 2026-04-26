@@ -27,6 +27,9 @@ from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, u
 from fractal_genome_core import LeafGene, collect_specs, deserialize_tree, evaluate_tree_leaf_codes
 from replay_regime_mixture_realistic import load_model
 from rotation_target_050_live import (
+    _ensure_slippage_worker,
+    _resolve_runtime_mode,
+    _SLIPPAGE_QUEUE,
     append_jsonl,
     fetch_equity,
     get_exchange,
@@ -75,6 +78,12 @@ DECISION_LOG_PATH = Path(
     os.getenv("PAIRWISE_SHADOW_DECISION_LOG_FILE")
     or os.getenv("PAIRWISE_SHADOW_DECISION_LOG_PATH")
     or str(gp.MODELS_DIR.parent / "logs" / "pairwise_regime_shadow_decisions.jsonl")
+)
+SLIPPAGE_LOG_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SLIPPAGE_LOG_PATH",
+        str(gp.MODELS_DIR.parent / "logs" / "pairwise_slippage.jsonl"),
+    )
 )
 DEFAULT_SUMMARY_PATH = Path(
     os.getenv(
@@ -559,6 +568,53 @@ def fetch_position_qty_map(exchange: ccxt.binanceusdm, pairs: tuple[str, ...]) -
     return qty_map
 
 
+def _log_slippage(
+    symbol: str,
+    side: str,
+    ref_price: float,
+    order: dict[str, Any],
+    qty: float,
+    mode: str,
+    log_path: Path = SLIPPAGE_LOG_PATH,
+) -> None:
+    """Enqueue one slippage record for background JSONL write (fire-and-forget).
+
+    Delegates to the shared queue and worker in rotation_target_050_live so both
+    scripts write to the same JSONL file via a single background thread.
+    Percentile calibration removed from hot path; moved to offline calibrator (P2-12).
+    """
+    import logging as _logging
+    import queue as _queue
+    try:
+        avg_fill = order.get("average") or order.get("avgPrice")
+        if not avg_fill:
+            return
+        avg_fill = float(avg_fill)
+        if avg_fill <= 0.0 or ref_price <= 0.0:
+            return
+        side_sign = 1.0 if side == "buy" else -1.0
+        slippage_bps = ((avg_fill - ref_price) / ref_price) * side_sign * 10_000.0
+        record = {
+            "_log_path": log_path,  # consumed by worker; not written to JSONL
+            "ts": utc_now().isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "ref_price": ref_price,
+            "avg_fill_price": avg_fill,
+            "qty": qty,
+            "slippage_bps": round(slippage_bps, 4),
+            "order_id": order.get("id"),
+            "mode": mode,
+        }
+        _ensure_slippage_worker()
+        try:
+            _SLIPPAGE_QUEUE.put_nowait(record)
+        except _queue.Full:
+            pass  # queue full — drop silently (telemetry is loss-tolerant)
+    except Exception as e:
+        _logging.getLogger(__name__).warning("slippage enqueue failed: %s", e)
+
+
 def reconcile_pairwise_target_positions(
     exchange: ccxt.binanceusdm,
     equity: float,
@@ -566,7 +622,13 @@ def reconcile_pairwise_target_positions(
     pairs: tuple[str, ...],
     execute: bool,
     leverage: int,
+    mode: str | None = None,
 ) -> list[dict[str, Any]]:
+    if mode is None:
+        try:
+            mode = _resolve_runtime_mode()
+        except Exception:
+            mode = "unknown"  # safe fallback, trading continues
     current_qtys = fetch_position_qty_map(exchange, pairs)
     actions: list[dict[str, Any]] = []
     for pair in pairs:
@@ -601,6 +663,10 @@ def reconcile_pairwise_target_positions(
             order = exchange.create_market_order(symbol, action["side"], amount)
             action["placed"] = True
             action["order_id"] = order.get("id")
+            try:
+                _log_slippage(symbol, action["side"], price, order, float(amount), mode)
+            except Exception:
+                pass  # never break order path
         actions.append(action)
     return actions
 
@@ -1283,6 +1349,7 @@ def run_once(args: argparse.Namespace) -> None:
                 pairs=pairs,
                 execute=True,
                 leverage=int(args.leverage),
+                mode=args.mode,
             )
             plan["order_actions"] = order_actions
 

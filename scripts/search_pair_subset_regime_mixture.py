@@ -309,6 +309,7 @@ def build_fast_context(
         for threshold in route_thresholds
     }
     funding_rates = np.zeros(len(idx), dtype="float64")
+    funding_unmatched = 0
     validation_daily_index = pd.DatetimeIndex(effective_day_index.unique())
     if funding_df is not None and not funding_df.empty:
         funding_series = (
@@ -317,11 +318,21 @@ def build_fast_context(
             .assign(fundingTime=lambda frame: pd.to_datetime(frame["fundingTime"], utc=True))
             .drop_duplicates(subset=["fundingTime"], keep="last")
             .set_index("fundingTime")["fundingRate"]
+            .sort_index()
         )
-        funding_rates = (
-            funding_series.reindex(idx, fill_value=0.0)
-            .to_numpy(dtype="float64")
+        _idx_frame = pd.DataFrame({"ts": idx}, index=range(len(idx)))
+        _funding_frame = funding_series.reset_index().rename(columns={"fundingTime": "ts", "fundingRate": "rate"})
+        _merged = pd.merge_asof(
+            _idx_frame,
+            _funding_frame.sort_values("ts"),
+            on="ts",
+            direction="nearest",
+            tolerance=pd.Timedelta("1min"),
         )
+        funding_rates = _merged["rate"].fillna(0.0).to_numpy(dtype="float64")
+        _total_funding_events = len(funding_series)
+        _matched = int((_merged["rate"].notna()).sum())
+        funding_unmatched = max(0, _total_funding_events - _matched)
     def pair_feature_series(suffix: str, *, fill_value: float = 0.0) -> pd.Series:
         column = f"{pair}_{suffix}"
         if column not in df.columns:
@@ -428,6 +439,7 @@ def build_fast_context(
         "dc_run_05": pair_feature_series("dc_run_05", fill_value=0.0).to_numpy(dtype="float64"),
         "smooth_signal_matrix": smooth_signal_matrix,
         "funding_rates": funding_rates,
+        "funding_unmatched": funding_unmatched,
         "equity_corr_context": overlay_inputs.get("equity_corr_context"),
         "equity_corr_source_mode": overlay_inputs.get("equity_corr_source_mode"),
         "route_state_mode": route_state_mode,
@@ -489,11 +501,14 @@ def _fast_overlay_replay_kernel_impl(
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
+    *,
+    initial_cooldown_bars: int = 0,
+    final_decision_cooldown_override: int | None = None,
 ) -> tuple[float, int, float, float, float, float, float, float, float]:
     equity = initial_cash
     peak_equity = initial_cash
     current_weight = 0.0
-    cooldown_bars_left = 0
+    cooldown_bars_left = int(initial_cooldown_bars)
     n_trades = 0
     max_drawdown = 0.0
 
@@ -518,6 +533,18 @@ def _fast_overlay_replay_kernel_impl(
         role_idx = state_specialists[bucket_codes[i]]
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
+        # Final-decision override: at the live-decision bar force the gate
+        # cooldown to the exact live value, then below — *after* the gate
+        # check that uses cooldown_bars_left — replace it with override-1 so
+        # the trace/persisted value carries one bar of natural decrement.
+        # Without the post-gate adjustment, shadow.cooldown_bars_left gets
+        # the raw override value back every cycle and never expires.
+        _is_final_bar_override = (
+            final_decision_cooldown_override is not None
+            and i == close.shape[0] - 2
+        )
+        if _is_final_bar_override:
+            cooldown_bars_left = int(final_decision_cooldown_override)
 
         role_changed = role_idx != last_role_idx
         if role_changed:
@@ -665,6 +692,11 @@ def _fast_overlay_replay_kernel_impl(
             if requested_side != 0 and current_weight * requested_side <= 0.0 and confirm_count < role_confirm_bars:
                 requested_weight = 0.0
             target_weight = requested_weight
+
+        # Post-gate decrement for final-bar override (mirrors realistic kernel):
+        # gate saw full override value; now drop by 1 for persistence consistency.
+        if _is_final_bar_override:
+            cooldown_bars_left = max(0, cooldown_bars_left - 1)
 
         if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
             target_weight = current_weight
@@ -838,6 +870,11 @@ def _realistic_overlay_replay_kernel_impl(
     bar_factor: float,
     entry_keep_flags: np.ndarray | None = None,
     return_trace: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    initial_cooldown_bars: int = 0,
+    runtime_gross_cap: float = -1.0,
+    final_decision_cooldown_override: int | None = None,
 ) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float, float, float, tuple, tuple] | dict[str, Any]:
     cash = initial_cash
     qty = 0.0
@@ -856,7 +893,7 @@ def _realistic_overlay_replay_kernel_impl(
     funding_events = 0
     peak_equity = initial_cash
     max_drawdown = 0.0
-    cooldown_bars_left = 0
+    cooldown_bars_left = int(initial_cooldown_bars)
 
     mean_bar = 0.0
     m2_bar = 0.0
@@ -873,6 +910,8 @@ def _realistic_overlay_replay_kernel_impl(
     confirm_side = 0
     confirm_count = 0
     last_role_idx = -1
+    hold_bars = 0
+    force_close_next = False
     net_ret: list[float] = []
     target_weight_trace: list[float] = []
     requested_weight_trace: list[float] = []
@@ -908,6 +947,12 @@ def _realistic_overlay_replay_kernel_impl(
         role_idx = state_specialists[bucket_codes[signal_idx]]
         if cooldown_bars_left > 0:
             cooldown_bars_left -= 1
+        # Apply final-decision override AFTER the per-bar decrement so the
+        # gate later in the loop body sees exactly the live value. Applying
+        # it before the decrement burns one bar off (live=1 → replay=0 →
+        # unblocks one bar early).
+        if final_decision_cooldown_override is not None and exec_idx == open_p.shape[0] - 2:
+            cooldown_bars_left = int(final_decision_cooldown_override)
 
         role_changed = role_idx != last_role_idx
         if role_changed:
@@ -1119,14 +1164,42 @@ def _realistic_overlay_replay_kernel_impl(
                 requested_weight = 0.0
             target_weight = requested_weight
 
+        # Post-gate decrement for final-bar override: gate already saw the full
+        # override value and blocked correctly; now drop by 1 so the trace/
+        # persisted cooldown carries the decremented value to live.  Without
+        # this, shadow.cooldown_bars_left receives the raw override every cycle
+        # and the cooldown never expires.
+        if final_decision_cooldown_override is not None and exec_idx == open_p.shape[0] - 2:
+            cooldown_bars_left = max(0, cooldown_bars_left - 1)
+
         if abs(target_weight - current_weight) < no_trade_band_pct / 100.0:
             target_weight = current_weight
+
+        if runtime_gross_cap >= 0.0:
+            target_weight = float(np.clip(target_weight, -runtime_gross_cap, runtime_gross_cap))
 
         target_notional = equity_before * target_weight
         target_qty = 0.0
         if abs(prev_close) > 1e-12:
             target_qty = _quantize_amount_nb(target_notional / prev_close, amount_step, min_qty)
+
+        # P1-6: D1 max-hold enforcement (mirrors live safety_guards MAX_HOLD_BARS)
+        if force_close_next:
+            target_qty = 0.0
+            force_close_next = False
+            hold_bars = 0
+        elif qty != 0.0:
+            hold_bars += 1
+            if hold_bars >= max_hold_bars:
+                force_close_next = True
+        else:
+            hold_bars = 0
+
         diff_qty = _quantize_amount_nb(target_qty - qty, amount_step, min_qty)
+
+        # P1-5: min notional filter (mirrors live diff_notional < 25.0 skip)
+        if abs(diff_qty) * prev_close < min_notional_usd:
+            diff_qty = 0.0
 
         if abs(diff_qty) > 0.0:
             side = 1.0 if diff_qty > 0.0 else -1.0
@@ -1419,6 +1492,11 @@ def _realistic_overlay_replay_kernel_numba_impl(
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    initial_cooldown_bars: int = 0,
+    runtime_gross_cap: float = -1.0,
+    final_decision_cooldown_override: int | None = None,
 ) -> tuple[float, int, float, float, float, float, float, float, float, float, float, float, float, int, int, int, int, float, float, float, float, tuple[int, ...], tuple[int, ...]]:
     return _realistic_overlay_replay_kernel_impl(
         open_p,
@@ -1479,6 +1557,11 @@ def _realistic_overlay_replay_kernel_numba_impl(
         bar_factor,
         None,
         False,
+        min_notional_usd,
+        max_hold_bars,
+        initial_cooldown_bars,
+        runtime_gross_cap,
+        final_decision_cooldown_override,
     )
 
 
@@ -1946,6 +2029,11 @@ def realistic_overlay_replay_from_context(
     engine: str = "auto",
     entry_keep_flags: np.ndarray | None = None,
     return_trace: bool = False,
+    initial_cooldown_bars: int = 0,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
+    final_decision_cooldown_override: int | None = None,
 ) -> dict[str, Any]:
     route_state_mode = normalize_route_state_mode(context.get("route_state_mode"))
     expected_state_count = len(route_state_names(route_state_mode))
@@ -2060,10 +2148,28 @@ def realistic_overlay_replay_from_context(
         float(gp.DAILY_TARGET_PCT),
         float(BAR_FACTOR),
     )
+    funding_unmatched = int(context.get("funding_unmatched", 0))
+    runtime_cap_arg = -1.0 if runtime_gross_cap is None else float(runtime_gross_cap)
     if kernel is _realistic_overlay_replay_kernel_impl:
-        result = kernel(*base_args, entry_keep_flags, return_trace)
+        result = kernel(
+            *base_args,
+            entry_keep_flags,
+            return_trace,
+            float(min_notional_usd),
+            int(max_hold_bars),
+            int(initial_cooldown_bars),
+            runtime_cap_arg,
+            final_decision_cooldown_override,
+        )
     else:
-        result = kernel(*base_args)
+        result = kernel(
+            *base_args,
+            float(min_notional_usd),
+            int(max_hold_bars),
+            int(initial_cooldown_bars),
+            runtime_cap_arg,
+            final_decision_cooldown_override,
+        )
     if kernel is _realistic_overlay_replay_kernel_impl:
         if isinstance(result, tuple):
             n_wins_v = int(result[14]) if len(result) > 14 else 0
@@ -2111,6 +2217,7 @@ def realistic_overlay_replay_from_context(
                 "slippage_paid": float(result[11]),
                 "funding_paid": float(result[12]),
                 "funding_events": int(result[13]),
+                "funding_unmatched": funding_unmatched,
                 "final_equity": float(result[4]),
                 "avg_win_size": float(avg_win_size_v),
                 "avg_loss_size": float(avg_loss_size_v),
@@ -2163,6 +2270,7 @@ def realistic_overlay_replay_from_context(
             "slippage_paid": float(result.get("slippage_paid", 0.0)),
             "funding_paid": float(result.get("funding_paid", 0.0)),
             "funding_events": int(result.get("funding_events", 0)),
+            "funding_unmatched": funding_unmatched,
             "final_equity": float(result["final_equity"]),
             "avg_win_size": float(avg_win_size_v),
             "avg_loss_size": float(avg_loss_size_v),
@@ -2221,6 +2329,7 @@ def realistic_overlay_replay_from_context(
         "slippage_paid": float(result[11]),
         "funding_paid": float(result[12]),
         "funding_events": int(result[13]),
+        "funding_unmatched": funding_unmatched,
         "final_equity": float(result[4]),
         "avg_win_size": float(avg_win_size_v),
         "avg_loss_size": float(avg_loss_size_v),
@@ -2248,6 +2357,12 @@ def realistic_overlay_replay(
     route_state_mode: str = ROUTE_STATE_MODE_BASE,
     execution_gene: dict[str, Any] | None = None,
     state_specialists: tuple[int, ...] | list[int] | None = None,
+    initial_cooldown_bars: int = 0,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
+    final_decision_cooldown_override: int | None = None,
+    return_trace: bool = False,
 ) -> dict[str, Any]:
     library_lookup = build_library_lookup(library)
     context = build_fast_context(
@@ -2268,6 +2383,12 @@ def realistic_overlay_replay(
         use_equity_corr_risk=use_equity_corr_risk,
         execution_gene=execution_gene,
         state_specialists=state_specialists,
+        initial_cooldown_bars=initial_cooldown_bars,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
+        final_decision_cooldown_override=final_decision_cooldown_override,
+        return_trace=return_trace,
     )
 
 

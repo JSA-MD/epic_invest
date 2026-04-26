@@ -16,7 +16,9 @@ import argparse
 import hashlib
 import json
 import os
+import queue
 import signal
+import threading
 import time
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -79,6 +81,13 @@ DECISION_LOG_PATH = Path(
         str(MODELS_DIR.parent / "logs" / "rotation_target_050_decisions.jsonl"),
     )
 )
+SLIPPAGE_LOG_PATH = Path(
+    os.getenv(
+        "PAIRWISE_SLIPPAGE_LOG_PATH",
+        str(MODELS_DIR.parent / "logs" / "pairwise_slippage.jsonl"),
+    )
+)
+_ACTIVE_RUNTIME_PROFILE_PATH = MODELS_DIR / "active_runtime_profile.json"
 DEFAULT_EXCHANGE_LEVERAGE = 5
 REBALANCE_NOTIONAL_BAND_USD = float(os.getenv("REBALANCE_NOTIONAL_BAND_USD", "25"))
 CORE_KILL_SWITCH_SIGMA_MULTIPLE = 1.5
@@ -101,6 +110,50 @@ RUNTIME_CONTEXT: dict[str, Any] = {
 }
 LIVE_CORE_STRATEGY: ResolvedCoreStrategy | None = None
 
+# ---------------------------------------------------------------------------
+# Slippage telemetry: fire-and-forget queue + background worker
+# Critical order path enqueues only (microseconds); disk I/O is off-path.
+# ---------------------------------------------------------------------------
+_SLIPPAGE_QUEUE: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=1000)
+_SLIPPAGE_WORKER_STARTED = False
+_SLIPPAGE_WORKER_LOCK = threading.Lock()
+
+
+def _slippage_worker_loop() -> None:
+    """Drain the slippage queue and write to JSONL. Runs in background thread."""
+    import logging as _logging
+    while True:
+        try:
+            record = _SLIPPAGE_QUEUE.get(timeout=60.0)
+        except queue.Empty:
+            continue  # idle — keep looping
+        if record is None:  # shutdown sentinel from atexit
+            break
+        try:
+            append_jsonl(record.pop("_log_path"), record)
+        except Exception as e:
+            _logging.getLogger(__name__).warning("slippage worker write failed: %s", e)
+    # Percentile calibration moved to offline calibrator (P2-12)
+
+
+def _ensure_slippage_worker() -> None:
+    """Start the background slippage worker thread exactly once (double-checked locking)."""
+    global _SLIPPAGE_WORKER_STARTED
+    if _SLIPPAGE_WORKER_STARTED:
+        return
+    with _SLIPPAGE_WORKER_LOCK:
+        if _SLIPPAGE_WORKER_STARTED:
+            return
+        t = threading.Thread(
+            target=_slippage_worker_loop,
+            daemon=True,
+            name="slippage-telemetry",
+        )
+        t.start()
+        atexit.register(lambda: _SLIPPAGE_QUEUE.put_nowait(None))
+        _SLIPPAGE_WORKER_STARTED = True
+
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_NOTIFICATIONS_ENABLED = os.getenv("TELEGRAM_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {
     "0",
@@ -108,6 +161,24 @@ TELEGRAM_NOTIFICATIONS_ENABLED = os.getenv("TELEGRAM_NOTIFICATIONS_ENABLED", "1"
     "no",
     "off",
 }
+
+
+def _resolve_runtime_mode() -> str:
+    """Return 'live' or 'demo' from the authoritative source.
+
+    Priority: PAIRWISE_LIVE_MODE > BINANCE_MODE > active_runtime_profile.json > 'demo'.
+    """
+    raw = os.getenv("PAIRWISE_LIVE_MODE") or os.getenv("BINANCE_MODE")
+    if raw:
+        if raw.lower() in ("live", "real", "production"):
+            return "live"
+        if raw.lower() in ("demo", "test", "paper", "sandbox"):
+            return "demo"
+    try:
+        with open(_ACTIVE_RUNTIME_PROFILE_PATH) as f:
+            return str(json.load(f).get("mode", "demo"))
+    except Exception:
+        return "demo"
 
 
 def resolve_telegram_chat_ids() -> list[int]:
@@ -2038,6 +2109,7 @@ def install_shutdown_protection(
 
     orders_to_cancel = [order for order in existing_orders if id(order) not in retained_order_ids]
     cancel_actions = cancel_strategy_protection_orders(exchange, orders_to_cancel, execute)
+    _breach_mode = _resolve_runtime_mode()  # resolve once; reused for all breach flattens
     flatten_actions: list[dict[str, Any]] = []
     for plan in breached_plans:
         flatten_action = close_pair_position(
@@ -2045,6 +2117,7 @@ def install_shutdown_protection(
             str(plan["pair"]),
             float(plan["qty"]),
             execute,
+            mode=_breach_mode,
         )
         flatten_action["reason"] = plan["status"]
         plan["flatten_action"] = flatten_action
@@ -2198,7 +2271,7 @@ def evaluate_core_emergency_kill_switch(
     if current_return > -kill_switch_pct:
         return report
 
-    flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, execute)
+    flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, execute, mode=_resolve_runtime_mode())
     day_state["kill_triggered"] = True
     day_state["triggered_at"] = utc_now().isoformat()
     day_state["trigger_return"] = current_return
@@ -2217,7 +2290,9 @@ def reconcile_target_positions(
     target_weights: dict[str, float],
     execute: bool,
     pairs: list[str] | None = None,
+    mode: str | None = None,
 ) -> list[dict[str, Any]]:
+    mode = _resolve_runtime_mode() if mode is None else mode
     pairs = PAIRS if pairs is None else pairs
     current_qtys = {pair: 0.0 for pair in PAIRS}
     latest_prices: dict[str, float] = {}
@@ -2267,6 +2342,10 @@ def reconcile_target_positions(
             order = exchange.create_market_order(symbol, action["side"], amount)
             action["placed"] = True
             action["order_id"] = order.get("id")
+            try:
+                _log_slippage(symbol, action["side"], price, order, float(amount), mode)
+            except Exception:
+                pass  # never break order path
         actions.append(action)
     return actions
 
@@ -2276,11 +2355,12 @@ def flatten_pairs(
     pairs: list[str],
     execute: bool,
 ) -> list[dict[str, Any]]:
+    mode = _resolve_runtime_mode()  # resolve once; reused for all pairs
     qty_map = fetch_position_qty_map(exchange)
     actions = []
     for pair in pairs:
         current_qty = float(qty_map.get(pair, 0.0))
-        actions.append(close_pair_position(exchange, pair, current_qty, execute))
+        actions.append(close_pair_position(exchange, pair, current_qty, execute, mode=mode))
     return actions
 
 
@@ -2296,12 +2376,62 @@ def fetch_recent_closed_5m_bars(exchange: ccxt.binanceusdm, symbol: str, since_m
     return df[df["time"] < current_bar_open]
 
 
+def _log_slippage(
+    symbol: str,
+    side: str,
+    ref_price: float,
+    order: dict[str, Any],
+    qty: float,
+    mode: str,
+    log_path: Path = SLIPPAGE_LOG_PATH,
+) -> None:
+    """Enqueue one slippage record for background JSONL write (fire-and-forget).
+
+    Critical order path: enqueue only (~microseconds). Disk I/O is handled by
+    the background 'slippage-telemetry' thread. Queue full or any exception is
+    silently dropped — telemetry is loss-tolerant.
+    """
+    import logging as _logging
+    try:
+        avg_fill = order.get("average") or order.get("avgPrice")
+        if not avg_fill:
+            return
+        avg_fill = float(avg_fill)
+        if avg_fill <= 0.0 or ref_price <= 0.0:
+            return
+        side_sign = 1.0 if side == "buy" else -1.0
+        slippage_bps = ((avg_fill - ref_price) / ref_price) * side_sign * 10_000.0
+        record = {
+            "_log_path": log_path,  # consumed by worker; not written to JSONL
+            "ts": utc_now().isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "ref_price": ref_price,
+            "avg_fill_price": avg_fill,
+            "qty": qty,
+            "slippage_bps": round(slippage_bps, 4),
+            "order_id": order.get("id"),
+            "mode": mode,
+        }
+        _ensure_slippage_worker()
+        try:
+            _SLIPPAGE_QUEUE.put_nowait(record)
+        except queue.Full:
+            pass  # queue full — drop silently (telemetry is loss-tolerant)
+        # Percentile calibration removed from hot path; moved to offline calibrator (P2-12)
+    except Exception as e:
+        _logging.getLogger(__name__).warning("slippage enqueue failed: %s", e)
+
+
 def close_pair_position(
     exchange: ccxt.binanceusdm,
     pair: str,
     current_qty: float,
     execute: bool,
+    mode: str | None = None,
+    ref_price: float | None = None,
 ) -> dict[str, Any]:
+    mode = _resolve_runtime_mode() if mode is None else mode
     symbol = PAIR_TO_MARKET[pair]
     amount = quantize_amount(exchange, symbol, current_qty)
     action = {
@@ -2318,6 +2448,11 @@ def close_pair_position(
         order = exchange.create_market_order(symbol, action["side"], amount, params={"reduceOnly": True})
         action["placed"] = True
         action["order_id"] = order.get("id")
+        if ref_price is not None and ref_price > 0:
+            try:
+                _log_slippage(symbol, action["side"], ref_price, order, float(amount), mode)
+            except Exception:
+                pass  # never break order path
     return action
 
 
@@ -2327,7 +2462,9 @@ def open_overlay_position(
     side: str,
     leverage: float,
     execute: bool,
+    mode: str | None = None,
 ) -> dict[str, Any]:
+    mode = _resolve_runtime_mode() if mode is None else mode
     symbol = PAIR_TO_MARKET["BTCUSDT"]
     margin_action = ensure_symbol_margin_settings(exchange, symbol)
     price = fetch_last_price(exchange, symbol)
@@ -2353,6 +2490,10 @@ def open_overlay_position(
         result["order_id"] = order.get("id")
         if order.get("average") is not None:
             result["price"] = float(order["average"])
+        try:
+            _log_slippage(symbol, result["side"], price, order, float(amount), mode)
+        except Exception:
+            pass  # never break order path
     return result
 
 
@@ -2433,7 +2574,7 @@ def manage_overlay(
         return {"status": "open", "best_favorable": best_favorable, "trail_active": trail_active}
 
     current_qty = float(overlay["qty"])
-    close_action = close_pair_position(exchange, "BTCUSDT", current_qty, execute)
+    close_action = close_pair_position(exchange, "BTCUSDT", current_qty, execute, mode=_resolve_runtime_mode())
     if execute or close_action["amount"] <= 0.0:
         state["overlay"] = None
         state["overlay_completed_day"] = overlay.get("effective_day")
@@ -2463,7 +2604,7 @@ def maybe_force_overlay_eod_close(
         return None
     if overlay.get("effective_day") == current_effective_day:
         return None
-    close_action = close_pair_position(exchange, "BTCUSDT", float(overlay["qty"]), execute)
+    close_action = close_pair_position(exchange, "BTCUSDT", float(overlay["qty"]), execute, mode=_resolve_runtime_mode())
     if execute or close_action["amount"] <= 0.0:
         state["overlay"] = None
         state["overlay_completed_day"] = overlay.get("effective_day")
@@ -2653,7 +2794,7 @@ def run_once(args: argparse.Namespace) -> None:
                 print(json.dumps(core_kill_report.get("flatten_actions", []), indent=2))
             elif core_kill_report["status"] == "locked":
                 print("\nAction: core kill-switch locked, stay flat")
-                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
+                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute, mode=args.mode)
                 print(json.dumps(flat_actions, indent=2))
                 if args.execute:
                     note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
@@ -2663,7 +2804,7 @@ def run_once(args: argparse.Namespace) -> None:
                 print("\nAction: rebalance core positions")
                 if state.get("overlay"):
                     overlay_qty = float(state["overlay"]["qty"])
-                    close_action = close_pair_position(exchange, "BTCUSDT", overlay_qty, args.execute)
+                    close_action = close_pair_position(exchange, "BTCUSDT", overlay_qty, args.execute, mode=args.mode)
                     state["overlay"] = None
                     print("Closed stale overlay:")
                     print(json.dumps(close_action, indent=2))
@@ -2677,7 +2818,7 @@ def run_once(args: argparse.Namespace) -> None:
                                 ]
                             )
                         )
-                actions = reconcile_target_positions(exchange, equity, plan["core_weights"], args.execute)
+                actions = reconcile_target_positions(exchange, equity, plan["core_weights"], args.execute, mode=args.mode)
                 print(json.dumps(actions, indent=2))
                 if args.execute:
                     note = build_core_rebalance_notification(actions)
@@ -2702,7 +2843,7 @@ def run_once(args: argparse.Namespace) -> None:
                     if note:
                         notifications.append(note)
             elif completed_day == plan["effective_day"]:
-                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
+                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute, mode=args.mode)
                 print(json.dumps(flat_actions, indent=2))
                 print(json.dumps({"status": "overlay_complete_for_day", "effective_day": plan["effective_day"]}, indent=2))
                 if args.execute:
@@ -2710,13 +2851,13 @@ def run_once(args: argparse.Namespace) -> None:
                     if note:
                         notifications.append(note)
             else:
-                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
+                flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute, mode=args.mode)
                 print(json.dumps(flat_actions, indent=2))
                 if args.execute:
                     note = build_core_rebalance_notification(flat_actions, title="코어 포지션 정리")
                     if note:
                         notifications.append(note)
-                opened = open_overlay_position(exchange, equity, plan["overlay"]["side"], plan["leverage"], args.execute)
+                opened = open_overlay_position(exchange, equity, plan["overlay"]["side"], plan["leverage"], args.execute, mode=args.mode)
                 qty = float(opened["amount"])
                 if args.execute and opened["placed"] and qty > 0.0:
                     state["overlay"] = {
@@ -2738,7 +2879,7 @@ def run_once(args: argparse.Namespace) -> None:
                         notifications.append(note)
         else:
             print("\nAction: stay flat")
-            flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute)
+            flat_actions = reconcile_target_positions(exchange, equity, {pair: 0.0 for pair in PAIRS}, args.execute, mode=args.mode)
             print(json.dumps(flat_actions, indent=2))
             if state.get("overlay") and args.execute:
                 state["overlay_completed_day"] = state["overlay"].get("effective_day")

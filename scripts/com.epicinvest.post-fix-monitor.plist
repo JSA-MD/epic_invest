@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.epicinvest.post-fix-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jsa/work/epic_invest/scripts/post_fix_monitor_launchd_entry.sh</string>
+    </array>
+
+    <!-- launchd uses host LOCAL time which is not always KST. To stay
+         host-TZ independent, fire at :15 every hour and let
+         monitor_post_fix_evolution.py self-gate to KST 09:xx internally.
+         Catch-up after wake: Python dedup via /tmp state ensures once-daily. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>15</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jsa/work/epic_invest</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/jsa/work/epic_invest/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>DOTENV_PATH</key>
+        <string>/Users/jsa/work/epic_invest/.env</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/epic-invest-post-fix-monitor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/epic-invest-post-fix-monitor.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

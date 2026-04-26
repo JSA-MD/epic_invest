@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.epicinvest.diagnose-live-drift</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jsa/work/epic_invest/scripts/diagnose_live_drift_launchd_entry.sh</string>
+    </array>
+
+    <!-- launchd uses host LOCAL time, not UTC. To stay host-TZ independent,
+         fire at :30 every hour and let entry.sh self-gate to KST 09:30. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jsa/work/epic_invest</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/jsa/work/epic_invest/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>DOTENV_PATH</key>
+        <string>/Users/jsa/work/epic_invest/.env</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jsa/work/epic_invest/logs/diagnose_drift.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/jsa/work/epic_invest/logs/diagnose_drift.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

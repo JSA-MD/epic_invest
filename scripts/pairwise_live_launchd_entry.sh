@@ -11,6 +11,8 @@ if [[ -f "$RUNTIME_ENV_PATH" ]]; then
   source "$RUNTIME_ENV_PATH"
 fi
 
+# Bar-close alignment is handled inside the loop subcommand of pairwise_regime_live.py.
+# The plist uses KeepAlive=true for process resurrection only; no StartCalendarInterval needed.
 MODE="${PAIRWISE_LIVE_MODE:-demo}"
 POLL_SECONDS="${PAIRWISE_LIVE_POLL_SECONDS:-300}"
 PROMOTION_REPORT_PATH="${PAIRWISE_LIVE_PROMOTION_REPORT_PATH:-$ROOT_DIR/models/gp_regime_mixture_btc_bnb_pairwise_market_os_pipeline_report.json}"

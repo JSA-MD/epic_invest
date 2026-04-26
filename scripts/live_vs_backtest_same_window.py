@@ -25,8 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import gp_crypto_evolution as gp
+from btc_convex_blend import get_btc_convex_blend, replay_btc_convex_blend_candidate
 from pairwise_regime_live import DEFAULT_MODEL_PATH, DEFAULT_SUMMARY_PATH, PAIRS
 from replay_regime_mixture_realistic import load_model as load_signal_model
+from safety_guards import enforce_runtime_gross_cap_ceiling
 from search_gp_drawdown_overlay import iter_params
 from search_pair_subset_regime_mixture import (
     build_fast_context,
@@ -41,6 +43,33 @@ from backtest_pairwise_equity_corr_risk_compare import (
 )
 
 UTC = timezone.utc
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    import os
+
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _env_float(name: str, default: float) -> float:
+    import os
+
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _env_int(name: str, default: int) -> int:
+    import os
+
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,10 +128,13 @@ def main() -> None:
 
     # Load model + library + summary
     summary = json.loads(args.summary_path.read_text())
-    config = summary["selected_candidate"]["pair_configs"]
+    selected_candidate = summary["selected_candidate"]
+    config = selected_candidate["pair_configs"]
     library = list(iter_params())
     model_tree, _ = load_signal_model(args.model_path)
     compiled = gp.toolbox.compile(expr=model_tree)
+    no_trade_band_pct = _env_float("PAIRWISE_NO_TRADE_BAND_PCT", float(gp.NO_TRADE_BAND))
+    gp.NO_TRADE_BAND = no_trade_band_pct
 
     df_all = gp.load_all_pairs(pairs=list(PAIRS), start=start, end=end, refresh_cache=False)
     funding_cache = {pair: load_funding_cache(pair) for pair in PAIRS}
@@ -114,6 +146,14 @@ def main() -> None:
 
     backtest_daily: dict[str, dict[str, float]] = {}
     library_lookup = build_library_lookup(library)
+    effective_gross_cap, gross_cap_warning = enforce_runtime_gross_cap_ceiling()
+    min_notional_usd = _env_float("REBALANCE_NOTIONAL_BAND_USD", 25.0)
+    max_hold_bars = _env_int("PAIRWISE_MAX_HOLD_BARS", 288)
+    use_equity_corr_risk = _env_bool("PAIRWISE_EQUITY_CORR_RISK", False)
+    if gross_cap_warning:
+        print(f"Runtime gross cap: {effective_gross_cap:.4f} ({gross_cap_warning})")
+    else:
+        print(f"Runtime gross cap: {effective_gross_cap:.4f}")
     for pair in PAIRS:
         pair_cfg = config[pair]
         # Honour the per-pair route_state_mode from the candidate summary so the
@@ -139,26 +179,31 @@ def main() -> None:
             funding_df=funding_df,
             route_state_mode=route_state_mode,
         )
-        # Match the live router's actual setting: PAIRWISE_EQUITY_CORR_RISK env
-        # var (default "0" = disabled). route_state_mode='equity_corr' selects
-        # the 12-bucket regime layout but does NOT automatically enable the
-        # equity-corr risk overlay; the two are independent in the live code.
-        # Codex 19th-round fix.
-        import os as _os
-        use_equity_corr_risk = _os.getenv("PAIRWISE_EQUITY_CORR_RISK", "0").strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
-        result = realistic_overlay_replay_from_context(
-            context,
-            library_lookup,
-            tuple(int(v) for v in pair_cfg["mapping_indices"]),
-            rb_threshold,
-            use_equity_corr_risk=use_equity_corr_risk,
-            return_trace=True,
-        )
+        blend = get_btc_convex_blend(selected_candidate, pair)
+        if blend is not None:
+            result = replay_btc_convex_blend_candidate(
+                candidate=selected_candidate,
+                pair=pair,
+                context=context,
+                library_lookup=library_lookup,
+                use_equity_corr_risk=use_equity_corr_risk,
+                min_notional_usd=min_notional_usd,
+                max_hold_bars=max_hold_bars,
+                runtime_gross_cap=effective_gross_cap,
+                return_trace=True,
+            )
+        else:
+            result = realistic_overlay_replay_from_context(
+                context,
+                library_lookup,
+                tuple(int(v) for v in pair_cfg["mapping_indices"]),
+                rb_threshold,
+                use_equity_corr_risk=use_equity_corr_risk,
+                min_notional_usd=min_notional_usd,
+                max_hold_bars=max_hold_bars,
+                runtime_gross_cap=effective_gross_cap,
+                return_trace=True,
+            )
         bar_net = result.get("trace", {}).get("bar_net")
         if bar_net is None or len(bar_net) == 0:
             print(f"  {pair}: no trace, skip", file=sys.stderr)
@@ -257,6 +302,16 @@ def main() -> None:
         "generated_at": datetime.now(tz=UTC).isoformat(),
         "window": {"start": start, "end": end, "n_dates": len(dates)},
         "initial_notional": args.initial,
+        "runtime_env": {
+            "EPIC_MARKET_DATA_SOURCE": __import__("os").getenv("EPIC_MARKET_DATA_SOURCE", "csv"),
+            "PAIRWISE_EFFECTIVE_GROSS_CAP": effective_gross_cap,
+            "PAIRWISE_GROSS_CAP_WARNING": gross_cap_warning,
+            "REBALANCE_NOTIONAL_BAND_USD": min_notional_usd,
+            "PAIRWISE_NO_TRADE_BAND_PCT": no_trade_band_pct,
+            "PAIRWISE_MAX_HOLD_BARS": max_hold_bars,
+            "PAIRWISE_EQUITY_CORR_RISK": use_equity_corr_risk,
+            "live_parity": True,
+        },
         "method": "Apples-to-apples per-date comparison: live arithmetic daily P&L from logs vs backtest bar_net resampled to UTC calendar daily over the SAME window.",
         "drift_summary": drift_summary,
         "per_date_per_pair": rows,

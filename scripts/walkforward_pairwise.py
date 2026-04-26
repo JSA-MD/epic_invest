@@ -95,10 +95,17 @@ def _run_pair_replay(
     mapping: tuple[int, ...],
     route_breadth_threshold: float,
     route_state_mode: str,
+    *,
+    initial_cooldown_bars: int = 0,
+    return_final_cooldown: bool = False,
 ) -> dict[str, float] | None:
     """Run realistic_overlay_replay for one pair on one df slice.
 
     Returns None if the slice is too thin to produce a meaningful result.
+
+    When return_final_cooldown=True the returned dict gains an extra key
+    ``final_cooldown_bars`` with the cooldown state at the last bar, suitable
+    for seeding the next walk-forward window.
     """
     if df_slice.empty:
         return None
@@ -120,8 +127,18 @@ def _run_pair_replay(
         route_breadth_threshold,
         use_equity_corr_risk=False,
         route_state_mode=route_state_mode,
+        initial_cooldown_bars=initial_cooldown_bars,
+        return_trace=return_final_cooldown,
     )
-    return _extract_metrics(result)
+    metrics = _extract_metrics(result)
+    if return_final_cooldown:
+        trace = result.get("trace") or {}
+        cd_arr = trace.get("cooldown_bars_left")
+        if cd_arr is not None and len(cd_arr) > 0:
+            metrics["final_cooldown_bars"] = int(cd_arr[-1])
+        else:
+            metrics["final_cooldown_bars"] = 0
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -142,18 +159,29 @@ def walk_forward(
     test_days: int,
     step_days: int,
     min_oos_bars: int = 100,
+    carry_cooldown: bool = False,
 ) -> Generator[dict[str, Any], None, None]:
     """Yield one fold dict per OOS window.
 
     Each fold dict has keys:
         train_start, train_end, test_start, test_end,
-        IS (per-pair metrics), OOS (per-pair metrics), skipped_pairs
+        IS (per-pair metrics), OOS (per-pair metrics), skipped_pairs,
+        carry_cooldown_in (per-pair cooldown bars seeded at window start),
+        carry_cooldown_out (per-pair cooldown bars at window end).
+
+    When carry_cooldown=True the OOS cooldown state at the end of window N is
+    carried into window N+1 as the initial cooldown seed.  This prevents the
+    unrealistic reset to zero that inflates trade counts in backtest.
     """
     start_ts = pd.Timestamp(start, tz=UTC)
     end_ts = pd.Timestamp(end, tz=UTC)
     train_delta = pd.Timedelta(days=train_days)
     test_delta = pd.Timedelta(days=test_days)
     step_delta = pd.Timedelta(days=step_days)
+
+    # Per-pair cooldown carry state (only used when carry_cooldown=True).
+    # Keyed by pair name, value is the cooldown_bars_left at end of last OOS window.
+    cooldown_carry: dict[str, int] = {p: 0 for p in pairs}
 
     test_start = start_ts
     fold_idx = 0
@@ -171,12 +199,18 @@ def walk_forward(
         IS_metrics: dict[str, dict[str, float]] = {}
         OOS_metrics: dict[str, dict[str, float]] = {}
         skipped: list[str] = []
+        carry_in: dict[str, int] = {}
+        carry_out: dict[str, int] = {}
 
         for pair in pairs:
             cfg = pair_configs[pair]
             mapping = tuple(int(v) for v in cfg["mapping_indices"])
             route_breadth_threshold = float(cfg["route_breadth_threshold"])
             route_state_mode = str(cfg.get("route_state_mode", "base"))
+
+            # Determine OOS initial cooldown seed for this window.
+            oos_initial_cooldown = cooldown_carry[pair] if carry_cooldown else 0
+            carry_in[pair] = oos_initial_cooldown
 
             # Slice price data
             df_is = df_all.loc[
@@ -215,6 +249,8 @@ def walk_forward(
                     df_oos, pair, pairs, compiled_fn,
                     funding_oos, library, mapping,
                     route_breadth_threshold, route_state_mode,
+                    initial_cooldown_bars=oos_initial_cooldown,
+                    return_final_cooldown=carry_cooldown,
                 )
             except Exception as exc:
                 print(
@@ -227,6 +263,14 @@ def walk_forward(
             if is_result is None or oos_result is None:
                 skipped.append(pair)
                 continue
+
+            # Extract and persist final cooldown for next window before stripping.
+            if carry_cooldown:
+                final_cd = int(oos_result.pop("final_cooldown_bars", 0))
+                cooldown_carry[pair] = final_cd
+                carry_out[pair] = final_cd
+            else:
+                carry_out[pair] = 0
 
             IS_metrics[pair] = is_result
             OOS_metrics[pair] = oos_result
@@ -241,6 +285,8 @@ def walk_forward(
             "IS": IS_metrics,
             "OOS": OOS_metrics,
             "skipped_pairs": skipped,
+            "carry_cooldown_in": carry_in,
+            "carry_cooldown_out": carry_out,
         }
 
         test_start += step_delta
@@ -363,6 +409,16 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=gp.MODELS_DIR / "recent_6m_gp_vectorized_big_capped_rerun.dill",
     )
+    parser.add_argument(
+        "--carry-cooldown",
+        action="store_true",
+        default=False,
+        help=(
+            "Carry OOS cooldown state from window N to window N+1. "
+            "Prevents the per-window cooldown reset that inflates trade counts. "
+            "Default off to preserve backward compatibility with existing search results."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -374,6 +430,7 @@ def main() -> None:
     print(f"  Period : {args.start} → {args.end}", flush=True)
     print(f"  Train  : {args.train_days}d  Test: {args.test_days}d  Step: {args.step_days}d", flush=True)
     print(f"  Pairs  : {pairs}", flush=True)
+    print(f"  carry-cooldown: {args.carry_cooldown}", flush=True)
 
     # Load summary and model once.
     summary = json.loads(args.summary_path.read_text())
@@ -415,13 +472,22 @@ def main() -> None:
         train_days=args.train_days,
         test_days=args.test_days,
         step_days=args.step_days,
+        carry_cooldown=args.carry_cooldown,
     ):
         elapsed = time.perf_counter() - t_start
         oos_rets = {p: fold["OOS"][p]["total_return"] for p in fold["OOS"]}
+        oos_trades = {p: fold["OOS"][p]["n_trades"] for p in fold["OOS"]}
+        carry_suffix = ""
+        if args.carry_cooldown:
+            carry_suffix = (
+                f"  cd_in={json_safe(fold['carry_cooldown_in'])}"
+                f"  cd_out={json_safe(fold['carry_cooldown_out'])}"
+            )
         print(
             f"  {fold['fold']}  IS:{fold['train_start'][:10]}→{fold['train_end'][:10]}"
             f"  OOS:{fold['test_start'][:10]}→{fold['test_end'][:10]}"
-            f"  OOS_ret={json_safe(oos_rets)}  elapsed={elapsed:.1f}s",
+            f"  OOS_ret={json_safe(oos_rets)}  n_trades={json_safe(oos_trades)}"
+            f"  elapsed={elapsed:.1f}s{carry_suffix}",
             flush=True,
         )
         folds.append(fold)
@@ -430,6 +496,20 @@ def main() -> None:
     print(f"\nCompleted {len(folds)} folds in {t_elapsed:.1f}s", flush=True)
 
     summary_stats = build_summary(folds, pairs)
+
+    # Compute carry-cooldown statistics across folds.
+    carry_stats: dict[str, Any] = {"enabled": args.carry_cooldown}
+    if args.carry_cooldown:
+        windows_with_nonzero_carry: dict[str, int] = {p: 0 for p in pairs}
+        total_carry_bars: dict[str, int] = {p: 0 for p in pairs}
+        for fold in folds:
+            for p in pairs:
+                cd_in = fold.get("carry_cooldown_in", {}).get(p, 0)
+                if cd_in > 0:
+                    windows_with_nonzero_carry[p] += 1
+                    total_carry_bars[p] += cd_in
+        carry_stats["windows_with_nonzero_carry_per_pair"] = windows_with_nonzero_carry
+        carry_stats["total_carry_bars_per_pair"] = total_carry_bars
 
     report: dict[str, Any] = {
         "generated_at": iso_now(),
@@ -443,9 +523,11 @@ def main() -> None:
             "pairs": list(pairs),
             "summary_path": str(args.summary_path),
             "model_path": str(args.model_path),
+            "carry_cooldown": args.carry_cooldown,
         },
         "folds": folds,
         "summary": summary_stats,
+        "carry_cooldown_stats": carry_stats,
     }
 
     args.report_out.parent.mkdir(parents=True, exist_ok=True)
@@ -472,6 +554,17 @@ def main() -> None:
     print(f"  Win-rate decay          : {s['OOS_win_rate_decay']:.3f}")
     print(f"  Negative OOS folds      : {s['negative_oos_fold_count']} / {s['fold_count']}"
           f"  ({s['OOS_negative_fold_pct']:.1f}%)")
+    if args.carry_cooldown and carry_stats.get("windows_with_nonzero_carry_per_pair"):
+        print()
+        print("CARRY-COOLDOWN STATISTICS")
+        print("-" * 60)
+        for p in pairs:
+            nz = carry_stats["windows_with_nonzero_carry_per_pair"].get(p, 0)
+            tb = carry_stats["total_carry_bars_per_pair"].get(p, 0)
+            print(
+                f"  {p}: windows with nonzero carry-in = {nz}/{s['fold_count']}"
+                f"  total_carry_bars = {tb}"
+            )
     print("=" * 60)
 
 

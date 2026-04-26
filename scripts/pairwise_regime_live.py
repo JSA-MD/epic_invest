@@ -146,6 +146,33 @@ def iso_now() -> str:
     return utc_now().isoformat()
 
 
+def _bar_close_at(ts: float, interval: int) -> float:
+    """주어진 타임스탬프가 속한 봉의 close 시각을 반환."""
+    return float((int(ts) // interval) * interval)
+
+
+def _seconds_until_next_bar(
+    last_processed_close_ts: float | None = None,
+    timeframe_seconds: int = 300,
+    post_close_offset_s: float = 5.0,
+) -> float:
+    """다음 처리 가능 시각까지 남은 초.
+
+    last_processed_close_ts가 주어지면 그 다음 봉을 타겟으로,
+    없으면(첫 실행) 가장 최근 닫힌 봉을 타겟으로 삼는다.
+    이미 타겟이 과거면 0 반환 (catch-up).
+
+    봉 마감 직후 데이터가 풀리는 데 약간의 시차가 있으므로 offset(기본 5초)을 더 기다림.
+    """
+    now = time.time()
+    if last_processed_close_ts is None:
+        # 첫 실행: 가장 최근에 닫힌 봉 close 시각을 타겟으로
+        target_close = (int(now) // timeframe_seconds) * timeframe_seconds
+    else:
+        target_close = last_processed_close_ts + timeframe_seconds
+    return max(0.0, target_close + post_close_offset_s - now)
+
+
 def parse_utc_datetime(value: Any) -> datetime | None:
     if not value:
         return None
@@ -786,6 +813,7 @@ def _build_trace_driven_pair_plan(
     library_lookup: Mapping[str, Any],
     current_weight: float,
     derivative_bundle: Mapping[str, pd.DataFrame] | None,
+    final_decision_cooldown_override: int | None = None,
 ) -> Dict[str, Any]:
     route_state_mode = normalize_route_state_mode(pair_config.get("route_state_mode"))
     route_threshold = float(pair_config["route_breadth_threshold"])
@@ -814,6 +842,7 @@ def _build_trace_driven_pair_plan(
         state_specialists=_resolve_pair_state_specialists(pair_config),
         engine="python",
         return_trace=True,
+        final_decision_cooldown_override=final_decision_cooldown_override,
     )
     trace = result.get("trace") or {}
     signal_index = _latest_trace_signal_index(trace, len(df))
@@ -901,6 +930,7 @@ def build_pairwise_plan(
             except Exception:
                 derivative_bundles[pair] = None
 
+        pair_cooldown_bars = int(shadow.get("cooldown_bars_left", {}).get(pair, 0) or 0)
         baseline_plan = _build_trace_driven_pair_plan(
             df=df_planning,
             pair=pair,
@@ -911,6 +941,7 @@ def build_pairwise_plan(
             library_lookup=library_lookup,
             current_weight=float(current_weights.get(pair, 0.0)),
             derivative_bundle=derivative_bundles[pair],
+            final_decision_cooldown_override=pair_cooldown_bars if pair_cooldown_bars > 0 else None,
         )
         final_plan = baseline_plan
         blend = get_btc_convex_blend(summary["selected_candidate"], pair)
@@ -926,6 +957,7 @@ def build_pairwise_plan(
                 library_lookup=library_lookup,
                 current_weight=float(current_weights.get(pair, 0.0)),
                 derivative_bundle=derivative_bundles[pair],
+                final_decision_cooldown_override=pair_cooldown_bars if pair_cooldown_bars > 0 else None,
             )
             final_plan = dict(baseline_plan)
             final_plan["requested_weight"] = blend_runtime_weight(
@@ -1078,6 +1110,23 @@ def build_pairwise_plan(
         "model_path": str(resolved_model_path),
         "directional_ga_overlay": directional_ga_overlay,
     }
+
+
+def refresh_plan_exposure_fields(plan: Dict[str, Any]) -> None:
+    """Synchronize plan metadata after runtime safety overlays mutate weights."""
+    target_weights = {
+        str(pair): float(weight)
+        for pair, weight in (plan.get("target_weights") or {}).items()
+    }
+    pair_plans = plan.get("pair_plans") or {}
+    for pair, weight in target_weights.items():
+        if pair in pair_plans and isinstance(pair_plans[pair], dict):
+            pair_plans[pair]["target_weight"] = float(weight)
+    gross = float(sum(abs(weight) for weight in target_weights.values()))
+    net = float(sum(target_weights.values()))
+    plan["gross_leverage"] = gross
+    plan["net_exposure"] = net
+    plan["session_type"] = "pairwise" if gross > TARGET_WEIGHT_EPS else "flat"
 
 
 def sync_shadow_paper_from_live_positions(
@@ -1936,6 +1985,8 @@ def run_live_once(args: argparse.Namespace) -> int:
             except Exception:
                 pass
 
+    refresh_plan_exposure_fields(plan)
+
     if args.execute:
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
@@ -2103,8 +2154,73 @@ def run_live_once(args: argparse.Namespace) -> int:
     return 0
 
 
+def _on_bar_outcome(
+    success: bool,
+    target: float,
+    last_processed: "float | None",
+    last_attempted: "float | None",
+    attempt_count: int,
+    max_attempts: int,
+) -> "tuple[float | None, float, int]":
+    """Compute updated (last_processed_close, last_attempted_close, attempt_count).
+
+    Rules:
+    - success              → advance last_processed to target, reset attempt counter
+    - failure + retries left → keep last_processed unchanged (triggers immediate retry)
+    - failure + cap reached  → advance last_processed to target (give up), reset counter
+    """
+    if last_attempted != target:
+        attempt_count = 1
+        last_attempted = target
+    else:
+        attempt_count += 1
+
+    if success:
+        return target, target, 0
+
+    if attempt_count >= max_attempts:
+        # Exhausted retries — advance so the loop does not stall forever.
+        return target, target, 0
+
+    # Retry: keep last_processed so _seconds_until_next_bar returns 0 (immediate retry).
+    return last_processed, last_attempted, attempt_count
+
+
 def run_live_loop(args: argparse.Namespace) -> int:
+    # Bar alignment: PAIRWISE_LIVE_ALIGN_TO_BAR=1 (default) sleeps until next
+    # 5-min bar close + offset instead of a fixed interval.
+    # Bar alignment is handled here in the loop subcommand; plist KeepAlive
+    # handles process resurrection only.
+    align_to_bar = os.getenv("PAIRWISE_LIVE_ALIGN_TO_BAR", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    post_close_offset_s = float(os.getenv("PAIRWISE_LIVE_POST_CLOSE_OFFSET_S", "5.0"))
+    run_at_startup = os.getenv("PAIRWISE_LIVE_RUN_AT_STARTUP", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    max_attempts = int(os.getenv("PAIRWISE_LIVE_MAX_ATTEMPTS_PER_BAR", "3"))
+    failure_backoff_s = float(os.getenv("PAIRWISE_LIVE_FAILURE_BACKOFF_S", "5.0"))
+
+    last_processed_close: "float | None" = None
+    last_attempted_close: "float | None" = None
+    attempt_count: int = 0
+    first_iter = True
     while True:
+        # On first iteration: run immediately if PAIRWISE_LIVE_RUN_AT_STARTUP=1
+        # (default), otherwise wait for first bar close first.
+        if first_iter and not run_at_startup:
+            sleep_s = _seconds_until_next_bar(None, max(args.poll_seconds, 1), post_close_offset_s)
+            print(
+                f"[pairwise-live] bar-align startup wait {sleep_s:.1f}s "
+                f"(next bar +{post_close_offset_s}s offset)",
+                file=sys.stderr,
+            )
+            time.sleep(sleep_s)
+        first_iter = False
+
+        # 실행 시작 시점의 봉이 우리가 처리할 봉 (실행 후 시각 기준이면 오버런 시 봉 누락)
+        target_bar_close = _bar_close_at(time.time(), max(args.poll_seconds, 1))
+        success = False
         try:
             state = load_state(args.state_path)
             state.setdefault("runtime_health", {})
@@ -2112,12 +2228,55 @@ def run_live_loop(args: argparse.Namespace) -> int:
             state["runtime_health"]["last_loop_started_at"] = iso_now()
             save_state(args.state_path, state)
             run_live_once(args)
+            success = True
         except Exception as exc:
             state = load_state(args.state_path)
             record_runtime_error(state, exc)
             save_state(args.state_path, state)
-            print(f"[pairwise-live] {type(exc).__name__}: {exc}", file=sys.stderr)
-        time.sleep(max(args.poll_seconds, 1))
+            import traceback as _tb
+            _attempt_disp = (attempt_count + 1) if last_attempted_close == target_bar_close else 1
+            _tb.print_exc(file=sys.stderr)
+            print(
+                f"[pairwise-live] run_live_once failed "
+                f"(bar={target_bar_close} attempt={_attempt_disp}/{max_attempts}): "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+
+        last_processed_close, last_attempted_close, attempt_count = _on_bar_outcome(
+            success=success,
+            target=target_bar_close,
+            last_processed=last_processed_close,
+            last_attempted=last_attempted_close,
+            attempt_count=attempt_count,
+            max_attempts=max_attempts,
+        )
+
+        if not success:
+            if attempt_count == 0:
+                # attempt_count was reset → cap was reached, give up on this bar
+                print(
+                    f"[pairwise-live] giving up on bar {target_bar_close} "
+                    f"after {max_attempts} attempts; advancing to next",
+                    file=sys.stderr,
+                )
+                try:
+                    _notif = load_notification_bridge()
+                    _notif.send_telegram_notification(
+                        f"[pairwise-live] bar {target_bar_close} gave up after "
+                        f"{max_attempts} attempts — advancing to next bar"
+                    )
+                except Exception:
+                    pass
+            else:
+                # Retries remaining — short backoff before immediate re-entry.
+                time.sleep(failure_backoff_s)
+
+        if align_to_bar:
+            sleep_s = _seconds_until_next_bar(last_processed_close, max(args.poll_seconds, 1), post_close_offset_s)
+        else:
+            sleep_s = max(args.poll_seconds, 1)
+        time.sleep(sleep_s)
 
 
 def run_sync_state(args: argparse.Namespace) -> int:

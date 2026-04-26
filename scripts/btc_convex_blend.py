@@ -179,6 +179,9 @@ def replay_target_trace(
     execution_gene: Mapping[str, Any] | None,
     trace_template: Mapping[str, Any] | None = None,
     return_trace: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
 ) -> dict[str, Any]:
     profile = legacy_execution_profile() if execution_gene is None else derive_execution_profile(dict(execution_gene))
     fee_rate = float(profile["fee_rate"])
@@ -199,6 +202,8 @@ def replay_target_trace(
     net_ret: list[float] = []
     equity_curve: list[float] = [float(gp.INITIAL_CASH)]
     realized_target_trace: list[float] = []
+    hold_bars = 0
+    force_close_next = False
 
     for exec_idx in range(1, open_p.shape[0] - 1):
         signal_idx = exec_idx - 1
@@ -217,11 +222,27 @@ def replay_target_trace(
             equity_before = 1e-9
 
         target_weight = float(target_trace[signal_idx])
+        if runtime_gross_cap is not None:
+            target_weight = float(np.clip(target_weight, -float(runtime_gross_cap), float(runtime_gross_cap)))
         target_notional = equity_before * target_weight
         target_qty = 0.0
         if abs(px_open) > 1e-12:
             target_qty = quantize_amount(target_notional / px_open, amount_step, min_qty)
+
+        if force_close_next:
+            target_qty = 0.0
+            force_close_next = False
+            hold_bars = 0
+        elif qty != 0.0:
+            hold_bars += 1
+            if hold_bars >= int(max_hold_bars):
+                force_close_next = True
+        else:
+            hold_bars = 0
+
         diff_qty = quantize_amount(target_qty - qty, amount_step, min_qty)
+        if abs(diff_qty) * px_open < float(min_notional_usd):
+            diff_qty = 0.0
 
         if abs(diff_qty) > 0.0:
             side = 1.0 if diff_qty > 0.0 else -1.0
@@ -284,6 +305,10 @@ def replay_btc_convex_blend_candidate(
     pair: str,
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
+    use_equity_corr_risk: bool = False,
+    min_notional_usd: float = 25.0,
+    max_hold_bars: int = 288,
+    runtime_gross_cap: float | None = None,
     return_trace: bool = False,
 ) -> dict[str, Any]:
     blend = get_btc_convex_blend(candidate, pair)
@@ -299,6 +324,10 @@ def replay_btc_convex_blend_candidate(
         tuple(int(v) for v in baseline_cfg["mapping_indices"]),
         route_breadth_threshold,
         execution_gene=baseline_cfg.get("execution_gene"),
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         engine="python",
         return_trace=True,
     )
@@ -308,6 +337,10 @@ def replay_btc_convex_blend_candidate(
         tuple(int(v) for v in specialist_cfg["mapping_indices"]),
         float(specialist_cfg["route_breadth_threshold"]),
         execution_gene=specialist_cfg.get("execution_gene"),
+        use_equity_corr_risk=use_equity_corr_risk,
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         engine="python",
         return_trace=True,
     )
@@ -325,6 +358,9 @@ def replay_btc_convex_blend_candidate(
         target_trace=target_trace,
         execution_gene=baseline_cfg.get("execution_gene"),
         trace_template=baseline.get("trace"),
+        min_notional_usd=min_notional_usd,
+        max_hold_bars=max_hold_bars,
+        runtime_gross_cap=runtime_gross_cap,
         return_trace=return_trace,
     )
     result["blend"] = {

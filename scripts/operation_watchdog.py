@@ -774,13 +774,17 @@ def check_signal_staleness() -> dict[str, Any] | None:
         "last_signal_ts": last_signal_ts,
         "alerted": False,
     }
-    if WATCHDOG_TELEGRAM_ALERTS_ENABLED and _debounce_alert("staleness"):
+    # D4 alerts gate themselves on telegram credential availability inside
+    # send_telegram_notification(); we do NOT short-circuit on the legacy
+    # WATCHDOG_TELEGRAM_ALERTS_ENABLED flag because it defaults off and would
+    # silence the safety alarms that Codex 20th-round flagged as ship-stopping.
+    if _debounce_alert("staleness"):
         msg = (
             f"[STALENESS ALERT] last_signal_ts is {age_min:.1f}min old"
             f" (service running but no fresh signal)"
         )
-        send_telegram_notification(msg)
-        result["alerted"] = True
+        sent = send_telegram_notification(msg)
+        result["alerted"] = bool(sent)
     return result
 
 
@@ -814,12 +818,39 @@ def check_stuck_price() -> dict[str, Any] | None:
     if not entries:
         return None
 
-    # Collect per-pair price sequences; accept several candidate field names
+    # Collect per-pair price sequences. The actual decision-log schema produced
+    # by pairwise_regime_live.py uses plan.latest_prices and plan.pair_plans.
+    # Earlier per_pair / top-level "pair" lookups returned 0 pairs; Codex 20th-
+    # round flagged the resulting silent skip as a ship-stopping defect.
     price_by_pair: dict[str, list[float]] = {}
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        # Top-level pair field
+        # Primary path: plan.latest_prices = {pair: price}
+        plan = entry.get("plan") or {}
+        latest_prices = plan.get("latest_prices") if isinstance(plan, dict) else None
+        if isinstance(latest_prices, dict):
+            for p, pv in latest_prices.items():
+                if pv is None:
+                    continue
+                try:
+                    price_by_pair.setdefault(str(p), []).append(float(pv))
+                except (TypeError, ValueError):
+                    pass
+        # Secondary path: plan.pair_plans.{pair}.price
+        pair_plans = plan.get("pair_plans") if isinstance(plan, dict) else None
+        if isinstance(pair_plans, dict):
+            for p, pdata in pair_plans.items():
+                if not isinstance(pdata, dict):
+                    continue
+                pv = pdata.get("price")
+                if pv is None:
+                    continue
+                try:
+                    price_by_pair.setdefault(str(p), []).append(float(pv))
+                except (TypeError, ValueError):
+                    pass
+        # Fallback: top-level pair / nested per_pair (older schemas)
         pair = str(entry.get("pair") or "")
         price_val = entry.get("last_price") or entry.get("price") or entry.get("close")
         if pair and price_val is not None:
@@ -827,11 +858,10 @@ def check_stuck_price() -> dict[str, Any] | None:
                 price_by_pair.setdefault(pair, []).append(float(price_val))
             except (TypeError, ValueError):
                 pass
-        # Also check nested per_pair / pair_plans structures
         for nested_key in ("per_pair", "pair_plans"):
             nested = entry.get(nested_key)
-            if not isinstance(nested, dict):
-                continue
+            if not isinstance(nested, dict) or nested_key == "pair_plans":
+                continue  # pair_plans already handled above
             for p, pdata in nested.items():
                 if not isinstance(pdata, dict):
                     continue
@@ -859,7 +889,8 @@ def check_stuck_price() -> dict[str, Any] | None:
     result["status"] = "stuck"
     for info in stuck_pairs:
         key = f"stuck-price-{info['pair'].replace('/', '-')}"
-        if WATCHDOG_TELEGRAM_ALERTS_ENABLED and _debounce_alert(key):
+        # Same Codex 20th-round fix: bypass the legacy WATCHDOG_TELEGRAM flag.
+        if _debounce_alert(key):
             msg = (
                 f"[PRICE STUCK ALERT] {info['pair']} price={info['price']}"
                 f" unchanged across {info['bars']} bars; possible feed freeze"

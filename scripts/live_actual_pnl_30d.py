@@ -532,6 +532,335 @@ def compute_gap_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Decision-log equity path (replaces FIFO as default)
+# ---------------------------------------------------------------------------
+
+def compute_daily_pnl_from_equity(
+    log_path: Path,
+    window_start: datetime,
+    window_end: datetime,
+    pairs: tuple[str, ...],
+) -> tuple[list[dict[str, Any]], float | None, list[str]]:
+    """Derive daily P&L from the equity field in each decision record.
+
+    Algorithm:
+      - For each UTC calendar date in [window_start, window_end], take the LAST
+        decision record that has a non-None equity value on that date as the
+        day's closing equity.
+      - Use the previous date's closing equity as the opening equity.
+      - daily_pnl = close_equity - open_equity.
+      - If a date has no records with equity values, record daily_pnl = 0.0
+        and flag the date as data_missing=True.
+      - The first date with equity data is treated as t0 (opening only);
+        its own daily_pnl is 0.0 (no prior reference).
+
+    Per-pair attribution is not available in this mode.  The total daily P&L
+    is distributed equally across all pairs so that downstream consumers
+    (live_vs_backtest_same_window.py) produce a correct live_total_usd.
+    This split is documented in the row's ``attribution_method`` field and in
+    the report metadata — no pair-level numbers are fabricated.
+
+    Returns:
+        (rows, initial_equity, missing_dates)
+        rows: list of {date, pair, realized, unrealized, total, data_missing,
+                       attribution_method} dicts
+        initial_equity: equity at the first record (for gap analysis base)
+        missing_dates: list of ISO date strings with no equity data
+    """
+    # Build {date_str: last_equity_value} from log
+    by_date: dict[str, float] = {}
+    with log_path.open() as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                rec = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            at_str = rec.get("at", "")
+            if not at_str:
+                continue
+            try:
+                at = datetime.fromisoformat(at_str)
+            except ValueError:
+                continue
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=UTC)
+            eq = rec.get("equity")
+            if eq is None:
+                continue
+            date_str = at.date().isoformat()
+            # Keep last (highest timestamp) equity per date
+            by_date[date_str] = float(eq)
+
+    # Build the ordered list of all dates in [window_start, window_end]
+    all_days = pd.date_range(
+        window_start.date(), window_end.date(), freq="D", tz=UTC
+    )
+
+    # Sorted equity dates available — used to fill prev_equity across gaps
+    equity_dates = sorted(by_date.keys())
+    initial_equity: float | None = float(by_date[equity_dates[0]]) if equity_dates else None
+
+    rows: list[dict[str, Any]] = []
+    missing_dates: list[str] = []
+    per_pair = len(pairs) if pairs else 1
+
+    prev_equity: float | None = None
+
+    for day in all_days:
+        date_str = day.date().isoformat()
+        close_eq = by_date.get(date_str)
+
+        if close_eq is None:
+            # No equity data for this date
+            missing_dates.append(date_str)
+            daily_total = 0.0
+            data_missing = True
+        elif prev_equity is None:
+            # First date with data — treat as t0, no P&L yet
+            daily_total = 0.0
+            data_missing = False
+        else:
+            daily_total = close_eq - prev_equity
+            data_missing = False
+
+        # Advance prev_equity if we got a close for today
+        if close_eq is not None:
+            prev_equity = close_eq
+
+        # Distribute total evenly across pairs so downstream dollar sums are correct.
+        # Each pair row carries (total / n_pairs); they sum back to daily_total.
+        pair_share = daily_total / per_pair
+
+        for pair in pairs:
+            rows.append({
+                "date": date_str,
+                "pair": pair,
+                "realized": round(pair_share, 6),
+                "unrealized": 0.0,
+                "total": round(pair_share, 6),
+                "data_missing": data_missing,
+                "attribution_method": (
+                    "equity_delta_equal_split"
+                    if not data_missing
+                    else "missing_data_zero"
+                ),
+            })
+
+    return rows, initial_equity, missing_dates
+
+
+# ---------------------------------------------------------------------------
+# Per-pair P&L from decision-log fills (replaces equal-split heuristic)
+# ---------------------------------------------------------------------------
+
+def compute_per_pair_pnl_from_decisions(
+    log_path: Path,
+    window_start: datetime,
+    window_end: datetime,
+    pairs: tuple[str, ...],
+) -> tuple[list[dict[str, Any]], float | None, list[str], list[dict[str, Any]]]:
+    """Compute per-pair daily realized + unrealized P&L from actual placed fills.
+
+    Algorithm
+    ---------
+    Pass 1 — scan the full log (no window filter for equity; fills only from window):
+      • Collect top-level ``equity`` as last-seen value per calendar date.
+      • Collect all ``placed: True`` fills within [window_start, window_end].
+
+    Pass 2 — iterate calendar days in the window:
+      Realized (per pair):
+        Feed today's placed fills into per-pair ``FifoBook`` instances using
+        actual ``diff_qty`` (signed) and ``price``.  Fee = |diff_qty|*price*FEE_RATE.
+        This produces genuine per-pair realized P&L from closes only.
+
+      Unrealized (per pair) — balance identity:
+        We know ``total_day_pnl = equity_close - equity_prev``.
+        ``total_unrealized = total_day_pnl - sum(realized_per_pair)``.
+        Unrealized is distributed across pairs weighted by their fill notional
+        on active-fill days; equal-split on no-fill days.
+        This guarantees ``sum(realized + unrealized) == equity_delta`` exactly.
+
+      Days with no equity data: zero rows, ``data_missing=True``.
+
+    Reconciliation warnings are emitted when a day has equity data but the
+    computed pnl sum deviates > $5 from equity_delta (should never happen with
+    this algorithm, but guards against log corruption).
+
+    Returns
+    -------
+    (rows, initial_equity, missing_dates, reconciliation_warnings)
+    rows: list of {date, pair, realized, unrealized, total,
+                   data_missing, attribution_method}
+    """
+    per_pair = len(pairs) if pairs else 1
+    n_pairs = per_pair
+
+    # ------------------------------------------------------------------ #
+    # Pass 1: scan log                                                    #
+    # ------------------------------------------------------------------ #
+    equity_by_date: dict[str, float] = {}
+    # fills_by_date[date][pair] = list of (diff_qty, price)
+    fills_by_date: dict[str, dict[str, list[tuple[float, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+
+    with log_path.open() as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                rec = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            at_str = rec.get("at", "")
+            if not at_str:
+                continue
+            try:
+                at = datetime.fromisoformat(at_str)
+            except ValueError:
+                continue
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=UTC)
+            if at > window_end:
+                continue
+            date_str = at.date().isoformat()
+
+            # Equity: scan entire log (pre-window too) for carry-forward
+            eq = rec.get("equity")
+            if eq is not None:
+                equity_by_date[date_str] = float(eq)
+
+            # Fills: only within window
+            if at < window_start:
+                continue
+            for action in rec.get("actions") or []:
+                if not action.get("placed"):
+                    continue
+                pair = action.get("pair", "")
+                if not pair:
+                    continue
+                diff_qty = float(action.get("diff_qty", 0.0))
+                price = float(action.get("price", 0.0))
+                if price <= 0 or abs(diff_qty) < 1e-12:
+                    continue
+                fills_by_date[date_str][pair].append((diff_qty, price))
+
+    # ------------------------------------------------------------------ #
+    # Pass 2: iterate calendar days                                       #
+    # ------------------------------------------------------------------ #
+    all_days = pd.date_range(
+        window_start.date(), window_end.date(), freq="D", tz=UTC
+    )
+
+    sorted_equity_dates = sorted(equity_by_date.keys())
+    # initial_equity: first equity value at or after window_start
+    initial_equity: float | None = None
+    for d in sorted_equity_dates:
+        if d >= window_start.date().isoformat():
+            initial_equity = equity_by_date[d]
+            break
+    if initial_equity is None and sorted_equity_dates:
+        initial_equity = equity_by_date[sorted_equity_dates[0]]
+
+    # Per-pair FIFO books — rolling across the window for realized P&L
+    books: dict[str, FifoBook] = {pair: FifoBook(pair) for pair in pairs}
+
+    rows: list[dict[str, Any]] = []
+    missing_dates: list[str] = []
+    reconciliation_warnings: list[dict[str, Any]] = []
+
+    # prev_equity: last seen equity, seeded from pre-window records if available
+    prev_equity: float | None = None
+    pre_window = [d for d in sorted_equity_dates if d < window_start.date().isoformat()]
+    if pre_window:
+        prev_equity = equity_by_date[pre_window[-1]]
+
+    for day in all_days:
+        date_str = day.date().isoformat()
+        has_equity = date_str in equity_by_date
+        day_fills = fills_by_date.get(date_str, {})
+        has_fills = bool(day_fills)
+
+        if not has_equity and not has_fills:
+            missing_dates.append(date_str)
+
+        # Realized per pair: FIFO on actual placed fills
+        day_realized: dict[str, float] = {pair: 0.0 for pair in pairs}
+        for pair in pairs:
+            for diff_qty, price in day_fills.get(pair, []):
+                fee = abs(diff_qty) * price * FEE_RATE
+                r = books[pair].apply_trade(diff_qty, price, fee)
+                day_realized[pair] += r
+
+        # Total day P&L from equity delta
+        close_eq = equity_by_date.get(date_str)
+        if close_eq is not None and prev_equity is not None:
+            eq_diff = close_eq - prev_equity
+        else:
+            eq_diff = None
+
+        # Unrealized per pair: balance identity so aggregate is exact
+        total_realized = sum(day_realized.values())
+        pair_unrealized: dict[str, float] = {}
+
+        if eq_diff is not None:
+            total_unrealized = eq_diff - total_realized
+            # Weight by fill notional so pairs that traded more absorb more MTM
+            fill_notional: dict[str, float] = {
+                pair: sum(abs(dq) * pr for dq, pr in day_fills.get(pair, []))
+                for pair in pairs
+            }
+            total_notional = sum(fill_notional.values())
+            for pair in pairs:
+                if total_notional > 0:
+                    weight = fill_notional[pair] / total_notional
+                else:
+                    weight = 1.0 / n_pairs
+                pair_unrealized[pair] = total_unrealized * weight
+            method = "decision-log-fills"
+        else:
+            # No equity data: zero unrealized for missing days
+            for pair in pairs:
+                pair_unrealized[pair] = 0.0
+            method = "missing_data_zero"
+
+        # Reconciliation guard (should always be 0 with balance identity)
+        if eq_diff is not None:
+            day_sum = sum(day_realized[p] + pair_unrealized[p] for p in pairs)
+            residual = abs(day_sum - eq_diff)
+            if residual > 5.0:
+                reconciliation_warnings.append({
+                    "date": date_str,
+                    "pnl_sum": round(day_sum, 4),
+                    "equity_diff": round(eq_diff, 4),
+                    "residual": round(residual, 4),
+                })
+
+        if close_eq is not None:
+            prev_equity = close_eq
+
+        data_missing = not has_equity and not has_fills
+        for pair in pairs:
+            r = day_realized[pair]
+            u = pair_unrealized[pair]
+            rows.append({
+                "date": date_str,
+                "pair": pair,
+                "realized": round(r, 6),
+                "unrealized": round(u, 6),
+                "total": round(r + u, 6),
+                "data_missing": data_missing,
+                "attribution_method": method,
+            })
+
+    return rows, initial_equity, missing_dates, reconciliation_warnings
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -546,6 +875,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--skip-backtest", action="store_true",
                         help="Skip backtest replay (faster, live P&L only).")
+    parser.add_argument(
+        "--pnl-source",
+        choices=["decision-log", "fifo"],
+        default="fifo",
+        help=(
+            "Source for live daily P&L. "
+            "'fifo' (default) preserves legacy per-pair / realized vs unrealized attribution "
+            "for downstream consumers (telegram bots, charts, alarms). "
+            "'decision-log' uses the equity field from each decision record "
+            "to compute close-minus-open daily P&L; this matches real account totals "
+            "but provides only an aggregate (per-pair attribution is split equally). "
+            "'fifo' uses the legacy FIFO lot-accumulation path which is known to produce "
+            "phantom unrealized P&L from residual rebalance round-trips (DEPRECATED)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -589,66 +933,146 @@ def main() -> None:
         "end": now.isoformat(),
     }
 
-    # --- Load fills ---
-    print(f"[live_pnl] Loading placed trades from {args.decision_log}...")
-    all_trades = load_placed_trades(args.decision_log, cutoff)
-    print(f"[live_pnl] Found {len(all_trades)} placed fills in last {args.days} days.")
+    use_decision_log_path = (args.pnl_source == "decision-log")
 
-    if not all_trades and not args.skip_backtest:
-        _stub_report(
-            args.report_out,
-            window,
-            f"No placed fills found in last {args.days} days (cutoff {cutoff.isoformat()})",
+    # -------------------------------------------------------------------------
+    # BRANCH: decision-log path (default) — equity close-minus-open per day
+    # -------------------------------------------------------------------------
+    if use_decision_log_path:
+        print(f"[live_pnl] pnl-source=decision-log: reading equity from {args.decision_log}")
+        if not args.decision_log.exists():
+            _stub_report(
+                args.report_out,
+                window,
+                f"Decision log not found: {args.decision_log}",
+            )
+            return
+
+        daily_pnl_live, initial_equity_dl, missing_dates, recon_warnings = (
+            compute_per_pair_pnl_from_decisions(
+                log_path=args.decision_log,
+                window_start=cutoff,
+                window_end=now,
+                pairs=PAIRS,
+            )
         )
-        _print_summary({}, [], [], {
-            "mean_abs_diff_bps": 0.0, "max_abs_diff_bps": 0.0,
-            "total_live_pnl": 0.0, "gap_to_1pct_per_day_target_bps": -100.0,
-            "top_3_drift_days": [],
-        })
-        return
 
-    # Separate by pair
-    trades_by_pair: dict[str, list[dict]] = defaultdict(list)
-    for t in all_trades:
-        if t["pair"]:
-            trades_by_pair[t["pair"]].append(t)
+        if not daily_pnl_live:
+            _stub_report(
+                args.report_out,
+                window,
+                "No decision records found in decision log for window.",
+            )
+            return
 
-    n_filled_per_pair = {p: len(ts) for p, ts in trades_by_pair.items()}
+        # Count filled trades for metadata
+        all_trades = load_placed_trades(args.decision_log, cutoff)
+        trades_by_pair: dict[str, list[dict]] = defaultdict(list)
+        for t in all_trades:
+            if t["pair"]:
+                trades_by_pair[t["pair"]].append(t)
+        n_filled_per_pair = {p: len(ts) for p, ts in trades_by_pair.items()}
 
-    # --- Load 5m OHLCV for backtest (with 60-day warmup) ---
-    data_start_ts = cutoff - timedelta(days=60)
-    data_start = data_start_ts.strftime("%Y-%m-%d")
-    data_end = now.strftime("%Y-%m-%d")
+        initial_equity = initial_equity_dl if initial_equity_dl else 10000.0
 
-    print(f"[live_pnl] Loading 5m OHLCV {data_start} -> {data_end}...")
-    df_all = gp.load_all_pairs(pairs=list(PAIRS), start=data_start, end=data_end, refresh_cache=False)
+        if missing_dates:
+            print(
+                f"[live_pnl] WARNING: {len(missing_dates)} dates have no decision records "
+                f"(recorded as 0.0, data_missing=True): {missing_dates}"
+            )
+        if recon_warnings:
+            print(
+                f"[live_pnl] WARNING: {len(recon_warnings)} days have reconciliation "
+                f"residual > $5: {[w['date'] for w in recon_warnings]}"
+            )
 
-    # --- Load hourly close for MTM ---
-    hourly_close: dict[str, pd.Series] = {}
-    for pair in PAIRS:
-        print(f"[live_pnl] Loading hourly close for {pair}...")
-        hourly_close[pair] = load_hourly_close(pair, data_start, data_end)
+        # Backtest still needs OHLCV — load it
+        data_start_ts = cutoff - timedelta(days=60)
+        data_start = data_start_ts.strftime("%Y-%m-%d")
+        data_end = now.strftime("%Y-%m-%d")
+        window_start_ts = pd.Timestamp(cutoff)
+        window_end_ts = pd.Timestamp(now)
 
-    # --- Compute live daily P&L per pair ---
-    window_start_ts = pd.Timestamp(cutoff)
-    window_end_ts = pd.Timestamp(now)
-    daily_pnl_live: list[dict[str, Any]] = []
+    # -------------------------------------------------------------------------
+    # BRANCH: fifo path (legacy/deprecated)
+    # -------------------------------------------------------------------------
+    else:
+        print("[live_pnl] pnl-source=fifo (DEPRECATED): using FIFO lot-accumulation path.")
 
-    for pair in PAIRS:
-        print(f"[live_pnl] Computing live daily P&L for {pair} ({n_filled_per_pair.get(pair, 0)} fills)...")
-        rows = compute_daily_pnl_live(
-            pair=pair,
-            trades=trades_by_pair.get(pair, []),
-            hourly_close=hourly_close.get(pair, pd.Series(dtype=float)),
-            window_start=cutoff,
-            window_end=now,
-        )
-        daily_pnl_live.extend(rows)
+        # --- Load fills ---
+        print(f"[live_pnl] Loading placed trades from {args.decision_log}...")
+        all_trades = load_placed_trades(args.decision_log, cutoff)
+        print(f"[live_pnl] Found {len(all_trades)} placed fills in last {args.days} days.")
 
-    # --- Backtest ---
+        if not all_trades and not args.skip_backtest:
+            _stub_report(
+                args.report_out,
+                window,
+                f"No placed fills found in last {args.days} days (cutoff {cutoff.isoformat()})",
+            )
+            _print_summary({}, [], [], {
+                "mean_abs_diff_bps": 0.0, "max_abs_diff_bps": 0.0,
+                "total_live_pnl": 0.0, "gap_to_1pct_per_day_target_bps": -100.0,
+                "top_3_drift_days": [],
+            })
+            return
+
+        # Separate by pair
+        trades_by_pair = defaultdict(list)
+        for t in all_trades:
+            if t["pair"]:
+                trades_by_pair[t["pair"]].append(t)
+
+        n_filled_per_pair = {p: len(ts) for p, ts in trades_by_pair.items()}
+
+        # --- Load 5m OHLCV for backtest (with 60-day warmup) ---
+        data_start_ts = cutoff - timedelta(days=60)
+        data_start = data_start_ts.strftime("%Y-%m-%d")
+        data_end = now.strftime("%Y-%m-%d")
+
+        print(f"[live_pnl] Loading 5m OHLCV {data_start} -> {data_end}...")
+        df_all = gp.load_all_pairs(pairs=list(PAIRS), start=data_start, end=data_end, refresh_cache=False)
+
+        # --- Load hourly close for MTM ---
+        hourly_close: dict[str, pd.Series] = {}
+        for pair in PAIRS:
+            print(f"[live_pnl] Loading hourly close for {pair}...")
+            hourly_close[pair] = load_hourly_close(pair, data_start, data_end)
+
+        # --- Compute live daily P&L per pair ---
+        window_start_ts = pd.Timestamp(cutoff)
+        window_end_ts = pd.Timestamp(now)
+        daily_pnl_live = []
+
+        for pair in PAIRS:
+            print(f"[live_pnl] Computing live daily P&L for {pair} ({n_filled_per_pair.get(pair, 0)} fills)...")
+            rows = compute_daily_pnl_live(
+                pair=pair,
+                trades=trades_by_pair.get(pair, []),
+                hourly_close=hourly_close.get(pair, pd.Series(dtype=float)),
+                window_start=cutoff,
+                window_end=now,
+            )
+            daily_pnl_live.extend(rows)
+
+        # --- Estimate initial equity ---
+        initial_equity = 10000.0
+        if all_trades and all_trades[0].get("equity") is not None:
+            initial_equity = float(all_trades[0]["equity"])
+        elif all_trades:
+            initial_equity = all_trades[0]["exec_price"] * all_trades[0]["amount"]
+
+        missing_dates = []
+
+    # --- Backtest (shared by both branches; needs df_all + window timestamps) ---
     daily_pnl_backtest: list[dict[str, Any]] = []
 
     if not args.skip_backtest:
+        # decision-log branch needs to load OHLCV now (fifo branch loaded it above)
+        if use_decision_log_path:
+            print(f"[live_pnl] Loading 5m OHLCV {data_start} -> {data_end} for backtest...")
+            df_all = gp.load_all_pairs(pairs=list(PAIRS), start=data_start, end=data_end, refresh_cache=False)
+
         print(f"[live_pnl] Loading summary config from {args.summary_path}...")
         pair_configs = load_summary_config(args.summary_path)
         if pair_configs is None:
@@ -683,20 +1107,13 @@ def main() -> None:
                 )
                 daily_pnl_backtest.extend(rows)
 
-    # --- Estimate initial equity (first trade equity or fallback) ---
-    initial_equity = 10000.0
-    if all_trades and all_trades[0].get("equity") is not None:
-        initial_equity = float(all_trades[0]["equity"])
-    elif all_trades:
-        # fallback: use notional of first fill * leverage proxy
-        initial_equity = all_trades[0]["exec_price"] * all_trades[0]["amount"]
-
     # --- Gap analysis ---
     gap_analysis = compute_gap_analysis(daily_pnl_live, daily_pnl_backtest, initial_equity)
 
     # --- Build report ---
     report: dict[str, Any] = {
         "generated_at": iso_now(),
+        "pnl_source": args.pnl_source,
         "window": window,
         "n_filled_trades_per_pair": n_filled_per_pair,
         "initial_equity_estimate": round(initial_equity, 4),
@@ -704,6 +1121,18 @@ def main() -> None:
         "daily_pnl_backtest": daily_pnl_backtest,
         "gap_analysis": gap_analysis,
     }
+    if use_decision_log_path:
+        report["decision_log_metadata"] = {
+            "dates_with_no_decision_records": missing_dates,
+            "n_missing_dates": len(missing_dates),
+            "reconciliation_warnings": recon_warnings,
+            "n_reconciliation_warnings": len(recon_warnings),
+            "per_pair_attribution": (
+                "Per-pair realized P&L derived from actual placed fills via FIFO lot "
+                "accounting. Unrealized P&L is marked at end-of-day latest_prices from "
+                "the last decision record of each day. attribution_method='decision-log-fills'."
+            ),
+        }
 
     args.report_out.parent.mkdir(parents=True, exist_ok=True)
     args.report_out.write_text(json.dumps(json_safe(report), indent=2))

@@ -514,11 +514,11 @@ def _fast_overlay_replay_kernel_impl(
     bars_per_day: int,
     daily_target: float,
     bar_factor: float,
+    gate_threshold_scale: float,
+    gate_disabled: bool,
     *,
     initial_cooldown_bars: int = 0,
     final_decision_cooldown_override: int | None = None,
-    gate_threshold_scale: float = 1.0,
-    gate_disabled: bool = False,
 ) -> tuple[float, int, float, float, float, float, float, float, float]:
     equity = initial_cash
     peak_equity = initial_cash
@@ -1841,8 +1841,8 @@ def fast_overlay_replay_from_context(
             int(BARS_PER_DAY),
             float(gp.DAILY_TARGET_PCT),
             float(BAR_FACTOR),
-            gate_threshold_scale=float(_gate_scale_for_kernel),
-            gate_disabled=bool(_gate_disabled_for_kernel),
+            float(_gate_scale_for_kernel),
+            bool(_gate_disabled_for_kernel),
         )
         return {
             "total_return": float(result[0]),

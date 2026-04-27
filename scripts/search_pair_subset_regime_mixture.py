@@ -2087,6 +2087,43 @@ def realistic_overlay_replay_from_context(
     effective_state_specialists = np.asarray(state_specialists_source, dtype="int64")
     corr_gross_scale = context["equity_corr_gross_scale"] if use_equity_corr_risk else np.ones_like(context["regime"])
     corr_regime_mult = context["equity_corr_regime_mult"] if use_equity_corr_risk else np.ones_like(context["regime"])
+
+    # Apply post-blend overlays (sign instability + adaptive band) to the
+    # smooth_signal_matrix before passing to the kernel.  The gates are causal:
+    # each bar only consults history up to that bar.  Zeroing all signal rows for
+    # a gated bar causes requested_weight=0 at that bar, which propagates to
+    # target_weight=0 after the kernel's regime/vol/confirm logic.
+    #
+    # Live-equivalence:
+    #   sign_instability — live uses recent target_weight sign history; here we
+    #     use smooth_signal_matrix[0]/100 (shortest EWM span) as the pre-kernel
+    #     proxy.  The sign of this series matches target_weight sign on all bars
+    #     where the regime gate permits a trade, so the flip rate is equivalent.
+    #   adaptive_threshold — live computes the ±k_sigma band from regime_score
+    #     history (recent_regime_scores) and fires when the current regime_score
+    #     is inside the noise band while target_weight is non-flat.  Here we pass
+    #     context["regime"] as the band-input series and the signal proxy as the
+    #     gate subject, matching the live logic exactly.
+    #
+    # Env knobs: PAIRWISE_OVERLAY_WINDOW (288),
+    #            PAIRWISE_SIGN_INSTABILITY_THRESHOLD (0.30),
+    #            PAIRWISE_ADAPTIVE_K_SIGMA (3.0).
+    from post_blend_overlays import apply_post_blend_overlays  # noqa: PLC0415
+    _ssm = context["smooth_signal_matrix"]
+    # Row 0: shortest EWM span — sign matches the kernel's regime-gated weight.
+    _proxy_weights = _ssm[0] / 100.0
+    _regime_scores = np.asarray(context["regime"], dtype=np.float64)
+    _gated_proxy, _sign_gate, _adaptive_gate = apply_post_blend_overlays(
+        _proxy_weights,
+        regime_scores_arr=_regime_scores,
+    )
+    _any_gated = _sign_gate | _adaptive_gate
+    if _any_gated.any():
+        _ssm = _ssm.copy()
+        _ssm[:, _any_gated] = 0.0
+        context = dict(context)  # shallow copy so we don't mutate the caller's dict
+        context["smooth_signal_matrix"] = _ssm
+
     close_location_value = _context_feature_array(context, "close_location_value", fill_value=0.0)
     body_to_range = _context_feature_array(context, "body_to_range", fill_value=0.0)
     wick_skew = _context_feature_array(context, "wick_skew", fill_value=0.0)

@@ -205,6 +205,18 @@ def replay_target_trace(
     open_p = np.asarray(context["open"], dtype="float64")
     funding_rates = np.asarray(context["funding_rates"], dtype="float64")
 
+    # Apply post-blend overlays (sign instability + adaptive band) to the full
+    # target_trace before the execution loop.  Both gates are causal (each bar
+    # only looks at history up to that bar) so pre-processing is equivalent to
+    # applying them bar-by-bar, and avoids threading extra state through the
+    # loop.  Env knobs: PAIRWISE_OVERLAY_WINDOW (288),
+    # PAIRWISE_SIGN_INSTABILITY_THRESHOLD (0.30), PAIRWISE_ADAPTIVE_K_SIGMA (3.0).
+    from post_blend_overlays import apply_post_blend_overlays  # noqa: PLC0415
+    _gated_trace, _sign_mask, _adaptive_mask = apply_post_blend_overlays(
+        np.asarray(target_trace, dtype="float64")
+    )
+    target_trace = _gated_trace
+
     cash = float(gp.INITIAL_CASH)
     qty = 0.0
     n_trades = 0

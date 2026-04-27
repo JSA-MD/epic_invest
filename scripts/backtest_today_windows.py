@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Run pairwise realistic-overlay backtest for 5 trailing windows ending today.
+"""Run pairwise realistic-overlay backtest for 6 trailing windows ending today.
 
-Windows (in days from today): 2m=60, 4m=120, 6m=180, 1y=365, 4y=1460.
+Windows (in days from today): 1m=30, 2m=60, 4m=120, 6m=180, 1y=365, 4y=1460.
 Pairs: BTCUSDT, BNBUSDT.
 Reports: n_trades, n_wins, n_losses, roundtrip_win_rate, daily_win_rate,
-ROI, MDD, Sharpe, profit on $100k notional, fees, open-position state.
+ROI, MDD, Sharpe, profit on $100k notional, fees, open-position state,
+trades_per_day (n_trades / window_days, rounded to 2 dp).
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ def main() -> None:
     today = datetime.fromisoformat(args.end).date() if args.end else datetime.now(tz=UTC).date()
     end_str = today.isoformat()
     windows = [
+        ("1m", today - timedelta(days=30), today),
         ("2m", today - timedelta(days=60), today),
         ("4m", today - timedelta(days=120), today),
         ("6m", today - timedelta(days=180), today),
@@ -83,6 +85,7 @@ def main() -> None:
         if df_window.empty or len(df_window) < 100:
             print(f"[{label}] skip: bars={len(df_window)}")
             continue
+        window_days = (we - ws).days
         pair_reports: dict[str, Any] = {}
         for pair in PAIRS:
             raw_signal = pd.Series(
@@ -116,12 +119,36 @@ def main() -> None:
                 use_equity_corr_risk=use_equity_corr_risk,
                 route_state_mode=route_state_mode,
             )
+            result["trades_per_day"] = round(result["n_trades"] / window_days, 2) if window_days > 0 else 0.0
             pair_reports[pair] = result
+
+        # Aggregate across pairs: sum trades/wins/losses, average return metrics.
+        total_n_trades = sum(pair_reports[p]["n_trades"] for p in PAIRS)
+        total_wins = sum(pair_reports[p]["n_wins"] for p in PAIRS)
+        total_losses = sum(pair_reports[p]["n_losses"] for p in PAIRS)
+        aggregate = {
+            "wins": total_wins,
+            "losses": total_losses,
+            "trades_per_day": round(total_n_trades / window_days, 2) if window_days > 0 else 0.0,
+            "daily_win_rate": round(
+                sum(pair_reports[p]["daily_win_rate"] for p in PAIRS) / len(PAIRS), 6
+            ),
+            "profit_usdt": round(
+                sum(pair_reports[p]["final_equity"] - float(gp.INITIAL_CASH) for p in PAIRS), 4
+            ),
+            "total_return": round(
+                sum(pair_reports[p]["total_return"] for p in PAIRS) / len(PAIRS), 6
+            ),
+            "max_drawdown": round(
+                min(pair_reports[p]["max_drawdown"] for p in PAIRS), 6
+            ),
+        }
         report["windows"][label] = {
             "start": ws_str,
             "end": we_str,
             "bars": int(len(df_window)),
             "pairs": pair_reports,
+            "aggregate": aggregate,
         }
         print(f"[{label}] done: bars={len(df_window)} {[(p, pair_reports[p]['total_return']) for p in PAIRS]}")
 

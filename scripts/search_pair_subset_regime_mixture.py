@@ -7,7 +7,13 @@ import argparse
 import itertools
 import json
 import os
+import sys
 from dataclasses import asdict, is_dataclass
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from regime_gate_helper import gate_overrides as _gate_overrides  # noqa: E402
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -534,6 +540,7 @@ def _fast_overlay_replay_kernel_impl(
     confirm_side = 0
     confirm_count = 0
     last_role_idx = -1
+    _gate_threshold_scale, _gate_disabled = _gate_overrides()
 
     for i in range(close.shape[0] - 1):
         active_idx = mapping[bucket_codes[i]]
@@ -570,10 +577,14 @@ def _fast_overlay_replay_kernel_impl(
         breadth_score = breadth[i]
         role_signal_gate_pct = signal_gate_pct * role_signal_gate_mults[role_idx]
         role_regime_buffer_mult = regime_buffer_mult * role_regime_buffer_mults[role_idx]
-        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[i] * (1.0 + role_regime_buffer_mult)
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[i] * (1.0 + role_regime_buffer_mult) * _gate_threshold_scale
         effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[i]
-        long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
-        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        if _gate_disabled:
+            long_ok = True
+            short_ok = True
+        else:
+            long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
+            short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
         if abs(signal_pct) < (role_signal_gate_pct + abstain_edge_pct):
             requested_weight = 0.0
         elif requested_weight > 0.0 and not long_ok:
@@ -927,6 +938,7 @@ def _realistic_overlay_replay_kernel_impl(
     cooldown_trace: list[int] = []
     confirm_side_trace: list[int] = []
     confirm_count_trace: list[int] = []
+    _gate_threshold_scale, _gate_disabled = _gate_overrides()
 
     for exec_idx in range(1, open_p.shape[0] - 1):
         signal_idx = exec_idx - 1
@@ -979,10 +991,14 @@ def _realistic_overlay_replay_kernel_impl(
         breadth_score = breadth[signal_idx]
         role_signal_gate_pct = signal_gate_pct * role_signal_gate_mults[role_idx]
         role_regime_buffer_mult = regime_buffer_mult * role_regime_buffer_mults[role_idx]
-        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[signal_idx] * (1.0 + role_regime_buffer_mult)
+        effective_regime_threshold = library_regime_threshold[active_idx] * equity_corr_regime_mult[signal_idx] * (1.0 + role_regime_buffer_mult) * _gate_threshold_scale
         effective_gross_cap = library_gross_cap[active_idx] * equity_corr_gross_scale[signal_idx]
-        long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
-        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
+        if _gate_disabled:
+            long_ok = True
+            short_ok = True
+        else:
+            long_ok = regime_score >= effective_regime_threshold and breadth_score >= library_breadth_threshold[active_idx]
+            short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - library_breadth_threshold[active_idx])
         requested_side = 0
         if requested_weight > 1e-12:
             requested_side = 1
@@ -1857,6 +1873,7 @@ def fast_overlay_replay_from_context(
     requested_weight_trace: list[float] = []
     signal_pct_trace: list[float] = []
     role_idx_trace: list[int] = []
+    _gate_threshold_scale, _gate_disabled = _gate_overrides()
 
     for i in range(len(close) - 1):
         active_idx = int(mapping[int(bucket_codes[i])])
@@ -1878,10 +1895,14 @@ def fast_overlay_replay_from_context(
         breadth_score = float(breadth[i])
         role_signal_gate_pct = float(effective_signal_gate_pct) * float(role_signal_gate_mults[role_idx])
         role_regime_buffer_mult = float(effective_regime_buffer_mult) * float(role_regime_buffer_mults[role_idx])
-        effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult[i]) * (1.0 + float(role_regime_buffer_mult))
+        effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult[i]) * (1.0 + float(role_regime_buffer_mult)) * _gate_threshold_scale
         effective_gross_cap = float(params.gross_cap) * float(equity_corr_gross_scale[i])
-        long_ok = regime_score >= effective_regime_threshold and breadth_score >= params.breadth_threshold
-        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
+        if _gate_disabled:
+            long_ok = True
+            short_ok = True
+        else:
+            long_ok = regime_score >= effective_regime_threshold and breadth_score >= params.breadth_threshold
+            short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
         if abs(signal_pct) < float(role_signal_gate_pct + abstain_edge_pct):
             requested_weight = 0.0
         elif requested_weight > 0.0 and not long_ok:

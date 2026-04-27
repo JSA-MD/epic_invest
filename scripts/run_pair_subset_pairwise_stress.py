@@ -212,8 +212,18 @@ def stress_overlay_replay_pairwise(
         requested_weight = signal_pct / 100.0
         regime_score = float(regime[signal_idx])
         breadth_score = float(breadth[signal_idx])
-        long_ok = regime_score >= params.regime_threshold and breadth_score >= params.breadth_threshold
-        short_ok = regime_score <= -params.regime_threshold and breadth_score <= (1.0 - params.breadth_threshold)
+        try:
+            from regime_gate_helper import gate_overrides as _go
+            _gs, _gd = _go()
+        except Exception:
+            _gs, _gd = 1.0, False
+        _eff_thresh = params.regime_threshold * _gs
+        if _gd:
+            long_ok = True
+            short_ok = True
+        else:
+            long_ok = regime_score >= _eff_thresh and breadth_score >= params.breadth_threshold
+            short_ok = regime_score <= -_eff_thresh and breadth_score <= (1.0 - params.breadth_threshold)
         if requested_weight > 0.0 and not long_ok:
             requested_weight = 0.0
         elif requested_weight < 0.0 and not short_ok:

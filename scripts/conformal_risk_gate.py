@@ -9,24 +9,7 @@ import numpy as np
 import gp_crypto_evolution as gp
 
 
-def _read_gate_overrides(env=None) -> tuple[float, bool]:
-    """Return (threshold_scale, gate_disabled) from env.
-
-    Mirrors the live-side hook in pairwise_regime_live.compute_requested_weight
-    so backtest replays running through the conformal gate honour the same
-    PAIRWISE_REGIME_THRESHOLD_SCALE / PAIRWISE_REGIME_GATE_DISABLED settings.
-    Without this, any operator who tightens or loosens the live gate breaks
-    apples-to-apples parity until the next full restart.
-    """
-    e = env if env is not None else os.environ
-    try:
-        scale = float(e.get("PAIRWISE_REGIME_THRESHOLD_SCALE", "1.0") or 1.0)
-    except (TypeError, ValueError):
-        scale = 1.0
-    disabled = str(e.get("PAIRWISE_REGIME_GATE_DISABLED", "0")).strip().lower() in {
-        "1", "true", "yes", "on",
-    }
-    return scale, disabled
+from regime_gate_helper import gate_overrides as _read_gate_overrides  # noqa: E402,F401
 from execution_gene_utils import (
     dc_alignment_score,
     derive_execution_profile,

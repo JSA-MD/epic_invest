@@ -38,11 +38,18 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-# Alert threshold: mean daily drift below this value (in bps) triggers a message.
-# -100 bps = -1% per day average slippage vs backtest expectation.
-DRIFT_ALERT_THRESHOLD_BPS: float = float(
-    os.environ.get("DRIFT_ALERT_THRESHOLD_BPS", "-100")
+# Alert threshold: absolute daily drift exceeding this value (in bps) triggers a message.
+# Fires in BOTH directions — a +200 bps "free money" gap is also a calibration error.
+# Override via env: ATTRIBUTION_ALERT_THRESHOLD_BPS=50 (default 50 bps).
+# Legacy env DRIFT_ALERT_THRESHOLD_BPS still accepted for backward compatibility.
+ATTRIBUTION_ALERT_THRESHOLD_BPS: float = float(
+    os.environ.get(
+        "ATTRIBUTION_ALERT_THRESHOLD_BPS",
+        os.environ.get("DRIFT_ALERT_THRESHOLD_BPS", "50"),
+    )
 )
+# Keep old name as alias so any external callers don't break.
+DRIFT_ALERT_THRESHOLD_BPS: float = ATTRIBUTION_ALERT_THRESHOLD_BPS
 
 
 # ---------------------------------------------------------------------------
@@ -82,18 +89,41 @@ def _send_telegram(text: str) -> None:
 def _extract_drift_bps(report: dict) -> float | None:
     """Return mean daily drift (bps) from the diagnostic report, or None.
 
-    diagnose_live_drift.py writes::
+    Supports two schemas:
+
+    1. Legacy live_drift_diagnostic JSON (diagnose_live_drift.py --json)::
 
         {
-          "attribution": {"avg_daily_gap_bps": ..., "total_gap_usd": ..., ...},
-          "worst_dates": [...],
+          "attribution": {"avg_daily_gap_bps": ..., ...},
           ...
         }
 
-    Earlier versions used a different schema, so we try several key paths and
-    fall back to a top-level scalar if present. If extraction fails, return
-    None and let the caller log/exit non-zero so a missing alert is loud.
+    2. New attribution_daily JSON (Stage 2.3)::
+
+        {
+          "rows": [{"drift_bps": ..., ...}, ...],
+          "per_pair": {"BNBUSDT": {"drift_bps": ...}, ...},
+          ...
+        }
+
+    If extraction fails, return None so the caller can exit non-zero loudly.
     """
+    # Schema 2: attribution_daily — average drift_bps across all rows
+    rows = report.get("rows")
+    if isinstance(rows, list) and rows:
+        drifts = [r["drift_bps"] for r in rows if isinstance(r.get("drift_bps"), (int, float))]
+        if drifts:
+            return float(sum(drifts) / len(drifts))
+
+    # Schema 2 alt: per_pair dict
+    per_pair = report.get("per_pair")
+    if isinstance(per_pair, dict) and per_pair:
+        drifts = [v["drift_bps"] for v in per_pair.values()
+                  if isinstance(v.get("drift_bps"), (int, float))]
+        if drifts:
+            return float(sum(drifts) / len(drifts))
+
+    # Schema 1: legacy key paths
     for path in (
         ("attribution", "avg_daily_gap_bps"),
         ("attribution", "mean_daily_drift_bps"),
@@ -133,8 +163,8 @@ def main() -> None:
     parser.add_argument(
         "--threshold-bps",
         type=float,
-        default=DRIFT_ALERT_THRESHOLD_BPS,
-        help=f"Alert threshold in bps (default: {DRIFT_ALERT_THRESHOLD_BPS})",
+        default=ATTRIBUTION_ALERT_THRESHOLD_BPS,
+        help=f"Alert fires when |drift| > this value in bps (default: {ATTRIBUTION_ALERT_THRESHOLD_BPS})",
     )
     args = parser.parse_args()
 
@@ -164,16 +194,19 @@ def main() -> None:
         )
         sys.exit(2)
 
-    print(f"[info] mean_daily_drift_bps = {drift_bps:.1f} bps (임계: {args.threshold_bps:.0f} bps)")
+    direction = "over" if drift_bps > 0 else "under"
+    print(f"[info] mean_daily_drift_bps = {drift_bps:.1f} bps  |abs| = {abs(drift_bps):.1f}  (임계: ±{args.threshold_bps:.0f} bps)")
 
-    if drift_bps >= args.threshold_bps:
-        print(f"[ok] drift 임계 미달 → 알림 불필요.")
+    if abs(drift_bps) <= args.threshold_bps:
+        print(f"[ok] |drift| {abs(drift_bps):.1f} bps ≤ {args.threshold_bps:.0f} bps 임계 → 알림 불필요.")
         sys.exit(0)
 
-    # Build message
+    # Build message — fires for both overperformance (+) and underperformance (-)
+    direction_label = "초과 (+, 보정 오류 의심)" if drift_bps > 0 else "부족 (-, 손실 의심)"
     text = (
         f"*[EpicInvest] Live Drift 경보* — {ts_kst}\n\n"
-        f"일평균 drift: *{drift_bps:.1f} bps* (임계: {args.threshold_bps:.0f} bps)\n"
+        f"일평균 drift: *{drift_bps:+.1f} bps* ({direction_label})\n"
+        f"임계: ±{args.threshold_bps:.0f} bps (양방향)\n"
         f"보고서: `{report_path.name}`\n\n"
         f"즉시 확인: `bash scripts/diagnose_live_drift_launchd_entry.sh`"
     )

@@ -517,6 +517,8 @@ def _fast_overlay_replay_kernel_impl(
     *,
     initial_cooldown_bars: int = 0,
     final_decision_cooldown_override: int | None = None,
+    gate_threshold_scale: float = 1.0,
+    gate_disabled: bool = False,
 ) -> tuple[float, int, float, float, float, float, float, float, float]:
     equity = initial_cash
     peak_equity = initial_cash
@@ -540,7 +542,10 @@ def _fast_overlay_replay_kernel_impl(
     confirm_side = 0
     confirm_count = 0
     last_role_idx = -1
-    _gate_threshold_scale, _gate_disabled = _gate_overrides()
+    # Gate override args are received from caller (env-derived) so this
+    # body remains njit-compilable. Don't call os.environ here.
+    _gate_threshold_scale = gate_threshold_scale
+    _gate_disabled = gate_disabled
 
     for i in range(close.shape[0] - 1):
         active_idx = mapping[bucket_codes[i]]
@@ -1780,6 +1785,9 @@ def fast_overlay_replay_from_context(
     taker_buy_sell_log_ratio = _context_feature_array(context, "taker_buy_sell_log_ratio", fill_value=0.0)
     range_bps = _context_feature_array(context, "range_bps", fill_value=0.0)
     volume_ratio = _context_feature_array(context, "volume_ratio", fill_value=0.0)
+    # Read gate overrides once and forward to either kernel path so numba
+    # JIT body never has to call os.environ at compile time.
+    _gate_scale_for_kernel, _gate_disabled_for_kernel = _gate_overrides()
     if fast_engine == "numba" and not return_trace:
         result = _fast_overlay_replay_kernel(
             context["close"],
@@ -1833,6 +1841,8 @@ def fast_overlay_replay_from_context(
             int(BARS_PER_DAY),
             float(gp.DAILY_TARGET_PCT),
             float(BAR_FACTOR),
+            gate_threshold_scale=float(_gate_scale_for_kernel),
+            gate_disabled=bool(_gate_disabled_for_kernel),
         )
         return {
             "total_return": float(result[0]),

@@ -14,6 +14,18 @@
   <key>WorkingDirectory</key>
   <string>/Users/jsa/work/epic_invest</string>
 
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Opt-in scaling for R3 CVaR-99 cut overlay. Default 0 preserves
+         legacy behaviour byte-for-byte. Operators must set 1 deliberately
+         when raising live cap toward backtest size. See
+         pairwise_regime_live.py:1907 for rationale. -->
+    <key>PAIRWISE_CVAR_SCALE_BY_GROSS_CAP</key>
+    <string>0</string>
+    <key>PAIRWISE_BACKTEST_GROSS_CAP</key>
+    <string>0.75</string>
+  </dict>
+
   <key>RunAtLoad</key>
   <true/>
 

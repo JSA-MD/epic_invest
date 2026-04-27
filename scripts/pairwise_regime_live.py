@@ -1916,11 +1916,18 @@ def run_live_once(args: argparse.Namespace) -> int:
                 _tw = float(plan["target_weights"].get(_pair, 0.0))
                 # _exch_active requires ground truth — False when fetch failed
                 _exch_active = positions_fetched and _exchange_position_is_open(positions, _pair)
+                # Always stamp overlay_force_flat while a cut is active. Without
+                # this, an upstream gate that already zeroed tw (and a flat
+                # exchange) leaves the bar with no overlay credit and the
+                # execution_trigger_monitor flags the cut firing as a silent
+                # drop. Stamp before the conditional zero-write so the
+                # attribution survives even when the plan already arrived flat.
+                if _pair in plan.get("pair_plans", {}):
+                    plan["pair_plans"][_pair]["overlay_force_flat"] = "cvar_cut"
                 if abs(_tw) > TARGET_WEIGHT_EPS or _exch_active:
                     plan["target_weights"][_pair] = 0.0
                     if _pair in plan.get("pair_plans", {}):
                         plan["pair_plans"][_pair]["target_weight"] = 0.0
-                        plan["pair_plans"][_pair]["overlay_force_flat"] = "cvar_cut"
                     # Exchange position still open while cut active — keep forcing tw=0 to retry close
                     if _exch_active and abs(_tw) <= TARGET_WEIGHT_EPS:
                         print(f"[pairwise-live] R3 cut still active for {_pair}; exchange position not yet flat — forcing tw=0 to retry close")

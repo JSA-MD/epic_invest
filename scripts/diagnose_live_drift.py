@@ -1087,6 +1087,11 @@ def main() -> None:
             "cause2":       c2,
             "cause3":       c3,
             "cause4":       c4,
+            # Stage 2.3: embed attribution rows so telegram notify can read
+            # drift_bps directly from this file without a separate lookup.
+            "rows":                 attribution_rows,
+            "per_pair":             {r["pair"]: r for r in attribution_rows},
+            "attribution_daily_path": str(attr_json_path),
         }
         json_path = Path(args.json)
         json_path.parent.mkdir(parents=True, exist_ok=True)

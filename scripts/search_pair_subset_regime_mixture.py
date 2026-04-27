@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +51,12 @@ from validate_pair_subset_summary import build_validation_bundle
 
 UTC = timezone.utc
 BARS_PER_DAY = gp.periods_per_day(gp.TIMEFRAME)
+
+# Opt-in noise tolerance for the breadth binary classifier.
+# Default 0.0 = legacy behaviour (no change).  Set e.g. 0.005 to treat a
+# 3-day pct_change > -0.5% as "positive" so noise-level flat markets do not
+# collapse breadth to 0.
+PAIRWISE_BREADTH_NOISE_EPSILON = float(os.getenv("PAIRWISE_BREADTH_NOISE_EPSILON", "0.0"))
 BAR_FACTOR = np.sqrt(365.25 * 24.0 * 60.0 / 5.0)
 MAX_REGIME_BUCKETS = 16
 DEFAULT_WINDOWS = (
@@ -1574,7 +1581,7 @@ def build_overlay_inputs(df: pd.DataFrame, pairs: tuple[str, ...], regime_pair: 
     close = pd.concat([df[f"{asset}_close"].rename(asset) for asset in pairs], axis=1).sort_index()
     daily_close = close.resample("1D").last().dropna()
     regime = 0.60 * daily_close[regime_pair].pct_change(3) + 0.40 * daily_close[regime_pair].pct_change(14)
-    breadth = (daily_close.pct_change(3) > 0.0).mean(axis=1)
+    breadth = (daily_close.pct_change(3) > -PAIRWISE_BREADTH_NOISE_EPSILON).mean(axis=1)
     bar_ret = close[regime_pair].pct_change()
     vol_ann = bar_ret.rolling(12 * 24 * 3).std() * np.sqrt(365.25 * 24.0 * 60.0 / 5.0)
     overlay = {

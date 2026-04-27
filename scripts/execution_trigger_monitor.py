@@ -76,19 +76,20 @@ def _is_silently_dropped(
 ) -> bool:
     """Return True only when nothing accounts for the zeroed target weight.
 
-    A bar is *not* silently dropped when any of the following hold:
-    - the signal itself was tiny (gate respected an honest noise signal),
-    - the realised target_weight is non-flat (no drop happened),
-    - the new live_overlay_runner stamped pp["overlay_force_flat"]
-      with the binding overlay reason, or
-    - the legacy overlays (D1 max_hold, R3 CVaR cut, stale-price guard)
-      appended an entry to the same bar's decision_journal — those
-      overlays mutate plan target_weights but only record their reason
-      in the journal, not on the pair_plan itself.
+    Attribution sources we treat as "accounted":
+    - pp["overlay_force_flat"] — stamped by both the new
+      live_overlay_runner and the legacy D1 max_hold / R3 CVaR cut /
+      stale-price guard overlays. This is the authoritative source
+      because it lives on the JSONL-logged plan dict (the only thing
+      this monitor scans).
+    - decision_journal entries on the same bar (kept as a fallback for
+      callers that pass the in-memory state and the legacy overlays
+      ever drop the pair_plan stamp). Logged JSONL rows do not contain
+      decision_journal so this fallback only matters for tests.
 
-    Without the journal check the monitor would mis-classify every
-    legitimate Stage 0 overlay firing as a silent drop and burn down
-    the operator's alert budget.
+    Without one of those attributions a non-trivial signal that lands
+    flat with no overlay credit is a true silent drop — the operator
+    needs to see it.
     """
     sig = pp.get("signal_pct")
     tw = pp.get("target_weight")

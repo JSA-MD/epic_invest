@@ -1872,6 +1872,11 @@ def run_live_once(args: argparse.Namespace) -> int:
                             plan["target_weights"][_pair] = 0.0
                             if _pair in plan.get("pair_plans", {}):
                                 plan["pair_plans"][_pair]["target_weight"] = 0.0
+                                # Stamp the pair_plan so execution_trigger_monitor —
+                                # which only sees the JSONL-logged plan, not the
+                                # state's decision_journal — attributes this drop
+                                # correctly instead of treating it as silent.
+                                plan["pair_plans"][_pair]["overlay_force_flat"] = "max_hold"
                             # NOTE: do NOT clear position_open_since here. The timer must
                             # persist until reconcile actually closes the exchange position.
                             # D1 re-fires every cycle while exch_active=True AND age>24h
@@ -1915,6 +1920,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                     plan["target_weights"][_pair] = 0.0
                     if _pair in plan.get("pair_plans", {}):
                         plan["pair_plans"][_pair]["target_weight"] = 0.0
+                        plan["pair_plans"][_pair]["overlay_force_flat"] = "cvar_cut"
                     # Exchange position still open while cut active — keep forcing tw=0 to retry close
                     if _exch_active and abs(_tw) <= TARGET_WEIGHT_EPS:
                         print(f"[pairwise-live] R3 cut still active for {_pair}; exchange position not yet flat — forcing tw=0 to retry close")
@@ -1965,6 +1971,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                 plan["target_weights"][_pair] = 0.0
                 if _pair in plan.get("pair_plans", {}):
                     plan["pair_plans"][_pair]["target_weight"] = 0.0
+                    plan["pair_plans"][_pair]["overlay_force_flat"] = "cvar_cut"
                 state.setdefault("decision_journal", []).append(
                     {
                         "at": _now.isoformat(),
@@ -2008,6 +2015,7 @@ def run_live_once(args: argparse.Namespace) -> int:
             plan["target_weights"][_sp] = 0.0
             if _sp in plan.get("pair_plans", {}):
                 plan["pair_plans"][_sp]["target_weight"] = 0.0
+                plan["pair_plans"][_sp]["overlay_force_flat"] = "stale_price"
         print(f"[pairwise-live] stale price: forcing flat for {_stale_pairs}")
         try:
             from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss

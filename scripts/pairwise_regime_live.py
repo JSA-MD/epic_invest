@@ -2001,6 +2001,33 @@ def run_live_once(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
+    # D-post. Stage 2/3 unified live overlays — adaptive ±3σ regime threshold,
+    # sign-instability monitor, and (future) ensemble voting all run here so
+    # they share one decision_journal contract. Toggleable via PAIRWISE_LIVE_OVERLAYS.
+    try:
+        from live_overlay_runner import run_live_overlays
+        _live_overlay_decisions = run_live_overlays(plan, state)
+        if _live_overlay_decisions:
+            print(
+                f"[pairwise-live] live overlay force-flat: {_live_overlay_decisions}"
+            )
+            try:
+                from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss
+                if _ss(_AL.HIGH, "live-overlay"):
+                    _notif = load_notification_bridge()
+                    _notif.send_telegram_notification(
+                        _fa(
+                            _AL.HIGH,
+                            title="라이브 오버레이 강제 플랫",
+                            body="; ".join(f"{p}:{r}" for p, r in _live_overlay_decisions.items()),
+                            pair="-",
+                        )["text"]
+                    )
+            except Exception:
+                pass
+    except Exception as exc:  # noqa: BLE001
+        print(f"[pairwise-live] live_overlay_runner skipped: {exc}")
+
     # E. state_alphas coverage check (detects BNB-style suppression — read from current plan)
     _observed_routes: set[str] = set()
     for _pair, _pair_plan in (plan.get("pair_plans") or {}).items():

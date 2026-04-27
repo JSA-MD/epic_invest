@@ -37,6 +37,20 @@
     <string>1.0</string>
     <key>REBALANCE_NOTIONAL_BAND_USD</key>
     <string>5</string>
+    <!-- option α — backtest envelope, all risk guards disabled per user mandate 2026-04-27
+         User explicitly approved: raise live cap to backtest envelope, disable accumulated guards.
+         Mandate: 백테스트와 실매매는 모든 로직과 사항을 똑같이 맞추고 하드코딩도 하지 말것
+                  설정값도 공유하고 백테스트가 그대로 실매매로 작동하게 변경 -->
+    <key>PAIRWISE_CVAR_CUT</key>
+    <string>0</string>
+    <key>PAIRWISE_PROMOTION_FREEZE</key>
+    <string>0</string>
+    <key>PAIRWISE_EQUITY_CORR_RISK</key>
+    <string>1</string>
+    <key>PAIRWISE_SAFETY_DEFAULT_GROSS_CAP</key>
+    <string>0.5</string>
+    <key>PAIRWISE_FORCE_EXECUTE</key>
+    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>

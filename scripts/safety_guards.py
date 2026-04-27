@@ -22,7 +22,23 @@ def enforce_runtime_gross_cap_ceiling(
     if env is None:
         env = os.environ
 
-    SAFE_DEFAULT = 0.01  # Stage 0 lockdown — absolute hard ceiling for live execution
+    _safe_default_raw = env.get("PAIRWISE_SAFETY_DEFAULT_GROSS_CAP", "0.01")
+    try:
+        SAFE_DEFAULT = float(_safe_default_raw)
+        if not (0 < SAFE_DEFAULT <= 1.0):
+            SAFE_DEFAULT = 0.01
+            _safe_default_warn: Optional[str] = (
+                f"PAIRWISE_SAFETY_DEFAULT_GROSS_CAP={_safe_default_raw!r} outside (0, 1.0] "
+                f"— falling back to 0.01"
+            )
+        else:
+            _safe_default_warn = None
+    except (TypeError, ValueError):
+        SAFE_DEFAULT = 0.01
+        _safe_default_warn = (
+            f"PAIRWISE_SAFETY_DEFAULT_GROSS_CAP={_safe_default_raw!r} is not a valid number "
+            f"— falling back to 0.01"
+        )
     HARD_MAX = 1.0
     promotion_freeze = str(env.get("PAIRWISE_PROMOTION_FREEZE", "0")).strip().lower() in {
         "1",
@@ -53,9 +69,9 @@ def enforce_runtime_gross_cap_ceiling(
             return None, f"{name}={v} exceeds HARD_MAX={HARD_MAX}"
         return v, None
 
-    runtime, runtime_err = _parse_safe("PAIRWISE_GROSS_CAP", "0.01")
-    ceiling, ceiling_err = _parse_safe("PAIRWISE_LIVE_MAX_GROSS_CAP", "0.01")
-    errors = [e for e in (runtime_err, ceiling_err) if e]
+    runtime, runtime_err = _parse_safe("PAIRWISE_GROSS_CAP", str(SAFE_DEFAULT))
+    ceiling, ceiling_err = _parse_safe("PAIRWISE_LIVE_MAX_GROSS_CAP", str(SAFE_DEFAULT))
+    errors = [e for e in (_safe_default_warn, runtime_err, ceiling_err) if e]
 
     # Conservative fallback: take min of SAFE_DEFAULT and any valid input.
     # Invalid inputs are excluded so a corrupt env var can never widen exposure

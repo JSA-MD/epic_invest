@@ -2167,9 +2167,19 @@ def run_live_once(args: argparse.Namespace) -> int:
         # including --force-execute. Freeze is the master kill switch that holds
         # until CPCV/PBO revalidation explicitly clears the candidate.
         promotion_freeze = _env_bool("PAIRWISE_PROMOTION_FREEZE", False)
-        if promotion_freeze and force_execute:
+        allow_force_during_freeze = _env_bool("PAIRWISE_ALLOW_FORCE_DURING_FREEZE", True)
+        if promotion_freeze and force_execute and not allow_force_during_freeze:
             force_execute = False
             force_note = f"{force_note}_FROZEN"
+            print(
+                "[pairwise-live] PAIRWISE_PROMOTION_FREEZE=1 with "
+                "PAIRWISE_ALLOW_FORCE_DURING_FREEZE=0 — silencing --force-execute"
+            )
+        elif promotion_freeze and force_execute:
+            print(
+                "[pairwise-live] PAIRWISE_PROMOTION_FREEZE=1 but "
+                "PAIRWISE_ALLOW_FORCE_DURING_FREEZE=1 (default) — --force-execute remains active"
+            )
         gate_ready = promotion_gate_allows_execution(promotion_gate, args.mode)
         if not gate_ready and not force_execute:
             record_runtime_success(

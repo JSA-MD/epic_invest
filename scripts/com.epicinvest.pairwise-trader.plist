@@ -45,6 +45,10 @@
     <string>0</string>
     <key>PAIRWISE_PROMOTION_FREEZE</key>
     <string>0</string>
+    <!-- option α escape hatch: allow --force-execute to survive PAIRWISE_PROMOTION_FREEZE=1.
+         Set to 0 to revert to original safety behaviour (force silenced during freeze). -->
+    <key>PAIRWISE_ALLOW_FORCE_DURING_FREEZE</key>
+    <string>1</string>
     <key>PAIRWISE_EQUITY_CORR_RISK</key>
     <string>1</string>
     <key>PAIRWISE_SAFETY_DEFAULT_GROSS_CAP</key>

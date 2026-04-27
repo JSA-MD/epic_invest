@@ -350,6 +350,14 @@ def validate_safety_switches(env: Mapping[str, str] | None = None) -> list[str]:
         except (TypeError, ValueError):
             warnings.append(f"PAIRWISE_LIVE_MAX_GROSS_CAP={raw_cap!r} is not a valid number")
 
+    raw_allow_force_during_freeze = env.get("PAIRWISE_ALLOW_FORCE_DURING_FREEZE")
+    if raw_allow_force_during_freeze is not None:
+        normalized = raw_allow_force_during_freeze.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            warnings.append(
+                "PAIRWISE_ALLOW_FORCE_DURING_FREEZE=1 — force-execute survives freeze; operator expected this"
+            )
+
     raw_allow_backtest_cap = env.get("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP")
     if raw_allow_backtest_cap is not None:
         normalized = raw_allow_backtest_cap.strip().lower()

@@ -69,8 +69,9 @@ DEFAULT_SHADOW_STATE_PATH = ROOT / "models" / "pairwise_regime_shadow_state.json
 DEFAULT_SHADOW_DECISION_LOG_PATH = ROOT / "logs" / "pairwise_regime_shadow_decisions.jsonl"
 PAIRWISE_HISTORY_START = "2022-04-06"
 
-SHADOW_DEFAULT_EQUITY = 100_000.0
-SHADOW_TRADING_COST_RATE = 0.0006
+import shared_strategy_config
+from shared_strategy_config import INITIAL_CASH_USD as SHADOW_DEFAULT_EQUITY  # shared with gp_crypto_evolution.py
+from shared_strategy_config import FEE_RATE as SHADOW_TRADING_COST_RATE  # backtest-aligned — was 0.0006, now 0.0004
 PROMOTION_STAGE_SPECS = (
     {"key": "day_1", "label": "1-day observe", "min_observations": 288},
     {"key": "day_3", "label": "3-day confirm", "min_observations": 864},
@@ -1926,7 +1927,7 @@ def run_live_once(args: argparse.Namespace) -> int:
         # legacy behaviour exactly. Operators must opt in deliberately when
         # raising cap toward backtest size.
         _scale_enabled = os.getenv("PAIRWISE_CVAR_SCALE_BY_GROSS_CAP", "0").strip().lower() in {"1", "true", "yes", "on"}
-        _backtest_gross_cap = _safe_env_float("PAIRWISE_BACKTEST_GROSS_CAP", 0.75)
+        _backtest_gross_cap = _safe_env_float("PAIRWISE_BACKTEST_GROSS_CAP", shared_strategy_config.BACKTEST_GROSS_CAP)
         if _scale_enabled and _backtest_gross_cap > 0:
             _cvar_scale = max(1e-6, min(10.0, _effective_gross_cap / _backtest_gross_cap))
         else:

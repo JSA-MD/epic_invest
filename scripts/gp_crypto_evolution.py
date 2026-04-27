@@ -65,8 +65,8 @@ P_MUT = 0.15
 MAX_DEPTH = 8
 MAX_LEN = 60
 
-INITIAL_CASH = 100_000
-COMMISSION_PCT = 0.0004   # 0.04% per side (Binance futures taker)
+from shared_strategy_config import INITIAL_CASH_USD as INITIAL_CASH  # shared with pairwise_regime_live.py
+from shared_strategy_config import FEE_RATE as COMMISSION_PCT  # shared with pairwise_regime_live.py — 0.04% per side (Binance futures taker)
 NO_TRADE_BAND = 10        # +/-10pp dead-band
 TIMEFRAME = "5m"
 DAILY_TARGET_PCT = 0.005

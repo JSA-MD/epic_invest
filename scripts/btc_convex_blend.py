@@ -6,6 +6,7 @@ from typing import Any, Mapping
 import numpy as np
 
 import gp_crypto_evolution as gp
+import shared_strategy_config
 from execution_gene_utils import derive_execution_profile, legacy_execution_profile
 from search_pair_subset_regime_mixture import realistic_overlay_replay_from_context, route_state_names
 
@@ -179,10 +180,14 @@ def replay_target_trace(
     execution_gene: Mapping[str, Any] | None,
     trace_template: Mapping[str, Any] | None = None,
     return_trace: bool = False,
-    min_notional_usd: float = 25.0,
-    max_hold_bars: int = 288,
+    min_notional_usd: float | None = None,
+    max_hold_bars: int | None = None,
     runtime_gross_cap: float | None = None,
 ) -> dict[str, Any]:
+    if min_notional_usd is None:
+        min_notional_usd = shared_strategy_config.MIN_NOTIONAL_USD
+    if max_hold_bars is None:
+        max_hold_bars = shared_strategy_config.MAX_HOLD_BARS
     profile = legacy_execution_profile() if execution_gene is None else derive_execution_profile(dict(execution_gene))
     fee_rate = float(profile["fee_rate"])
     slippage = float(profile["slippage"])
@@ -267,7 +272,7 @@ def replay_target_trace(
     max_drawdown = float(np.min(equity_arr / np.maximum.accumulate(equity_arr) - 1.0))
     sharpe = 0.0
     if len(net_ret) > 1 and np.std(net_ret) > 1e-12:
-        sharpe = float(np.mean(net_ret) / np.std(net_ret) * np.sqrt(365.25 * 24.0 * 60.0 / 5.0))
+        sharpe = float(np.mean(net_ret) / np.std(net_ret) * np.sqrt(365.25 * 24.0 * 60.0 / shared_strategy_config.BAR_MINUTES))
     result = {
         "avg_daily_return": float(daily_metrics["avg_daily_return"]),
         "total_return": float(equity_arr[-1] / gp.INITIAL_CASH - 1.0),
@@ -306,11 +311,15 @@ def replay_btc_convex_blend_candidate(
     context: Mapping[str, Any],
     library_lookup: Mapping[str, Any],
     use_equity_corr_risk: bool = False,
-    min_notional_usd: float = 25.0,
-    max_hold_bars: int = 288,
+    min_notional_usd: float | None = None,
+    max_hold_bars: int | None = None,
     runtime_gross_cap: float | None = None,
     return_trace: bool = False,
 ) -> dict[str, Any]:
+    if min_notional_usd is None:
+        min_notional_usd = shared_strategy_config.MIN_NOTIONAL_USD
+    if max_hold_bars is None:
+        max_hold_bars = shared_strategy_config.MAX_HOLD_BARS
     blend = get_btc_convex_blend(candidate, pair)
     if blend is None:
         raise ValueError(f"No convex blend configured for pair {pair}.")

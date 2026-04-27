@@ -516,9 +516,8 @@ def _fast_overlay_replay_kernel_impl(
     bar_factor: float,
     gate_threshold_scale: float,
     gate_disabled: bool,
-    *,
     initial_cooldown_bars: int = 0,
-    final_decision_cooldown_override: int | None = None,
+    final_decision_cooldown_override: int = -1,
 ) -> tuple[float, int, float, float, float, float, float, float, float]:
     equity = initial_cash
     peak_equity = initial_cash
@@ -558,8 +557,11 @@ def _fast_overlay_replay_kernel_impl(
         # the trace/persisted value carries one bar of natural decrement.
         # Without the post-gate adjustment, shadow.cooldown_bars_left gets
         # the raw override value back every cycle and never expires.
+        # Numba-friendly sentinel: -1 means "no override". Production callers
+        # that previously passed None should now pass -1 (handled in
+        # fast_overlay_replay_from_context).
         _is_final_bar_override = (
-            final_decision_cooldown_override is not None
+            final_decision_cooldown_override >= 0
             and i == close.shape[0] - 2
         )
         if _is_final_bar_override:
@@ -1843,6 +1845,8 @@ def fast_overlay_replay_from_context(
             float(BAR_FACTOR),
             float(_gate_scale_for_kernel),
             bool(_gate_disabled_for_kernel),
+            0,    # initial_cooldown_bars (numba demands positional)
+            -1,   # final_decision_cooldown_override sentinel
         )
         return {
             "total_return": float(result[0]),

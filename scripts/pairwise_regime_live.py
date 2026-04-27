@@ -126,8 +126,9 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-# D2: per-pair gross weight cap (1.0 = no cap; set PAIRWISE_GROSS_CAP=0.01 for Stage A)
-PAIRWISE_GROSS_CAP = _safe_env_float("PAIRWISE_GROSS_CAP", 1.0)
+# D2: per-pair gross weight cap. Stage 0 lockdown default = 0.01 (1% notional).
+# Raising above 0.05 requires CPCV/PBO revalidation per Stage 1 governance.
+PAIRWISE_GROSS_CAP = _safe_env_float("PAIRWISE_GROSS_CAP", 0.01)
 PAIRWISE_EFFECTIVE_GROSS_CAP, _PAIRWISE_GROSS_CAP_WARNING_AT_IMPORT = enforce_runtime_gross_cap_ceiling()
 PAIRWISE_REBALANCE_NOTIONAL_BAND_USD = _safe_env_float("REBALANCE_NOTIONAL_BAND_USD", 25.0)
 
@@ -1492,6 +1493,25 @@ def load_promotion_gate(report_path: Path) -> Dict[str, Any]:
 
 
 def promotion_gate_allows_execution(gate: Mapping[str, Any], mode: str) -> bool:
+    # Stage 1 + 3.4 governance: delegate freeze / recertification / approval
+    # to promotion_gate_guard.evaluate_gate. Doing the freeze short-circuit
+    # *here* would skip the disk-based approval discovery and make the
+    # approved-unlock path unreachable from a launchd-started live process.
+    try:
+        from promotion_gate_guard import evaluate_gate as _evaluate_recert_gate
+
+        recert_status = _evaluate_recert_gate()
+        if not recert_status.unlocked:
+            print(
+                f"[pairwise-live] promotion gate denied: {recert_status.reason}"
+            )
+            return False
+    except Exception as exc:  # noqa: BLE001
+        # If the guard module fails to import or evaluate, fail closed —
+        # never promote on a missing safety check.
+        print(f"[pairwise-live] promotion gate guard error: {exc}; denying promotion")
+        return False
+
     mode_name = str(mode or "demo").lower()
     if mode_name == "demo":
         return bool(
@@ -1659,6 +1679,7 @@ def run_live_once(args: argparse.Namespace) -> int:
     from safety_guards import (
         check_position_divergence,
         enforce_runtime_gross_cap_ceiling,
+        refresh_latest_prices_from_rest,
         update_stale_price_tracker,
         validate_safety_switches,
         validate_state_alphas_coverage,
@@ -1939,6 +1960,29 @@ def run_live_once(args: argparse.Namespace) -> int:
                 )
         state["cvar_cut_until_ts"] = cvar_cut_until
 
+    # D-pre. REST ticker refresh — bypass LOB cache staleness before stale-tracker
+    # evaluates. Bar-close prices can stay constant for hours during low-volume
+    # windows, masking adverse moves. REST tickers update every poll.
+    if exchange is not None:
+        _bar_prices = dict(plan.get("latest_prices") or {})
+        _rest_prices, _rest_errs = refresh_latest_prices_from_rest(
+            exchange, PAIRS, prev_prices=_bar_prices
+        )
+        if _rest_errs:
+            print(f"[pairwise-live] REST ticker refresh errors: {_rest_errs}")
+        for _pair, _rp in _rest_prices.items():
+            _bp = float(_bar_prices.get(_pair, 0.0) or 0.0)
+            if _bp > 0.0 and abs(_rp - _bp) / _bp > 0.005:
+                print(
+                    f"[pairwise-live] price drift {_pair}: bar={_bp:.4f} REST={_rp:.4f} "
+                    f"({(_rp - _bp) / _bp * 100:+.3f}%)"
+                )
+            plan.setdefault("latest_prices", {})[_pair] = float(_rp)
+            _pp = (plan.get("pair_plans") or {}).get(_pair)
+            if isinstance(_pp, dict):
+                _pp["price_rest"] = float(_rp)
+                _pp["price_bar"] = _bp if _bp > 0.0 else None
+
     # D. Stale-price guard
     latest_prices = plan.get("latest_prices") or {}
     _stale_pairs = update_stale_price_tracker(state, latest_prices)
@@ -2004,6 +2048,13 @@ def run_live_once(args: argparse.Namespace) -> int:
     if args.execute:
         force_execute = bool(getattr(args, "force_execute", False))
         force_note = str(getattr(args, "force_note", "manual_primary_switch")).strip() or "manual_primary_switch"
+        # Stage 0 lockdown: PAIRWISE_PROMOTION_FREEZE=1 disables every bypass path,
+        # including --force-execute. Freeze is the master kill switch that holds
+        # until CPCV/PBO revalidation explicitly clears the candidate.
+        promotion_freeze = _env_bool("PAIRWISE_PROMOTION_FREEZE", False)
+        if promotion_freeze and force_execute:
+            force_execute = False
+            force_note = f"{force_note}_FROZEN"
         gate_ready = promotion_gate_allows_execution(promotion_gate, args.mode)
         if not gate_ready and not force_execute:
             record_runtime_success(

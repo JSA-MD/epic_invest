@@ -187,6 +187,44 @@ def load_state_qty_map(state_path: Path) -> dict[str, float]:
     return qty_map
 
 
+def force_close_position(
+    exchange: ccxt.binanceusdm,
+    pair: str,
+    current_qty: float,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any] | None:
+    """Submit a reduce-only market order to flatten an unwanted exchange position.
+
+    Returns the order dict on success, None on no-op (qty below epsilon),
+    or {"error": ...} on failure. Never raises — callers may continue to
+    next pair.
+    """
+    if abs(current_qty) < EPSILON:
+        return None
+    market = PAIR_TO_MARKET.get(pair)
+    if market is None:
+        return {"error": f"unknown_pair_{pair}"}
+    side = "sell" if current_qty > 0 else "buy"
+    qty = abs(float(current_qty))
+    if dry_run:
+        log.info("[DRY-RUN] force-close %s %s qty=%.6f (reduceOnly)", pair, side, qty)
+        return {"dry_run": True, "pair": pair, "side": side, "qty": qty}
+    try:
+        order = exchange.create_order(
+            market,
+            type="market",
+            side=side,
+            amount=qty,
+            params={"reduceOnly": True},
+        )
+        log.warning("force-closed %s %s qty=%.6f order_id=%s", pair, side, qty, order.get("id"))
+        return order
+    except Exception as exc:  # noqa: BLE001
+        log.error("force-close failed for %s: %s", pair, exc)
+        return {"error": str(exc), "pair": pair, "side": side, "qty": qty}
+
+
 def write_report(data: dict[str, Any]) -> Path:
     ts = utc_now().strftime("%Y%m%dT%H%M%SZ")
     out_path = RECON_OUTPUT_DIR / f"position_reconciliation_{ts}.json"
@@ -206,8 +244,16 @@ def reconcile(
     state_path: Path,
     tolerance: float,
     dry_run: bool,
+    *,
+    force_close_on_mismatch: bool = False,
 ) -> dict[str, Any]:
-    log.info("Starting reconciliation (mode=%s, tolerance=%s, dry_run=%s)", mode, tolerance, dry_run)
+    log.info(
+        "Starting reconciliation (mode=%s, tolerance=%s, dry_run=%s, force_close=%s)",
+        mode,
+        tolerance,
+        dry_run,
+        force_close_on_mismatch,
+    )
 
     # 1. Load state positions
     state_qty = load_state_qty_map(state_path)
@@ -284,13 +330,37 @@ def reconcile(
     if not mismatches:
         log.info("All positions matched within tolerance %.6f", tolerance)
 
+    # 4b. Force-close on mismatch (Stage 0 EOD reconcile per López de Prado/Chan)
+    force_close_results: list[dict[str, Any]] = []
+    if mismatches and force_close_on_mismatch:
+        for mm in mismatches:
+            exch_q = float(mm.get("exchange_qty", 0.0) or 0.0)
+            if abs(exch_q) < EPSILON:
+                # state thinks we have a position but exchange is flat — nothing to close
+                force_close_results.append(
+                    {"pair": mm["pair"], "skipped": "exchange_already_flat"}
+                )
+                continue
+            result = force_close_position(exchange, mm["pair"], exch_q, dry_run=dry_run)
+            force_close_results.append({"pair": mm["pair"], "result": result})
+            if _TF_AVAILABLE and _tf_should_send(_TF_AlertLevel.HIGH, f"recon-close-{mm['pair']}"):
+                _payload = _tf_format_alert(
+                    _TF_AlertLevel.HIGH,
+                    title="강제 청산 실행",
+                    body=f"{mm['pair']}: 거래소 {exch_q:+.6f} 강제 reduceOnly 청산",
+                    context={"📌 종목": mm["pair"], "🏦 거래소": f"{exch_q:+.6f}"},
+                )
+                send_telegram(_payload["text"], dry_run=dry_run)
+
     report = {
         "timestamp": iso_now(),
         "mode": mode,
         "tolerance": tolerance,
         "dry_run": dry_run,
+        "force_close_on_mismatch": force_close_on_mismatch,
         "pairs": pair_results,
         "mismatches": mismatches,
+        "force_close_results": force_close_results,
         "all_matched": len(mismatches) == 0,
     }
 
@@ -332,6 +402,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Log alerts but do not send Telegram messages",
     )
+    p.add_argument(
+        "--force-close-on-mismatch",
+        action="store_true",
+        default=os.getenv("RECON_FORCE_CLOSE_ON_MISMATCH", "0").strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Submit reduce-only market orders to flatten any exchange position "
+            "that diverges from state by more than --tolerance. Honours --dry-run."
+        ),
+    )
     return p
 
 
@@ -342,6 +422,7 @@ def main() -> None:
         state_path=args.state_path,
         tolerance=args.tolerance,
         dry_run=args.dry_run,
+        force_close_on_mismatch=args.force_close_on_mismatch,
     )
     if not report.get("all_matched", True):
         sys.exit(1)

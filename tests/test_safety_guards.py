@@ -43,39 +43,43 @@ def _make_candidate(bnb_gross_cap=None, btc_gross_cap=None, mode="state_alphas",
 
 class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
 
-    def test_no_clip_when_under_ceiling(self):
+    def test_safe_default_clamps_valid_runtime(self):
+        # Stage 0 lockdown: SAFE_DEFAULT=0.01 acts as an absolute hard ceiling.
+        # Even valid runtime/ceiling above SAFE_DEFAULT are clipped down. This
+        # is what makes lockdown durable across watchdog restarts.
         env = {"PAIRWISE_GROSS_CAP": "0.03", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.03)
-        self.assertIsNone(warning)
+        self.assertAlmostEqual(effective, 0.01)
+        self.assertIsNotNone(warning)
+        self.assertIn("Stage 0 lockdown", warning)
 
     def test_clip_when_over_ceiling(self):
         # PAIRWISE_GROSS_CAP=1.5 exceeds HARD_MAX=1.0 → invalid; ceiling=0.05 valid.
-        # effective = min(SAFE_DEFAULT=0.05, ceiling=0.05) = 0.05
+        # effective = min(SAFE_DEFAULT=0.01, ceiling=0.05) = 0.01
         env = {"PAIRWISE_GROSS_CAP": "1.5", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("1.5", warning)
-        self.assertIn("0.05", warning)
+        self.assertIn("0.01", warning)
 
     def test_default_ceiling_when_unset(self):
         env: dict = {}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        # PAIRWISE_GROSS_CAP defaults to 1.0, ceiling defaults to 0.05 → clamp to 0.05
-        self.assertAlmostEqual(effective, 0.05)
+        # Stage 0 lockdown: defaults are 0.01 / 0.01 → effective = 0.01
+        self.assertAlmostEqual(effective, 0.01)
 
     def test_unparseable_runtime_warns_now(self):
         env = {"PAIRWISE_GROSS_CAP": "abc"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_GROSS_CAP", warning)
 
     def test_negative_runtime_falls_back_to_safe_default(self):
         env = {"PAIRWISE_GROSS_CAP": "-1.0"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_GROSS_CAP", warning)
         self.assertIn("negative", warning)
@@ -83,7 +87,7 @@ class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
     def test_negative_ceiling_falls_back_to_safe_default(self):
         env = {"PAIRWISE_LIVE_MAX_GROSS_CAP": "-0.5"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_LIVE_MAX_GROSS_CAP", warning)
         self.assertIn("negative", warning)
@@ -91,29 +95,29 @@ class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
     def test_nan_runtime_falls_back(self):
         env = {"PAIRWISE_GROSS_CAP": "nan"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("NaN/inf", warning)
 
     def test_inf_runtime_falls_back(self):
         env = {"PAIRWISE_GROSS_CAP": "inf"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("NaN/inf", warning)
 
     def test_above_hard_max_falls_back(self):
         env = {"PAIRWISE_GROSS_CAP": "5.0"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("HARD_MAX", warning)
 
     def test_both_invalid_combines_warnings(self):
-        # Both invalid → effective = SAFE_DEFAULT = 0.05 (only candidate)
+        # Both invalid → effective = SAFE_DEFAULT = 0.01 (only candidate)
         env = {"PAIRWISE_GROSS_CAP": "-1", "PAIRWISE_LIVE_MAX_GROSS_CAP": "abc"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_GROSS_CAP", warning)
         self.assertIn("PAIRWISE_LIVE_MAX_GROSS_CAP", warning)
@@ -131,27 +135,27 @@ class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
         self.assertIn("0.01", warning)
 
     def test_invalid_runtime_does_not_widen_strict_ceiling(self):
-        # Strict ceiling 2%; runtime is negative (invalid).
-        # Effective must honour the strict ceiling, not fall back to the wider SAFE_DEFAULT.
-        env = {"PAIRWISE_GROSS_CAP": "-1", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.02"}
+        # Strict ceiling 0.005 (tighter than SAFE_DEFAULT=0.01); runtime invalid.
+        # Effective must honour the strict ceiling, not fall back to SAFE_DEFAULT.
+        env = {"PAIRWISE_GROSS_CAP": "-1", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.005"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.02)
+        self.assertAlmostEqual(effective, 0.005)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_GROSS_CAP", warning)
 
     def test_both_invalid_uses_safe_default(self):
-        # No valid inputs at all → only candidate is SAFE_DEFAULT=0.05
+        # No valid inputs at all → only candidate is SAFE_DEFAULT=0.01
         env = {"PAIRWISE_GROSS_CAP": "-1", "PAIRWISE_LIVE_MAX_GROSS_CAP": "abc"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
 
     def test_invalid_ceiling_with_loose_runtime_falls_back_to_safe_default(self):
         # Runtime=0.5 (valid but loose); ceiling invalid.
-        # effective = min(SAFE_DEFAULT=0.05, runtime=0.5) = 0.05
+        # effective = min(SAFE_DEFAULT=0.01, runtime=0.5) = 0.01
         env = {"PAIRWISE_GROSS_CAP": "0.5", "PAIRWISE_LIVE_MAX_GROSS_CAP": "abc"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("PAIRWISE_LIVE_MAX_GROSS_CAP", warning)
 
@@ -164,10 +168,10 @@ class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
         self.assertIsNotNone(warning)
 
     def test_hard_max_boundary_exact(self):
-        # 1.0 is valid (== HARD_MAX); but 1.0 > default ceiling 0.05 → clips, not fallback
+        # 1.0 is valid (== HARD_MAX); but 1.0 > SAFE_DEFAULT 0.01 → clips, not fallback
         env = {"PAIRWISE_GROSS_CAP": "1.0"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         self.assertIn("clipping", warning)
         self.assertNotIn("HARD_MAX", warning)
@@ -178,25 +182,25 @@ class TestEnforceRuntimeGrossCapCeiling(unittest.TestCase):
         self.assertAlmostEqual(effective, 0.0)
         self.assertIsNone(warning)
 
-    def test_default_pairwise_gross_cap_is_1_0(self):
-        # No PAIRWISE_GROSS_CAP set → defaults to 1.0, which exceeds ceiling 0.05
+    def test_default_pairwise_gross_cap_is_safe_default(self):
+        # No PAIRWISE_GROSS_CAP set → defaults to 0.01 (SAFE_DEFAULT post-Stage 0)
+        # Ceiling=0.05 explicit, runtime=0.01 default. effective = min(0.01, 0.01, 0.05) = 0.01
         env = {"PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
-        self.assertIsNotNone(warning)
-        self.assertIn("1.0", warning)
-        self.assertIn("0.05", warning)
+        self.assertAlmostEqual(effective, 0.01)
+        self.assertIsNone(warning)
 
     def test_at_ceiling_returns_no_warning(self):
-        env = {"PAIRWISE_GROSS_CAP": "0.05", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}
+        # Both runtime and ceiling at 0.01 (Stage 0 lockdown); no clip warning expected.
+        env = {"PAIRWISE_GROSS_CAP": "0.01", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.01"}
         effective, warning = enforce_runtime_gross_cap_ceiling(env)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNone(warning)
 
     def test_reads_os_environ_when_env_is_none(self):
         with patch.dict("os.environ", {"PAIRWISE_GROSS_CAP": "1.5", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}):
             effective, warning = enforce_runtime_gross_cap_ceiling(None)
-        self.assertAlmostEqual(effective, 0.05)
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
 
 
@@ -407,9 +411,20 @@ class TestValidateSafetySwitches(unittest.TestCase):
         result = validate_safety_switches(env)
         self.assertTrue(any("PAIRWISE_LIVE_MAX_GROSS_CAP" in w for w in result))
 
-    def test_gross_cap_at_ceiling_ok(self):
-        result = validate_safety_switches({"PAIRWISE_LIVE_MAX_GROSS_CAP": "0.20"})
+    def test_gross_cap_at_stage_a_ceiling_ok(self):
+        # Post Stage 0 lockdown, the no-warn ceiling is 0.05 (Stage A).
+        result = validate_safety_switches({"PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"})
         self.assertEqual(result, [])
+
+    def test_gross_cap_above_stage_a_ceiling_warns(self):
+        # 0.20 is the legacy defensive ceiling but post Stage 0 lockdown it
+        # exceeds the Stage A 0.05 cap and must warn.
+        result = validate_safety_switches({"PAIRWISE_LIVE_MAX_GROSS_CAP": "0.20"})
+        self.assertTrue(any("Stage A ceiling" in w for w in result))
+        # Above 0.20 it also trips the legacy defensive warning.
+        result_high = validate_safety_switches({"PAIRWISE_LIVE_MAX_GROSS_CAP": "0.50"})
+        self.assertTrue(any("Stage A ceiling" in w for w in result_high))
+        self.assertTrue(any("defensive ceiling 0.20" in w for w in result_high))
 
     def test_missing_env_vars_return_empty(self):
         result = validate_safety_switches({})

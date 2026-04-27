@@ -147,10 +147,12 @@ class TestSafetyGuardC_GrossCapCeiling(unittest.TestCase):
                 effective, warning = safety_guards.enforce_runtime_gross_cap_ceiling()
                 if warning:
                     print(f"[pairwise-live] safety warning: {warning}")
-        self.assertAlmostEqual(effective, 0.05)
+        # runtime=1.5 invalid (>HARD_MAX) → errors-fallback path:
+        # effective = min(SAFE_DEFAULT=0.01, ceiling=0.05) = 0.01
+        self.assertAlmostEqual(effective, 0.01)
         output = buf.getvalue()
         self.assertIn("1.5", output)
-        self.assertIn("0.05", output)
+        self.assertIn("0.01", output)
 
     def test_wiring_present_in_run_live_once(self):
         import pairwise_regime_live as prl
@@ -170,11 +172,13 @@ class TestSafetyGuardC_GrossCapCeiling(unittest.TestCase):
         plan_src = inspect.getsource(prl.build_pairwise_plan)
         self.assertNotIn("clip_candidate_gross_cap", plan_src)
 
-    def test_no_warning_when_under_ceiling(self):
+    def test_hard_ceiling_clamps_valid_runtime(self):
+        # Stage 0 lockdown: SAFE_DEFAULT=0.01 clamps runtime even when both
+        # values are valid and runtime <= ceiling.
         with patch.dict("os.environ", {"PAIRWISE_GROSS_CAP": "0.03", "PAIRWISE_LIVE_MAX_GROSS_CAP": "0.05"}):
             effective, warning = safety_guards.enforce_runtime_gross_cap_ceiling()
-        self.assertAlmostEqual(effective, 0.03)
-        self.assertIsNone(warning)
+        self.assertAlmostEqual(effective, 0.01)
+        self.assertIsNotNone(warning)
 
     def test_negative_pairwise_gross_cap_falls_back_to_safe_with_telegram_alert(self):
         """Negative PAIRWISE_GROSS_CAP triggers safe fallback, warning in stdout, Telegram alert."""
@@ -194,7 +198,8 @@ class TestSafetyGuardC_GrossCapCeiling(unittest.TestCase):
                     except Exception:
                         pass
 
-        self.assertAlmostEqual(effective, 0.05)
+        # Stage 0 lockdown: SAFE_DEFAULT=0.01, ceiling defaults to 0.01.
+        self.assertAlmostEqual(effective, 0.01)
         self.assertIsNotNone(warning)
         output = buf.getvalue()
         self.assertIn("safety warning", output)

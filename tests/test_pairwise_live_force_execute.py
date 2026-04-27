@@ -89,18 +89,26 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         self.assertTrue(state["notification_state"]["position_loss_alerted"]["BNBUSDT"])
 
     def test_promotion_gate_uses_demo_and_live_readiness_separately(self) -> None:
-        gate = {
-            "ready_for_shadow_live": True,
-            "ready_for_demo": True,
-            "ready_for_live": False,
-            "ready_for_merge": False,
-        }
-        self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "demo"))
-        self.assertFalse(pairwise_live.promotion_gate_allows_execution(gate, "live"))
-        gate["ready_for_live"] = True
-        gate["ready_for_merge"] = True
-        self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "demo"))
-        self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "live"))
+        # Bypass the Stage 1 recertification guard so this test can focus on
+        # the demo/live readiness logic. The guard is exercised separately in
+        # tests/test_promotion_gate_guard tests.
+        import promotion_gate_guard
+        bypass = promotion_gate_guard.GateStatus(
+            unlocked=True, reason="test bypass"
+        )
+        with patch.object(promotion_gate_guard, "evaluate_gate", return_value=bypass):
+            gate = {
+                "ready_for_shadow_live": True,
+                "ready_for_demo": True,
+                "ready_for_live": False,
+                "ready_for_merge": False,
+            }
+            self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "demo"))
+            self.assertFalse(pairwise_live.promotion_gate_allows_execution(gate, "live"))
+            gate["ready_for_live"] = True
+            gate["ready_for_merge"] = True
+            self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "demo"))
+            self.assertTrue(pairwise_live.promotion_gate_allows_execution(gate, "live"))
 
     def test_sync_position_loss_notifications_updates_snapshot_and_dispatches(self) -> None:
         state = {"latest_runtime_snapshot": {}}
@@ -682,6 +690,10 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
         def _save(_path, payload):
             saved["state"] = json.loads(json.dumps(payload))
 
+        # Stage 1 governance: bypass the recertification guard for this
+        # cooldown-persistence test so the live path is reached.
+        import promotion_gate_guard as _pgg
+        bypass = _pgg.GateStatus(unlocked=True, reason="test bypass")
         with (
             patch.object(pairwise_live, "load_state", return_value=state),
             patch.object(pairwise_live, "build_pairwise_plan", return_value=plan),
@@ -695,6 +707,7 @@ class PairwiseLiveForceExecuteTests(unittest.TestCase):
             patch.object(pairwise_live, "append_jsonl"),
             patch.object(pairwise_live, "save_state", side_effect=_save),
             patch.object(pairwise_live, "load_execution_bridge", return_value=bridge),
+            patch.object(_pgg, "evaluate_gate", return_value=bypass),
         ):
             rc = pairwise_live.run_live_once(args)
 

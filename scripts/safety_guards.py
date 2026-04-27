@@ -22,14 +22,22 @@ def enforce_runtime_gross_cap_ceiling(
     if env is None:
         env = os.environ
 
-    SAFE_DEFAULT = 0.05
+    SAFE_DEFAULT = 0.01  # Stage 0 lockdown — absolute hard ceiling for live execution
     HARD_MAX = 1.0
-    allow_backtest_like = str(env.get("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP", "0")).strip().lower() in {
+    promotion_freeze = str(env.get("PAIRWISE_PROMOTION_FREEZE", "0")).strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+    allow_backtest_like_raw = str(env.get("PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    # Stage 0 lockdown: PROMOTION_FREEZE=1 disables backtest-like bypass entirely.
+    allow_backtest_like = allow_backtest_like_raw and not promotion_freeze
 
     def _parse_safe(name: str, default: str) -> tuple[Optional[float], Optional[str]]:
         raw = env.get(name, default)
@@ -45,8 +53,8 @@ def enforce_runtime_gross_cap_ceiling(
             return None, f"{name}={v} exceeds HARD_MAX={HARD_MAX}"
         return v, None
 
-    runtime, runtime_err = _parse_safe("PAIRWISE_GROSS_CAP", "1.0")
-    ceiling, ceiling_err = _parse_safe("PAIRWISE_LIVE_MAX_GROSS_CAP", "0.05")
+    runtime, runtime_err = _parse_safe("PAIRWISE_GROSS_CAP", "0.01")
+    ceiling, ceiling_err = _parse_safe("PAIRWISE_LIVE_MAX_GROSS_CAP", "0.01")
     errors = [e for e in (runtime_err, ceiling_err) if e]
 
     # Conservative fallback: take min of SAFE_DEFAULT and any valid input.
@@ -64,6 +72,8 @@ def enforce_runtime_gross_cap_ceiling(
         return effective, warning
 
     if allow_backtest_like and runtime is not None and ceiling is not None:
+        # Backtest-like mode bypasses SAFE_DEFAULT but still respects ceiling
+        # (only enabled when PROMOTION_FREEZE=0).
         if runtime > ceiling:
             warning = (
                 f"PAIRWISE_GROSS_CAP={runtime} exceeds PAIRWISE_LIVE_MAX_GROSS_CAP={ceiling} — "
@@ -72,14 +82,28 @@ def enforce_runtime_gross_cap_ceiling(
             return ceiling, warning
         return runtime, None
 
-    # Both inputs valid. Apply normal ceiling enforcement.
-    if runtime > ceiling:
+    # Live path: SAFE_DEFAULT acts as an absolute hard ceiling. Any valid input
+    # exceeding it is clipped down. This is what makes Stage 0 lockdown durable
+    # across watchdog restarts and accidental env var overrides.
+    if runtime > effective:
+        if ceiling is not None and ceiling < SAFE_DEFAULT and ceiling == effective:
+            binding = f"PAIRWISE_LIVE_MAX_GROSS_CAP={ceiling}"
+        else:
+            binding = f"SAFE_DEFAULT={SAFE_DEFAULT} (Stage 0 lockdown)"
+        warning = (
+            f"PAIRWISE_GROSS_CAP={runtime} exceeds {binding} — clipping to {effective}"
+        )
+        return effective, warning
+    if ceiling < runtime:
+        # Defensive: shouldn't trigger after the runtime > effective branch above,
+        # but kept for parity with prior contract when runtime <= SAFE_DEFAULT
+        # but ceiling is tighter than runtime.
         warning = (
             f"PAIRWISE_GROSS_CAP={runtime} exceeds PAIRWISE_LIVE_MAX_GROSS_CAP={ceiling} — "
             f"clipping to {ceiling}"
         )
         return ceiling, warning
-    return runtime, None
+    return effective, None
 
 
 def clip_candidate_gross_cap(candidate: dict, equity: float | None = None) -> dict:
@@ -145,6 +169,53 @@ def check_position_divergence(
         return None
     except Exception:
         return None
+
+
+def refresh_latest_prices_from_rest(
+    exchange: Any,
+    pairs: Iterable[str],
+    *,
+    prev_prices: Mapping[str, float] | None = None,
+    timeout_seconds: float = 5.0,
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Best-effort REST ticker refresh — bypasses LOB cache staleness.
+
+    Returns (refreshed, errors). Each pair is fetched independently;
+    failures fall back to prev_prices (if provided) or are omitted.
+    """
+    import time
+
+    refreshed: dict[str, float] = dict(prev_prices) if prev_prices else {}
+    errors: dict[str, str] = {}
+    if exchange is None:
+        return refreshed, errors
+    fetch_ticker = getattr(exchange, "fetch_ticker", None)
+    if not callable(fetch_ticker):
+        return refreshed, errors
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    for pair in pairs:
+        if time.monotonic() > deadline:
+            errors[pair] = "deadline_exceeded"
+            continue
+        try:
+            tick = fetch_ticker(pair) or {}
+            price_raw = (
+                tick.get("last")
+                or tick.get("close")
+                or tick.get("mark")
+                or tick.get("info", {}).get("lastPrice")
+            )
+            if price_raw is None:
+                errors[pair] = "no_price_in_ticker"
+                continue
+            price = float(price_raw)
+            if price > 0.0:
+                refreshed[pair] = price
+            else:
+                errors[pair] = f"non_positive_price={price}"
+        except Exception as e:  # noqa: BLE001 — ticker fetch is best-effort
+            errors[pair] = f"{type(e).__name__}: {e}"
+    return refreshed, errors
 
 
 def update_stale_price_tracker(
@@ -250,6 +321,11 @@ def validate_safety_switches(env: Mapping[str, str] | None = None) -> list[str]:
     if raw_cap is not None:
         try:
             val = float(raw_cap)
+            if val > 0.05:
+                warnings.append(
+                    f"PAIRWISE_LIVE_MAX_GROSS_CAP={val} exceeds Stage A ceiling 0.05 "
+                    f"(Stage 0 lockdown — CPCV revalidation required before raising)"
+                )
             if val > 0.20:
                 warnings.append(
                     f"PAIRWISE_LIVE_MAX_GROSS_CAP={val} exceeds defensive ceiling 0.20 "

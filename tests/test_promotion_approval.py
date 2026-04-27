@@ -7,6 +7,13 @@ These pin the security-critical invariants:
 - `is_approval_active` returns False for missing / unconfirmed / expired
   tokens and True only for fresh confirmed approvals.
 - `clean_expired` removes stale files but spares fresh ones.
+
+CRITICAL: each test redirects PA.APPROVAL_DIR to a per-test
+TemporaryDirectory and restores the production path on teardown. Without
+this, running the suite would delete real `.bkit/runtime/promotion_approvals/*`
+state — a live operator's pending unfreeze approval would vanish mid-flight.
+The original production path is captured *before* any patching so it
+cannot accidentally be lost.
 """
 
 from __future__ import annotations
@@ -14,6 +21,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import tempfile
 import time
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -29,12 +37,19 @@ import promotion_approval as PA  # noqa: E402
 
 class TestPromotionApproval(unittest.TestCase):
     def setUp(self):
-        if PA.APPROVAL_DIR.exists():
-            shutil.rmtree(PA.APPROVAL_DIR)
+        # Snapshot the production APPROVAL_DIR so we can restore it.
+        self._prod_dir = PA.APPROVAL_DIR
+        # Per-test isolated directory — never touch production state.
+        self._tmpdir = tempfile.TemporaryDirectory()
+        sandbox = Path(self._tmpdir.name) / "promotion_approvals"
+        sandbox.mkdir(parents=True, exist_ok=True)
+        PA.APPROVAL_DIR = sandbox
 
     def tearDown(self):
-        if PA.APPROVAL_DIR.exists():
-            shutil.rmtree(PA.APPROVAL_DIR)
+        # Restore the production constant before cleanup so any teardown
+        # in the module sees the canonical path.
+        PA.APPROVAL_DIR = self._prod_dir
+        self._tmpdir.cleanup()
 
     def test_request_creates_file(self):
         req = PA.request_approval("test reason", requester="alice", ttl_minutes=5)

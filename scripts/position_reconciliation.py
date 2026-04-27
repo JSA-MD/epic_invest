@@ -133,13 +133,19 @@ def get_exchange(mode: str) -> ccxt.binanceusdm:
     return exchange
 
 
-def fetch_exchange_qty_map(exchange: ccxt.binanceusdm) -> dict[str, float]:
-    """Return {pair: signed_qty} for all tracked pairs. Returns {} on error."""
+def fetch_exchange_qty_map(exchange: ccxt.binanceusdm) -> dict[str, float] | None:
+    """Return {pair: signed_qty} for all tracked pairs. Returns None on error.
+
+    A None return means the exchange could not be queried; callers must NOT
+    treat that as "exchange is flat" because the phantom-mismatch filter would
+    then mistake fetch outages for genuine flat positions and silently swallow
+    real divergences.
+    """
     try:
         positions = exchange.fetch_positions(list(PAIR_TO_MARKET.values()))
     except Exception as exc:  # noqa: BLE001
         log.error("fetch_positions failed: %s", exc)
-        return {}
+        return None
 
     qty_map: dict[str, float] = {}
     for pos in positions:
@@ -268,15 +274,41 @@ def reconcile(
         send_telegram(msg, dry_run=dry_run)
         return {"error": str(exc), "timestamp": iso_now()}
 
-    exchange_qty = fetch_exchange_qty_map(exchange)
-    if not exchange_qty and not state_qty:
+    raw_exchange_qty = fetch_exchange_qty_map(exchange)
+    exchange_fetch_failed = raw_exchange_qty is None
+    if exchange_fetch_failed:
+        # Without exchange ground truth we cannot trust comparison results.
+        # Emit a high-severity alert immediately so the outage is visible, then
+        # disable the phantom filter below so any state-side mismatch still
+        # surfaces as a normal alert (defence-in-depth).
+        err_body = f"mode={mode}: 거래소 포지션 조회 실패. 비교 결과 신뢰 불가."
+        log.error("[RECON ERROR] %s", err_body)
+        if _TF_AVAILABLE and _tf_should_send(_TF_AlertLevel.HIGH, "recon-fetch-failed"):
+            _payload = _tf_format_alert(
+                _TF_AlertLevel.HIGH,
+                title="Recon 거래소 조회 실패",
+                body=err_body,
+            )
+            send_telegram(_payload["text"], dry_run=dry_run)
+        else:
+            send_telegram(f"[RECON ERROR] {err_body}", dry_run=dry_run)
+        exchange_qty: dict[str, float] = {}
+    else:
+        exchange_qty = raw_exchange_qty
+    if not exchange_qty and not state_qty and not exchange_fetch_failed:
         log.warning("Both exchange and state returned empty position maps")
 
-    # Fill in zeros for pairs not returned by exchange
+    # Fill in zeros for pairs not returned by exchange (only meaningful when
+    # the fetch succeeded; on fetch failure these zeros are placeholders that
+    # the phantom filter must NOT treat as authoritative flat positions).
     for pair in PAIRS:
         exchange_qty.setdefault(pair, 0.0)
 
-    log.info("Exchange positions: %s", exchange_qty)
+    log.info(
+        "Exchange positions: %s%s",
+        exchange_qty,
+        " (FETCH FAILED — values are placeholders)" if exchange_fetch_failed else "",
+    )
 
     # 3. Compare
     mismatches: list[dict[str, Any]] = []
@@ -303,7 +335,37 @@ def reconcile(
             )
 
     # 4. Alert on mismatch
+    # Identify phantom mismatches: demo mode, exchange is flat, state cache claims a
+    # position.  This happens when recon lands in the window between pairwise_regime_live.py
+    # writing the pre-trade snapshot (line 1776) and the post-trade zeroing (line 2174).
+    # We suppress the Telegram alert for phantoms to stop the every-5-min spam, but we
+    # still record them in both `mismatches` and `phantom_mismatches` for audit.
+    phantom_mismatches: list[dict[str, Any]] = []
+    phantom_pairs: set[str] = set()
+    # Skip phantom filtering entirely on fetch failure — placeholder zeros
+    # would otherwise be misread as authoritative flat positions and silence
+    # alerts for genuine state-side divergences during exchange outages.
+    if not exchange_fetch_failed:
+        for mm in mismatches:
+            if (
+                mode == "demo"
+                and abs(mm["exchange_qty"]) < EPSILON
+                and abs(mm["state_qty"]) >= EPSILON
+            ):
+                phantom_mismatches.append(mm)
+                phantom_pairs.add(mm["pair"])
+                log.warning(
+                    "Suppressed demo phantom state-only mismatch %s: exchange=%.6f state=%.6f"
+                    " (pre-trade snapshot race in pairwise_regime_live.py:1776)",
+                    mm["pair"],
+                    mm["exchange_qty"],
+                    mm["state_qty"],
+                )
+
     for mm in mismatches:
+        if mm["pair"] in phantom_pairs:
+            # Already logged above; do not send Telegram for phantoms.
+            continue
         alert = (
             f"[RECON ALERT] {mm['pair']}: "
             f"exchange={mm['exchange_qty']:.6f}, "
@@ -334,6 +396,12 @@ def reconcile(
     force_close_results: list[dict[str, Any]] = []
     if mismatches and force_close_on_mismatch:
         for mm in mismatches:
+            if mm["pair"] in phantom_pairs:
+                # Phantom: exchange is already flat, nothing to close.
+                force_close_results.append(
+                    {"pair": mm["pair"], "skipped": "phantom_demo_state_only"}
+                )
+                continue
             exch_q = float(mm.get("exchange_qty", 0.0) or 0.0)
             if abs(exch_q) < EPSILON:
                 # state thinks we have a position but exchange is flat — nothing to close
@@ -360,6 +428,7 @@ def reconcile(
         "force_close_on_mismatch": force_close_on_mismatch,
         "pairs": pair_results,
         "mismatches": mismatches,
+        "phantom_mismatches": phantom_mismatches,
         "force_close_results": force_close_results,
         "all_matched": len(mismatches) == 0,
     }

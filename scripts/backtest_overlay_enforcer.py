@@ -60,6 +60,10 @@ ENFORCED_DEFAULTS: dict[str, str] = {
     "PAIRWISE_EQUITY_CORR_RISK": "0",
     "PAIRWISE_REFRESH_LIVE_DATA": "1",
     "PAIRWISE_PROMOTION_FREEZE": "1",
+    # Plan-time gate adjustments — must match between live and backtest
+    # or the silent-drop diagnostic numbers diverge.
+    "PAIRWISE_REGIME_THRESHOLD_SCALE": "1.0",
+    "PAIRWISE_REGIME_GATE_DISABLED": "0",
 }
 
 # Strict bounds — values outside these ranges always violate Stage 0/1.

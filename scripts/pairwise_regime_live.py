@@ -739,10 +739,27 @@ def compute_requested_weight(
     smoothed = pd.Series(raw_signal).ewm(span=max(int(params.signal_span), 1), adjust=False).mean().to_numpy()
     signal_pct = float(np.nan_to_num(smoothed[-1], nan=0.0))
     requested_weight = signal_pct / 100.0
-    effective_regime_threshold = float(params.regime_threshold) * float(equity_corr_regime_mult)
+    # Plan-time gate adjustment hooks. PAIRWISE_REGIME_THRESHOLD_SCALE
+    # multiplies the candidate's static threshold (1.0 = legacy, 0.5 = halve,
+    # 0.0 = effectively disable). PAIRWISE_REGIME_GATE_DISABLED=1 bypasses
+    # the long_ok/short_ok check entirely. These hooks are the *only*
+    # mechanism that fixes the diagnosed silent-drop pattern at its source
+    # — adaptive_threshold runs post-plan and cannot resurrect a signal
+    # the gate already zeroed.
+    _gate_scale = _safe_env_float("PAIRWISE_REGIME_THRESHOLD_SCALE", 1.0)
+    _gate_disabled = _env_bool("PAIRWISE_REGIME_GATE_DISABLED", False)
+    effective_regime_threshold = (
+        float(params.regime_threshold)
+        * float(equity_corr_regime_mult)
+        * float(_gate_scale)
+    )
     effective_gross_cap = float(params.gross_cap) * float(equity_corr_gross_scale)
-    long_ok = regime_score >= effective_regime_threshold and breadth_score >= float(params.breadth_threshold)
-    short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - float(params.breadth_threshold))
+    if _gate_disabled:
+        long_ok = True
+        short_ok = True
+    else:
+        long_ok = regime_score >= effective_regime_threshold and breadth_score >= float(params.breadth_threshold)
+        short_ok = regime_score <= -effective_regime_threshold and breadth_score <= (1.0 - float(params.breadth_threshold))
     if requested_weight > 0.0 and not long_ok:
         signal_pct = 0.0
         requested_weight = 0.0

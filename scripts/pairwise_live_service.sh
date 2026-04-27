@@ -106,6 +106,11 @@ write_launchd_env_file() {
     printf 'export PAIRWISE_REFRESH_LIVE_DATA=%q\n' "${PAIRWISE_REFRESH_LIVE_DATA:-1}"
     printf 'export PAIRWISE_PROMOTION_FREEZE=%q\n' "${PAIRWISE_PROMOTION_FREEZE:-1}"
     printf 'export RECON_FORCE_CLOSE_ON_MISMATCH=%q\n' "${RECON_FORCE_CLOSE_ON_MISMATCH:-1}"
+    # Plan-time gate adjustments: scale 1.0 = legacy gate, 0.5 = halve threshold,
+    # 0.0 = effectively disable. Set GATE_DISABLED=1 to bypass entirely (Stage A
+    # smoke testing only — produces large position counts).
+    printf 'export PAIRWISE_REGIME_THRESHOLD_SCALE=%q\n' "${PAIRWISE_REGIME_THRESHOLD_SCALE:-1.0}"
+    printf 'export PAIRWISE_REGIME_GATE_DISABLED=%q\n' "${PAIRWISE_REGIME_GATE_DISABLED:-0}"
     printf 'export EPIC_MARKET_DATA_SOURCE=%q\n' "${EPIC_MARKET_DATA_SOURCE:-postgres}"
     for key in \
       MARKET_DATA_SOURCE \

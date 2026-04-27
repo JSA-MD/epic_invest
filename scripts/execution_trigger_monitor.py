@@ -70,7 +70,26 @@ def _parse_ts(raw: Any) -> datetime | None:
     return ts
 
 
-def _is_silently_dropped(pp: dict[str, Any]) -> bool:
+def _is_silently_dropped(
+    pp: dict[str, Any],
+    journal_for_pair: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Return True only when nothing accounts for the zeroed target weight.
+
+    A bar is *not* silently dropped when any of the following hold:
+    - the signal itself was tiny (gate respected an honest noise signal),
+    - the realised target_weight is non-flat (no drop happened),
+    - the new live_overlay_runner stamped pp["overlay_force_flat"]
+      with the binding overlay reason, or
+    - the legacy overlays (D1 max_hold, R3 CVaR cut, stale-price guard)
+      appended an entry to the same bar's decision_journal — those
+      overlays mutate plan target_weights but only record their reason
+      in the journal, not on the pair_plan itself.
+
+    Without the journal check the monitor would mis-classify every
+    legitimate Stage 0 overlay firing as a silent drop and burn down
+    the operator's alert budget.
+    """
     sig = pp.get("signal_pct")
     tw = pp.get("target_weight")
     if sig is None or tw is None:
@@ -84,8 +103,12 @@ def _is_silently_dropped(pp: dict[str, Any]) -> bool:
         return False
     if abs(tw_v) > TARGET_WEIGHT_EPS:
         return False
-    if pp.get("overlay_force_flat"):  # accounted-for drop, not silent
+    if pp.get("overlay_force_flat"):  # new live_overlay_runner stamp
         return False
+    if journal_for_pair:
+        for entry in journal_for_pair:
+            if entry.get("override_reason"):
+                return False
     return True
 
 
@@ -128,8 +151,15 @@ def scan(
                 continue
             n_bars += 1
             plan = row.get("plan") or {}
+            # Group decision_journal entries by pair so the silent-drop
+            # classifier can attribute legacy-overlay-fired flats correctly.
+            journal_by_pair: dict[str, list[dict[str, Any]]] = {}
+            for entry in row.get("decision_journal") or []:
+                p = entry.get("pair")
+                if p is not None:
+                    journal_by_pair.setdefault(str(p), []).append(entry)
             for pair, pp in (plan.get("pair_plans") or {}).items():
-                if _is_silently_dropped(pp):
+                if _is_silently_dropped(pp, journal_by_pair.get(pair)):
                     silent_drops_by_pair[pair] += 1
                     if len(samples) < 20:
                         samples.append(

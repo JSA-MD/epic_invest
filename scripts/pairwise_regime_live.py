@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 
 import gp_crypto_evolution as gp
 from btc_convex_blend import blend_runtime_weight, get_btc_convex_blend
+from strategy_kernel import compute_target_weight as _kernel_compute_target_weight
 from btc_event_blend import apply_runtime_event_blend, build_runtime_event_context_from_frame, get_btc_event_blend
 from btc_online_blend import get_btc_online_blend, runtime_online_blend_alpha, update_runtime_online_score
 from execution_gene_utils import normalize_execution_gene
@@ -1817,12 +1818,33 @@ def run_live_once(args: argparse.Namespace) -> int:
     # via decision_journal and decision_log even when no orders are placed.
     # ------------------------------------------------------------------
 
-    # D2: apply per-pair gross cap before order placement
+    # D2: apply per-pair gross cap before order placement (via strategy_kernel)
     if _effective_gross_cap >= 0.0:
-        plan["target_weights"] = {
-            pair: max(-_effective_gross_cap, min(_effective_gross_cap, float(w)))
-            for pair, w in plan["target_weights"].items()
-        }
+        _now_d2 = utc_now()
+        for _pair_d2, _w_d2 in list(plan["target_weights"].items()):
+            _kr = _kernel_compute_target_weight(
+                baseline_weight=float(_w_d2),
+                specialist_weight=float(_w_d2),
+                state_alphas={},
+                route_state_name="",
+                blend_mode="always",
+                default_blend_alpha=0.0,
+                effective_gross_cap=float(_effective_gross_cap),
+                target_weight_eps=TARGET_WEIGHT_EPS,
+            )
+            plan["target_weights"][_pair_d2] = _kr["target_weight"]
+            if _kr["clipped"]:
+                state.setdefault("decision_journal", []).append(
+                    {
+                        "at": _now_d2.isoformat(),
+                        "pair": _pair_d2,
+                        "override_reason": "d2_gross_cap",
+                        "pre_clip_weight": _kr["pre_clip_weight"],
+                        "target_weight_forced": _kr["target_weight"],
+                        "effective_gross_cap": float(_effective_gross_cap),
+                        "clipped": True,
+                    }
+                )
 
     # D1: max-hold-bars auto-flatten (24 h)
     # Timer tracks the *current continuous* exchange position start time.

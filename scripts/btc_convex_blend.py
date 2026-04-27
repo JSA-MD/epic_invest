@@ -11,6 +11,12 @@ from execution_gene_utils import derive_execution_profile, legacy_execution_prof
 from search_pair_subset_regime_mixture import realistic_overlay_replay_from_context, route_state_names
 
 
+def _import_kernel():
+    """Lazy import to avoid circular dependency at module load time."""
+    from strategy_kernel import compute_target_weight  # noqa: PLC0415
+    return compute_target_weight
+
+
 BLEND_PAIR = "BTCUSDT"
 DEFAULT_BLEND_MODE = "always"
 PAIR_CONVEX_BLEND_KEY = "pair_convex_blends"
@@ -147,19 +153,21 @@ def build_blended_target_trace(
     route_state_mode = str(context.get("route_state_mode") or "equity_corr")
     names = route_state_names(route_state_mode)
     bucket_codes = np.asarray(context["bucket_codes"][float(route_breadth_threshold)], dtype="int64")[: len(base_target)]
+    _compute_target_weight = _import_kernel()
     for i in range(len(base_target)):
         route_state_name = str(names[int(bucket_codes[i])])
-        blend_alpha = resolve_blend_alpha(
+        result = _compute_target_weight(
             baseline_weight=float(base_target[i]),
             specialist_weight=float(specialist_target[i]),
+            state_alphas=state_alphas or {},
             route_state_name=route_state_name,
-            alpha=alpha,
-            mode=mode,
-            state_alphas=state_alphas,
+            blend_mode=mode,
+            default_blend_alpha=float(alpha),
+            effective_gross_cap=None,
         )
-        if blend_alpha <= 0.0:
+        if result["blend_alpha"] <= 0.0:
             continue
-        blended[i] = (1.0 - float(blend_alpha)) * base_target[i] + float(blend_alpha) * specialist_target[i]
+        blended[i] = result["target_weight"]
     return blended
 
 

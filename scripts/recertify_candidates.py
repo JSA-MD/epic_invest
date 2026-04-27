@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from cpcv_validation import CPCVConfig, cpcv_oos_sharpe, cpcv_paths
+from cpcv_validation import CPCVConfig, cpcv_select_and_measure
 from deflated_sharpe import deflated_sharpe
 from pbo_estimate import estimate_pbo
 
@@ -151,53 +151,55 @@ def recertify_candidates(
     except Exception as exc:  # noqa: BLE001
         pbo_block = {"error": f"{type(exc).__name__}: {exc}"}
 
-    # 3) CPCV OOS Sharpe distribution for the highest-Sharpe candidate --------
-    finite_dsr = {
-        k: v for k, v in dsr_results.items() if isinstance(v, dict) and "sharpe" in v and np.isfinite(v.get("sharpe", float("nan")))
-    }
+    # 3) CPCV under the candidate-selection rule ----------------------------
+    # Honest CPCV: for every split we (a) pick the IS-best candidate on the
+    # train fold, (b) measure that picked candidate's Sharpe on the held-out
+    # test fold. This is the OOS distribution under the same selection rule
+    # promotion would apply, so its mean is a real generalisation estimate
+    # rather than a stub-driven artefact.
     cpcv_block: dict
-    if not finite_dsr:
-        cpcv_block = {"error": "no candidate had a finite Sharpe; skipping CPCV"}
-    else:
-        best_label = max(finite_dsr, key=lambda k: finite_dsr[k]["sharpe"])
-        best_idx = candidate_labels.index(best_label)
-        col = returns_matrix[:, best_idx]
-        try:
-            cfg = CPCVConfig(
-                n_groups=cpcv_groups,
-                k_test_groups=cpcv_k_test,
-                embargo_pct=embargo_pct,
-                label_horizon=0,
-            )
-            # For a single time series we use a trivial fit_predict that
-            # passes through the realised return → CPCV here is measuring the
-            # OOS dispersion of the realised PnL across paths, not a learned
-            # signal. Replace fit_predict to plug in a real GP/ML loop.
-            def fit_predict(train_idx, test_idx):
-                return np.ones(test_idx.shape[0])
-            paths = cpcv_paths(t, cfg, fit_predict)
-            stats = cpcv_oos_sharpe(col, paths, annualization=periods_per_year)
-            cpcv_block = {
-                "best_candidate": best_label,
-                "n_groups": cpcv_groups,
-                "k_test_groups": cpcv_k_test,
-                "embargo_pct": embargo_pct,
-                **stats,
-            }
-        except Exception as exc:  # noqa: BLE001
-            cpcv_block = {"error": f"{type(exc).__name__}: {exc}"}
+    try:
+        cfg = CPCVConfig(
+            n_groups=cpcv_groups,
+            k_test_groups=cpcv_k_test,
+            embargo_pct=embargo_pct,
+            label_horizon=0,
+        )
+        stats = cpcv_select_and_measure(
+            returns_matrix,
+            cfg,
+            annualization=periods_per_year,
+            selection="sharpe",
+        )
+        cpcv_block = {
+            "n_groups": cpcv_groups,
+            "k_test_groups": cpcv_k_test,
+            "embargo_pct": embargo_pct,
+            **stats,
+        }
+    except Exception as exc:  # noqa: BLE001
+        cpcv_block = {"error": f"{type(exc).__name__}: {exc}"}
 
     # 4) Decision rule --------------------------------------------------------
     pass_pbo = isinstance(pbo_block, dict) and pbo_block.get("pbo", 1.0) < 0.5
+    finite_dsr = {
+        k: v for k, v in dsr_results.items()
+        if isinstance(v, dict) and "dsr" in v and np.isfinite(v.get("dsr", float("nan")))
+    }
     best_dsr = max(
         (v.get("dsr", 0.0) for v in finite_dsr.values()),
         default=0.0,
     )
     pass_dsr = best_dsr >= 0.95
+    cpcv_n = int(cpcv_block.get("n_paths_evaluated", 0)) if isinstance(cpcv_block, dict) else 0
+    cpcv_mean = (
+        float(cpcv_block.get("mean_sharpe", float("nan")))
+        if isinstance(cpcv_block, dict) else float("nan")
+    )
     pass_cpcv = (
-        isinstance(cpcv_block, dict)
-        and cpcv_block.get("mean_sharpe", -1) is not None
-        and float(cpcv_block.get("mean_sharpe", -1) or -1) > 0.5
+        cpcv_n > 0
+        and np.isfinite(cpcv_mean)
+        and cpcv_mean > 0.5
     )
     decision = {
         "pass_pbo_lt_0_5": bool(pass_pbo),

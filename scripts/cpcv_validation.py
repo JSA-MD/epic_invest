@@ -220,9 +220,94 @@ def cpcv_oos_sharpe(
     }
 
 
+def cpcv_select_and_measure(
+    returns_matrix: np.ndarray,
+    config: CPCVConfig,
+    *,
+    annualization: float = 252.0,
+    selection: str = "sharpe",
+) -> dict:
+    """Honest CPCV for a candidate-selection pipeline.
+
+    For every CPCV split:
+        1. Compute the per-candidate IS metric on `train_idx`.
+        2. Pick the IS-best candidate `j*` (argmax).
+        3. Measure `j*`'s Sharpe on the held-out `test_idx` rows.
+    Then aggregate the resulting OOS Sharpe samples — this is the real
+    "out-of-sample distribution under the candidate-selection rule".
+
+    Unlike `cpcv_oos_sharpe(cpcv_paths(...))` which requires a real
+    `fit_predict` callable, this function works directly on a matrix of
+    *already-realised* candidate returns and never asks for a stub
+    predictor — so it cannot accidentally rubber-stamp a strategy by
+    feeding it `np.ones` predictions.
+
+    `selection` ∈ {"sharpe", "mean", "total"} chooses the IS metric.
+    """
+    config.validate()
+    arr = np.asarray(returns_matrix, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError(f"returns_matrix must be 2-D; got shape {arr.shape}")
+    t, n = arr.shape
+    if n < 2:
+        raise ValueError(f"need at least 2 candidates; got {n}")
+
+    def _candidate_score(rows: np.ndarray) -> np.ndarray:
+        if selection == "sharpe":
+            mu = np.mean(rows, axis=0)
+            sd = np.std(rows, axis=0, ddof=1)
+            return np.where(sd > 0, mu / sd, 0.0)
+        if selection == "mean":
+            return np.mean(rows, axis=0)
+        if selection == "total":
+            return np.sum(rows, axis=0)
+        raise ValueError(f"unknown selection {selection!r}")
+
+    oos_sharpes: list[float] = []
+    selection_counts: dict[int, int] = {}
+    for train_idx, test_idx in cpcv_splits(t, config):
+        if train_idx.size < 4 or test_idx.size < 4:
+            continue
+        is_perf = _candidate_score(arr[train_idx])
+        if not np.any(np.isfinite(is_perf)):
+            continue
+        best_j = int(np.argmax(is_perf))
+        selection_counts[best_j] = selection_counts.get(best_j, 0) + 1
+        oos_returns = arr[test_idx, best_j]
+        if oos_returns.size < 4:
+            continue
+        sd = float(np.std(oos_returns, ddof=1))
+        if sd <= 0.0:
+            continue
+        mu = float(np.mean(oos_returns))
+        oos_sharpes.append(mu / sd * np.sqrt(annualization))
+
+    sharpes = np.array(oos_sharpes, dtype=np.float64)
+    if sharpes.size == 0:
+        return {
+            "n_paths_evaluated": 0,
+            "mean_sharpe": float("nan"),
+            "median_sharpe": float("nan"),
+            "p05_sharpe": float("nan"),
+            "positive_fraction": float("nan"),
+            "selection_counts": selection_counts,
+            "selection_mode": selection,
+        }
+    return {
+        "n_paths_evaluated": int(sharpes.size),
+        "mean_sharpe": float(np.mean(sharpes)),
+        "median_sharpe": float(np.median(sharpes)),
+        "p05_sharpe": float(np.quantile(sharpes, 0.05)),
+        "positive_fraction": float(np.mean(sharpes > 0.0)),
+        "selection_counts": selection_counts,
+        "selection_mode": selection,
+    }
+
+
 __all__ = [
     "CPCVConfig",
     "cpcv_splits",
     "cpcv_paths",
     "cpcv_oos_sharpe",
+    "cpcv_select_and_measure",
 ]

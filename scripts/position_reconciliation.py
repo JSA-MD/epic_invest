@@ -420,17 +420,23 @@ def reconcile(
                 )
                 send_telegram(_payload["text"], dry_run=dry_run)
 
+    # all_matched MUST be False when the exchange fetch failed, even if
+    # mismatches happens to be empty (it would be empty when state is also
+    # flat, since exchange_qty was filled with placeholder zeros). Otherwise
+    # downstream consumers reading the report could mistake an outage for a
+    # clean reconciliation and mute alerts that are still warranted.
     report = {
         "timestamp": iso_now(),
         "mode": mode,
         "tolerance": tolerance,
         "dry_run": dry_run,
         "force_close_on_mismatch": force_close_on_mismatch,
+        "exchange_fetch_failed": exchange_fetch_failed,
         "pairs": pair_results,
         "mismatches": mismatches,
         "phantom_mismatches": phantom_mismatches,
         "force_close_results": force_close_results,
-        "all_matched": len(mismatches) == 0,
+        "all_matched": (len(mismatches) == 0) and not exchange_fetch_failed,
     }
 
     # 5. Write report

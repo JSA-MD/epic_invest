@@ -10757,7 +10757,9 @@
         "mode": "state_alphas",
         "state_alphas": {
           "equity_mixed:bull_broad": 0.2,
-          "equity_mixed:bull_narrow": 0.2
+          "equity_mixed:bull_narrow": 0.2,
+          "equity_mixed:bear_broad": 0.1,
+          "equity_mixed:bear_narrow": 0.1
         },
         "specialist_pair_config": {
           "route_breadth_threshold": 0.5,

@@ -342,6 +342,7 @@ def reconcile(
     # still record them in both `mismatches` and `phantom_mismatches` for audit.
     phantom_mismatches: list[dict[str, Any]] = []
     phantom_pairs: set[str] = set()
+    persistent_phantom_pairs: set[str] = set()
     # Skip phantom filtering entirely on fetch failure — placeholder zeros
     # would otherwise be misread as authoritative flat positions and silence
     # alerts for genuine state-side divergences during exchange outages.
@@ -361,6 +362,75 @@ def reconcile(
                     mm["exchange_qty"],
                     mm["state_qty"],
                 )
+
+    # Persistence tracking — escalate phantom suppressions that recur for many
+    # cycles (i.e. genuine stuck state, not a transient pre-trade snapshot
+    # race). Without this, an actually-broken state cache could be silenced
+    # forever. Threshold default 12 cycles ≈ 1 hour at 5-min recon cadence.
+    # Operators can tune via PHANTOM_PERSISTENCE_THRESHOLD env (positive int).
+    PHANTOM_STATE_CACHE = Path("/tmp/recon_phantom_persistence.json")
+    try:
+        _persistence_threshold = int(os.getenv("PHANTOM_PERSISTENCE_THRESHOLD", "12"))
+        if _persistence_threshold < 1:
+            _persistence_threshold = 12
+    except (TypeError, ValueError):
+        _persistence_threshold = 12
+    try:
+        _prev_persistence = json.loads(PHANTOM_STATE_CACHE.read_text()) if PHANTOM_STATE_CACHE.exists() else {}
+    except Exception:
+        _prev_persistence = {}
+    _now_iso = iso_now()
+    _new_persistence: dict[str, Any] = {}
+    for _pair in phantom_pairs:
+        _prev = _prev_persistence.get(_pair) or {}
+        _count = int(_prev.get("count", 0)) + 1
+        _new_persistence[_pair] = {
+            "count": _count,
+            "first_at": _prev.get("first_at") or _now_iso,
+            "last_at": _now_iso,
+        }
+        if _count >= _persistence_threshold and not _prev.get("escalated_at"):
+            persistent_phantom_pairs.add(_pair)
+            _new_persistence[_pair]["escalated_at"] = _now_iso
+            log.error(
+                "PERSISTENT phantom on %s: %d consecutive cycles since %s — escalating",
+                _pair,
+                _count,
+                _new_persistence[_pair]["first_at"],
+            )
+        elif _prev.get("escalated_at"):
+            # Already escalated; preserve the marker so we don't keep re-alerting.
+            _new_persistence[_pair]["escalated_at"] = _prev.get("escalated_at")
+    # Pairs not in current phantom_pairs reset their counter (state cleared).
+    try:
+        PHANTOM_STATE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _tmp = PHANTOM_STATE_CACHE.with_suffix(".json.tmp")
+        _tmp.write_text(json.dumps(_new_persistence, default=str, indent=2))
+        _tmp.rename(PHANTOM_STATE_CACHE)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("phantom persistence cache write failed: %s", exc)
+
+    # Escalation alert — fires once per persistent pair (then dedupe via
+    # escalated_at). Routes through the standard high-severity channel so it
+    # is unmistakable from the suppressed-phantom log line.
+    for _pair in persistent_phantom_pairs:
+        _info = _new_persistence.get(_pair) or {}
+        _msg = (
+            f"persistent phantom mismatch on {_pair}: "
+            f"{_info.get('count')} consecutive cycles since {_info.get('first_at')} — "
+            f"state cache stuck, manual intervention required"
+        )
+        log.error("[RECON PERSISTENT] %s", _msg)
+        if _TF_AVAILABLE and _tf_should_send(_TF_AlertLevel.HIGH, f"recon-persistent-{_pair}"):
+            _payload = _tf_format_alert(
+                _TF_AlertLevel.HIGH,
+                title="포지션 불일치 — 영구적",
+                body=_msg,
+                context={"📌 종목": _pair, "↻ 누적 cycle": str(_info.get("count")), "⌛ 시작": _info.get("first_at", "")},
+            )
+            send_telegram(_payload["text"], dry_run=dry_run)
+        else:
+            send_telegram(f"[RECON PERSISTENT] {_msg}", dry_run=dry_run)
 
     for mm in mismatches:
         if mm["pair"] in phantom_pairs:

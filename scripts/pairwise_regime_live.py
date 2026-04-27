@@ -1907,6 +1907,35 @@ def run_live_once(args: argparse.Namespace) -> int:
     # R3: CVaR-99 cut overlay
     if PAIRWISE_CVAR_CUT_ENABLED:
         cvar_thresholds = load_tail_risk_thresholds()
+        # CVaR threshold scaling is OPT-IN via env flag.
+        #
+        # Threshold from tail_risk_report.json is calibrated against the backtest
+        # gross_cap (default 0.75). When effective live cap diverges (e.g. 0.01
+        # safety ceiling vs 0.75 backtest), the trip semantics drift:
+        #   - cap << backtest_cap: trip rarely fires because absolute live drawdowns
+        #     are bounded by the smaller cap, so the larger threshold is unreachable;
+        #     OR (when realized 30d return reflects shadow_paper at backtest size)
+        #     trip fires constantly because shadow drawdowns dwarf live cap exposure.
+        #   - cap == backtest_cap: trip semantics match calibration.
+        #   - cap > backtest_cap: trip is overly lenient relative to actual exposure.
+        #
+        # Scaling threshold by (effective_cap / backtest_cap) realigns trip with
+        # exposure. Because applying scale<1 to current ops would TIGHTEN the trip
+        # (more frequent cuts) and could surprise live positions, scaling is
+        # gated by PAIRWISE_CVAR_SCALE_BY_GROSS_CAP=1. Default OFF preserves
+        # legacy behaviour exactly. Operators must opt in deliberately when
+        # raising cap toward backtest size.
+        _scale_enabled = os.getenv("PAIRWISE_CVAR_SCALE_BY_GROSS_CAP", "0").strip().lower() in {"1", "true", "yes", "on"}
+        _backtest_gross_cap = float(os.getenv("PAIRWISE_BACKTEST_GROSS_CAP", "0.75"))
+        if _scale_enabled and _backtest_gross_cap > 0:
+            _cvar_scale = max(1e-6, min(10.0, _effective_gross_cap / _backtest_gross_cap))
+        else:
+            _cvar_scale = 1.0
+        cvar_thresholds_scaled = {pair: threshold * _cvar_scale for pair, threshold in cvar_thresholds.items()}
+        if _scale_enabled:
+            print(f"[pairwise-live] R3 CVaR scaling ENABLED: effective_cap={_effective_gross_cap:.4f}, backtest_cap={_backtest_gross_cap:.4f}, scale={_cvar_scale:.4f}")
+        else:
+            print(f"[pairwise-live] R3 CVaR scaling disabled (PAIRWISE_CVAR_SCALE_BY_GROSS_CAP=0); using raw thresholds")
         cvar_cut_until: Dict[str, Any] = dict(state.get("cvar_cut_until_ts") or {})
         for _pair in list(PAIRS):
             _cut_until_raw = cvar_cut_until.get(_pair)
@@ -1939,6 +1968,8 @@ def run_live_once(args: argparse.Namespace) -> int:
                                 "cvar_cut_until": _cut_until_dt.isoformat() if _cut_until_dt else None,
                                 "exchange_position_active": _exch_active,
                                 "target_weight_forced": 0.0,
+                                "cvar_scale": _cvar_scale,
+                                "cvar_threshold_raw": cvar_thresholds.get(_pair),
                             }
                         )
                 continue
@@ -1947,12 +1978,12 @@ def run_live_once(args: argparse.Namespace) -> int:
                 if _cut_until_dt is not None and _now >= _cut_until_dt:
                     cvar_cut_until[_pair] = None
             # Evaluate whether a new cut should trigger
-            if should_apply_cvar_cut(_pair, cvar_thresholds):
+            if should_apply_cvar_cut(_pair, cvar_thresholds_scaled):
                 _resume_dt = _now + timedelta(hours=PAIRWISE_CVAR_CUT_HOLD_HOURS)
                 cvar_cut_until[_pair] = _resume_dt.isoformat()
                 _msg = (
                     f"[pairwise-live] R3 CVaR-99 cut: {_pair} 30d return below "
-                    f"CVaR-99 threshold ({cvar_thresholds.get(_pair, 'N/A'):.4f}). "
+                    f"CVaR-99 threshold ({cvar_thresholds_scaled.get(_pair, 'N/A'):.4f}). "
                     f"Forcing flat until {_resume_dt.strftime('%Y-%m-%dT%H:%MZ')}"
                 )
                 print(_msg)
@@ -1960,7 +1991,7 @@ def run_live_once(args: argparse.Namespace) -> int:
                 try:
                     from telegram_format import AlertLevel as _AL, format_alert as _fa, should_send as _ss, format_kst as _fkst
                     if _ss(_AL.HIGH, f"r3-cvar-cut-{_pair}"):
-                        _thresh_val = cvar_thresholds.get(_pair)
+                        _thresh_val = cvar_thresholds_scaled.get(_pair)
                         _thresh_str = f"{_thresh_val:.4f}" if _thresh_val is not None else "N/A"
                         _payload = _fa(
                             _AL.HIGH,
@@ -1984,7 +2015,9 @@ def run_live_once(args: argparse.Namespace) -> int:
                         "at": _now.isoformat(),
                         "pair": _pair,
                         "override_reason": "cvar_cut",
-                        "cvar_threshold": cvar_thresholds.get(_pair),
+                        "cvar_threshold": cvar_thresholds_scaled.get(_pair),
+                        "cvar_threshold_raw": cvar_thresholds.get(_pair),
+                        "cvar_scale": _cvar_scale,
                         "cvar_cut_until": _resume_dt.isoformat(),
                         "target_weight_forced": 0.0,
                     }

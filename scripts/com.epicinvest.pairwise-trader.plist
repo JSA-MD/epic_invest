@@ -16,14 +16,27 @@
 
   <key>EnvironmentVariables</key>
   <dict>
-    <!-- Opt-in scaling for R3 CVaR-99 cut overlay. Default 0 preserves
-         legacy behaviour byte-for-byte. Operators must set 1 deliberately
-         when raising live cap toward backtest size. See
+    <!-- Opt-in scaling for R3 CVaR-99 cut overlay. See
          pairwise_regime_live.py:1907 for rationale. -->
     <key>PAIRWISE_CVAR_SCALE_BY_GROSS_CAP</key>
-    <string>0</string>
+    <string>1</string>
     <key>PAIRWISE_BACKTEST_GROSS_CAP</key>
     <string>0.75</string>
+    <!-- Live capital exposure aligned to ~67% of backtest gross_cap (0.75).
+         User explicitly approved a 50x increase from prior 0.01 ceiling
+         to recover backtest-like turnover and PnL. See conversation
+         options X+Y, 2026-04-27. -->
+    <key>PAIRWISE_GROSS_CAP</key>
+    <string>0.5</string>
+    <key>PAIRWISE_LIVE_MAX_GROSS_CAP</key>
+    <string>0.5</string>
+    <key>PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP</key>
+    <string>1</string>
+    <!-- Deadzones lowered so micro-rebalancing matches backtest behavior. -->
+    <key>PAIRWISE_NO_TRADE_BAND_PCT</key>
+    <string>1.0</string>
+    <key>REBALANCE_NOTIONAL_BAND_USD</key>
+    <string>5</string>
   </dict>
 
   <key>RunAtLoad</key>

@@ -1926,7 +1926,7 @@ def run_live_once(args: argparse.Namespace) -> int:
         # legacy behaviour exactly. Operators must opt in deliberately when
         # raising cap toward backtest size.
         _scale_enabled = os.getenv("PAIRWISE_CVAR_SCALE_BY_GROSS_CAP", "0").strip().lower() in {"1", "true", "yes", "on"}
-        _backtest_gross_cap = float(os.getenv("PAIRWISE_BACKTEST_GROSS_CAP", "0.75"))
+        _backtest_gross_cap = _safe_env_float("PAIRWISE_BACKTEST_GROSS_CAP", 0.75)
         if _scale_enabled and _backtest_gross_cap > 0:
             _cvar_scale = max(1e-6, min(10.0, _effective_gross_cap / _backtest_gross_cap))
         else:

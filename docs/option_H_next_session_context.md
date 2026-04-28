@@ -5,9 +5,19 @@
 ### Production
 - Trader: PID active, BTC+BNB pairwise, Stage 0 lockdown (cap 0.01, promotion_freeze=1, force_execute=0, cvar_cut=1)
 - Trading capacity: ~$39 max notional at $3,872 equity
-- Demo shadow: 4 alt-coin traders activated (ETH, SOL, XRP, DOGE) — same env, same model, same promotion report
-- All 5 pairs use `models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json`
+- All 5 pairs share `models/gp_regime_mixture_btc_bnb_pairwise_repair_equity_corr_validated_summary.json`
 - Promotion gate: `ready_for_live=False`, `status=shadow_ready_only`, stress_gate failed 2 checks
+
+### H6 Demo Shadow Activation — FAILED
+Attempted to launchctl bootstrap eth/sol/xrp/doge traders. All 4 crashed immediately:
+- ETH: state path collision with pairwise BTC+BNB (`pairwise_regime_live_state.json` shared)
+- SOL/XRP/DOGE: `build_pairwise_plan` (line 1808) requires BTC+BNB pair — single-coin plan generation not implemented
+4 traders booted out. Production single-trader unchanged.
+
+H6 cannot be activated as-is. Requires either:
+- (a) Refactor `pairwise_regime_live.py` to support single-coin plans, OR
+- (b) New per-coin entry-point script that uses different code path
+Estimated additional work: 2-3 days. Defer to next session as part of H2/H5 track.
 
 ### Diagnosis (final)
 - Specialist GP model saturates at ~-6e-06 in `bear_narrow` regime

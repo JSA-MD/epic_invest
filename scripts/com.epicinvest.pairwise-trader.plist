@@ -16,45 +16,37 @@
 
   <key>EnvironmentVariables</key>
   <dict>
-    <!-- Opt-in scaling for R3 CVaR-99 cut overlay. See
-         pairwise_regime_live.py:1907 for rationale. -->
+    <!-- Stage 0 lockdown — Option H strategy redesign in progress.
+         All safety gates restored. No force-execute, no backtest-like cap bypass.
+         Live cap = 0.01 (~$39 max notional). CVaR tail-risk overlay re-engaged.
+         CVaR scaling disabled (with cap=0.01, scaling makes thresholds too strict).
+         Revert these values only after Option H completes and is explicitly approved. -->
     <key>PAIRWISE_CVAR_SCALE_BY_GROSS_CAP</key>
-    <string>1</string>
+    <string>0</string>
     <key>PAIRWISE_BACKTEST_GROSS_CAP</key>
     <string>0.75</string>
-    <!-- Live capital exposure aligned to ~67% of backtest gross_cap (0.75).
-         User explicitly approved a 50x increase from prior 0.01 ceiling
-         to recover backtest-like turnover and PnL. See conversation
-         options X+Y, 2026-04-27. -->
     <key>PAIRWISE_GROSS_CAP</key>
-    <string>0.5</string>
+    <string>0.01</string>
     <key>PAIRWISE_LIVE_MAX_GROSS_CAP</key>
-    <string>0.5</string>
+    <string>0.01</string>
     <key>PAIRWISE_ALLOW_BACKTEST_LIKE_GROSS_CAP</key>
-    <string>1</string>
-    <!-- Deadzones lowered so micro-rebalancing matches backtest behavior. -->
+    <string>0</string>
     <key>PAIRWISE_NO_TRADE_BAND_PCT</key>
-    <string>1.0</string>
+    <string>10</string>
     <key>REBALANCE_NOTIONAL_BAND_USD</key>
-    <string>5</string>
-    <!-- option α — backtest envelope, all risk guards disabled per user mandate 2026-04-27
-         User explicitly approved: raise live cap to backtest envelope, disable accumulated guards.
-         Mandate: 백테스트와 실매매는 모든 로직과 사항을 똑같이 맞추고 하드코딩도 하지 말것
-                  설정값도 공유하고 백테스트가 그대로 실매매로 작동하게 변경 -->
+    <string>25</string>
     <key>PAIRWISE_CVAR_CUT</key>
-    <string>0</string>
-    <key>PAIRWISE_PROMOTION_FREEZE</key>
-    <string>0</string>
-    <!-- option α escape hatch: allow --force-execute to survive PAIRWISE_PROMOTION_FREEZE=1.
-         Set to 0 to revert to original safety behaviour (force silenced during freeze). -->
-    <key>PAIRWISE_ALLOW_FORCE_DURING_FREEZE</key>
     <string>1</string>
+    <key>PAIRWISE_PROMOTION_FREEZE</key>
+    <string>1</string>
+    <key>PAIRWISE_ALLOW_FORCE_DURING_FREEZE</key>
+    <string>0</string>
     <key>PAIRWISE_EQUITY_CORR_RISK</key>
     <string>1</string>
     <key>PAIRWISE_SAFETY_DEFAULT_GROSS_CAP</key>
-    <string>0.5</string>
+    <string>0.01</string>
     <key>PAIRWISE_FORCE_EXECUTE</key>
-    <string>1</string>
+    <string>0</string>
   </dict>
 
   <key>RunAtLoad</key>
